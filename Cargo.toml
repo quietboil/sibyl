@@ -1,0 +1,16 @@
+[package]
+name = "sibyl"
+version = "0.1.0"
+edition = "2018"
+description = "An OCI-based driver for Rust applications to interface with Oracle databases"
+authors = ["Alex Demenchuk <alexander.demenchuk@gmail.com>"]
+license = "MIT"
+keywords = ["database","sql","oracle","oci","ffi"]
+categories = ["database"]
+readme = "README.md"
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+build-helper = "0.1"
