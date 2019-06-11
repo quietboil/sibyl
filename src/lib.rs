@@ -27,7 +27,7 @@ mod lob;
 /// As nothing can outlive the environment at which it was created, when only one
 /// environment is used, it might be created in `main`:
 /// ```no_run
-/// use sibyl as oracle; // pun intended :-)
+/// use sibyl as oracle; // pun intended :)
 /// fn main() {
 ///     let oraenv = oracle::env().expect("Oracle OCI environment");
 ///     // ...
@@ -35,9 +35,9 @@ mod lob;
 /// ```
 /// Or even statically:
 /// ```ignore
-/// use sibyl as oracle;
+/// use sibyl::Environment;
 /// lazy_static! {
-///     pub static ref ORACLE : oracle::Environment = oracle::env().expect("Oracle OCI environment");
+///     pub static ref ORACLE : Environment = sibyl::env().expect("Oracle OCI environment");
 /// }
 /// ```
 pub fn env() -> Result<Environment> {
@@ -48,10 +48,10 @@ pub(crate) use crate::defs::*;
 pub(crate) use crate::handle::Handle;
 
 pub use crate::err::Error;
-pub use crate::env::Environment;
-pub use crate::conn::Connection;
-pub use crate::stmt::Statement;
-pub use crate::stmt::ColumnType;
+pub use crate::env::{ Environment, Env };
+pub use crate::conn::{ Connection, Conn };
+pub use crate::stmt::{ Statement, ColumnType, SqlInArg, SqlOutArg, Stmt };
+pub use crate::rows::{ Rows, Row };
 pub use crate::cursor::Cursor;
 pub use crate::types::number::Number;
 pub use crate::types::date::Date;

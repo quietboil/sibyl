@@ -190,7 +190,9 @@ extern "C" {
 
 /// A trait for types that can be used as SQL statement IN arguments
 pub trait SqlInArg {
+    /// Returns the parameter name or None for positional arguments.
     fn name(&self) -> Option<&str>;
+    /// Returns `ToSql` trait implementation for this argument. 
     fn as_to_sql(&self) -> &dyn ToSql;
 }
 
@@ -206,7 +208,9 @@ impl<T: ToSql> SqlInArg for (&str, T) {
 
 /// A trait for types that can be used as SQL statement OUT arguments
 pub trait SqlOutArg {
+    /// Returns the parameter name or None for positional arguments.
     fn name(&self) -> Option<&str>;
+    /// Returns `ToSqlOut` trait implementation for this argument. 
     fn as_to_sql_out(&mut self) -> &mut dyn ToSqlOut;
 }
 
@@ -333,7 +337,9 @@ impl UsrEnv for Statement<'_> {
     fn as_conn(&self) -> Option<&dyn Conn>  { Some( self.conn ) }
 }
 
-/// A trait for types that can provide access to the `OCIStmt` handle
+/// A trait for types that can provide access to the `OCIStmt` handle.
+/// 
+/// It also exposes other methods that are used by the `FromSql` trait implementations. 
 pub trait Stmt : Conn {
     fn stmt_ptr(&self) -> *mut OCIStmt;
     fn conn(&self) -> &dyn Conn;

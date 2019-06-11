@@ -3,8 +3,11 @@ use crate::types::*;
 use crate::stmt::Stmt;
 use crate::column::ColumnValue;
 
-/// A trait for types which instances be created from the returned Oracle values.
+/// A trait for types which instances can be created from the returned Oracle values.
 pub trait FromSql<'a> : Sized {
+    /// Converts, if possible, data stored in the column buffer into the requested
+    /// type and returns the instance of it. Returns error if the conversion fails
+    /// or not defined from the type of the column buffer into a requested type.
     fn value(val: &ColumnValue, stmt: &'a dyn Stmt) -> Result<Self>;
 }
 

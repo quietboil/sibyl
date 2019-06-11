@@ -53,7 +53,7 @@ pub struct Environment {
     env: Handle<OCIEnv>
 }
 
-/// A trait for types that provide access to `Environment` handles
+/// A trait for types that provide access to `Environment` handles.
 ///
 /// See: [Encapsulating Lifetime of the Field][1]
 ///
