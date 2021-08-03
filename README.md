@@ -76,7 +76,7 @@ fn main() {
     // ...
 }
 ```
-Note however that some function will need a direct reference to this handle, so instead of passing it around some applications might prefer to create it statically:
+Note however that some functions will need a direct reference to this handle, so instead of passing it around some applications might prefer to create it statically:
 ```rust , ignore
 use sibyl::Environment;
 use lazy_static::lazy_static;
@@ -196,8 +196,8 @@ assert_eq!("1.05457180013911265115394106872506677375E-34", hbar.to_string("TME")
 ```rust , ignore
 use sibyl::Date;
 
-let apr18_1996 = Date::from_string("28-MAR-1996", "DD-MON-YYYY", &oracle)?;
-let next_monday = apr18_1996.next_week_day("MONDAY")?;
+let mar28_1996 = Date::from_string("28-MAR-1996", "DD-MON-YYYY", &oracle)?;
+let next_monday = mar28_1996.next_week_day("MONDAY")?;
 
 assert_eq!("Monday, April 01, 1996", next_monday.to_string("DL")?);
 ```
