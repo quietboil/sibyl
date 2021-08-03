@@ -172,8 +172,8 @@ while let Some( row ) = rows.next()? {
 ```
 There are a few notable points of interest in the last example:
 - Sibyl uses 0-based column indexing in a projection.
-- Column values are returned as an `Option`. However, if a column is declared as NOT NULL, like EMPLOYEE_ID and LAST_NAME, the result will always be `Some` and therefore can be safely unwrapped.
-- LAST_NAME and FIRST_NAME are retrieved as `&str`. This is fast as they are borrowed directly from the respective column buffers. However those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
+- Column value are returned as `Option`s. However, if a column is declared as `NOT NULL`, like `EMPLOYEE_ID` and `LAST_NAME`, the result will always be `Some` and therefore can be safely unwrapped.
+- `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they are borrowed directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
 
 ## Oracle Data Types
 
