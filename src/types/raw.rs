@@ -102,28 +102,31 @@ impl Drop for Raw<'_> {
 }
 
 impl<'e> Raw<'e> {
-    /// Returns a new Raw constructed with the copy of the `data`
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let data: [u8;5] = [1,2,3,4,5];
-    /// let raw = oracle::Raw::from_bytes(&data, &env)?;
-    ///
-    /// let size = raw.capacity()?;
-    /// assert!(5 <= size);
-    ///
-    /// let len = raw.len();
-    /// assert_eq!(5, len);
-    ///
-    /// let raw_data_ptr = raw.as_raw_ptr();
-    /// assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
-    ///
-    /// let raw_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
-    /// assert_eq!(data, raw_data);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns a new Raw constructed with the copy of the `data`
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let data: [u8;5] = [1,2,3,4,5];
+        let raw = oracle::Raw::from_bytes(&data, &env)?;
+
+        let size = raw.capacity()?;
+        assert!(5 <= size);
+
+        let len = raw.len();
+        assert_eq!(5, len);
+
+        let raw_data_ptr = raw.as_raw_ptr();
+        assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
+
+        let raw_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
+        assert_eq!(data, raw_data);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn from_bytes(data: &[u8], env: &'e dyn Env) -> Result<Self> {
         let mut raw = ptr::null_mut::<OCIRaw>();
         catch!{env.err_ptr() =>
@@ -132,33 +135,36 @@ impl<'e> Raw<'e> {
         Ok( Self { env, raw } )
     }
 
-    /// Returns a new Raw constructed with the copy of the date from the `other` Raw.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let data: [u8;5] = [1,2,3,4,5];
-    /// let src = oracle::Raw::from_bytes(&data, &env)?;
-    /// let dst = oracle::Raw::from_raw(&src)?;
-    ///
-    /// let raw_data_ptr = src.as_raw_ptr();
-    /// assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
-    ///
-    /// let len = src.len();
-    /// assert_eq!(5, len);
-    ///
-    /// let src_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
-    /// let raw_data_ptr = dst.as_raw_ptr();
-    /// assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
-    ///
-    /// let len = dst.len();
-    /// assert_eq!(5, len);
-    ///
-    /// let dst_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
-    /// assert_eq!(dst_data, src_data);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns a new Raw constructed with the copy of the date from the `other` Raw.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let data: [u8;5] = [1,2,3,4,5];
+        let src = oracle::Raw::from_bytes(&data, &env)?;
+        let dst = oracle::Raw::from_raw(&src)?;
+
+        let raw_data_ptr = src.as_raw_ptr();
+        assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
+
+        let len = src.len();
+        assert_eq!(5, len);
+
+        let src_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
+        let raw_data_ptr = dst.as_raw_ptr();
+        assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
+
+        let len = dst.len();
+        assert_eq!(5, len);
+
+        let dst_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
+        assert_eq!(dst_data, src_data);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn from_raw(other: &Raw<'e>) -> Result<Self> {
         let env = other.env;
         let mut raw = ptr::null_mut::<OCIRaw>();
@@ -168,21 +174,24 @@ impl<'e> Raw<'e> {
         Ok( Self { env, raw } )
     }
 
-    /// Returns a new Raw with the memory allocated for the raw data.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let raw = oracle::Raw::with_capacity(19, &env)?;
-    ///
-    /// let size = raw.capacity()?;
-    /// assert!(19 <= size);
-    ///
-    /// let len = raw.len();
-    /// assert_eq!(0, len);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns a new Raw with the memory allocated for the raw data.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let raw = oracle::Raw::with_capacity(19, &env)?;
+
+        let size = raw.capacity()?;
+        assert!(19 <= size);
+
+        let len = raw.len();
+        assert_eq!(0, len);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn with_capacity(size: usize, env: &'e dyn Env) -> Result<Self> {
         let raw = new(size, env.env_ptr(), env.err_ptr())?;
         Ok( Self { env, raw } )
@@ -196,68 +205,76 @@ impl<'e> Raw<'e> {
         self.raw
     }
 
-    /// Returns the size of the raw data in bytes.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let data: [u8;5] = [1,2,3,4,5];
-    /// let raw = oracle::Raw::from_bytes(&data, &env)?;
-    /// let len = raw.len();
-    ///
-    /// assert_eq!(5, len);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns the size of the raw data in bytes.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let data: [u8;5] = [1,2,3,4,5];
+        let raw = oracle::Raw::from_bytes(&data, &env)?;
+        let len = raw.len();
+
+        assert_eq!(5, len);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn len(&self) -> usize {
         len(self.as_ptr(), self.env.env_ptr())
     }
 
-    /// Returns the allocated size of raw memory in bytes
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let raw = oracle::Raw::with_capacity(19, &env)?;
-    /// let size = raw.capacity()?;
-    ///
-    /// assert!(19 <= size);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns the allocated size of raw memory in bytes
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let raw = oracle::Raw::with_capacity(19, &env)?;
+        let size = raw.capacity()?;
+
+        assert!(19 <= size);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn capacity(&self) -> Result<usize> {
-        let mut size: u32;
+        let mut size = mem::MaybeUninit::<u32>::uninit();
         catch!{self.env.err_ptr() =>
-            size = mem::uninitialized();
-            OCIRawAllocSize(self.env.env_ptr(), self.env.err_ptr(), self.as_ptr(), &mut size)
+            OCIRawAllocSize(self.env.env_ptr(), self.env.err_ptr(), self.as_ptr(), size.as_mut_ptr())
         }
-        Ok( size as usize )
+        Ok( unsafe { size.assume_init() } as usize )
     }
 
-    /// Changes the size of the memory of this raw binary in the object cache.
-    /// Previous content is not preserved.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let mut bin = oracle::Raw::with_capacity(10, &env)?;
-    /// let cap = bin.capacity()?;
-    /// assert!(cap >= 10);
-    ///
-    /// bin.resize(20);
-    /// let cap = bin.capacity()?;
-    /// assert!(cap >= 20);
-    ///
-    /// bin.resize(0);
-    /// let cap = bin.capacity()?;
-    /// assert_eq!(0, cap);
-    ///
-    /// bin.resize(16);
-    /// let cap = bin.capacity()?;
-    /// assert!(cap >= 16);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Changes the size of the memory of this raw binary in the object cache.
+        Previous content is not preserved.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let mut bin = oracle::Raw::with_capacity(10, &env)?;
+        let cap = bin.capacity()?;
+        assert!(cap >= 10);
+
+        bin.resize(20);
+        let cap = bin.capacity()?;
+        assert!(cap >= 20);
+
+        bin.resize(0);
+        let cap = bin.capacity()?;
+        assert_eq!(0, cap);
+
+        bin.resize(16);
+        let cap = bin.capacity()?;
+        assert!(cap >= 16);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn resize(&mut self, new_size: usize) -> Result<()> {
         catch!{self.env.err_ptr() =>
             OCIRawResize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, &mut self.raw)
@@ -265,22 +282,25 @@ impl<'e> Raw<'e> {
         Ok(())
     }
 
-    /// Returns unsafe pointer to the RAW data
-     /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let data: [u8;5] = [1,2,3,4,5];
-    /// let raw = oracle::Raw::from_bytes(&data, &env)?;
-    ///
-    /// let raw_data_ptr = raw.as_raw_ptr();
-    /// assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
-    ///
-    /// let raw_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, raw.len() as usize) };
-    /// assert_eq!(data, raw_data);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns unsafe pointer to the RAW data
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let data: [u8;5] = [1,2,3,4,5];
+        let raw = oracle::Raw::from_bytes(&data, &env)?;
+
+        let raw_data_ptr = raw.as_raw_ptr();
+        assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
+
+        let raw_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, raw.len() as usize) };
+        assert_eq!(data, raw_data);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
    pub fn as_raw_ptr(&self) -> *mut u8 {
        as_raw_ptr(self.as_ptr(), self.env.env_ptr())
     }

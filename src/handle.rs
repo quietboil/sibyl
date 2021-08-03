@@ -131,5 +131,4 @@ impl<T: HandleType> Handle<T> {
     }
 }
 
-impl Handle<OCIStmt> {
-}
+impl Handle<OCIStmt> {}

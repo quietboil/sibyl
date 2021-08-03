@@ -1,5 +1,5 @@
-create user sandbox identified by password;
-grant connect, resource, unlimited tablespace, select_catalog_role to sandbox;
+create user sibyl identified by Or4cl3;
+grant connect, resource, unlimited tablespace, select_catalog_role to sibyl;
 
 begin
     for r in (
@@ -11,7 +11,7 @@ begin
            and nvl(iot_type,'_') != 'IOT_OVERFLOW')
     loop
         begin
-            execute immediate 'grant insert, select, update, delete on ' || r.owner || '.' || r.table_name || ' to sandbox';
+            execute immediate 'grant insert, select, update, delete on ' || r.owner || '.' || r.table_name || ' to sibyl';
         exception
             when others then
                 dbms_output.put_line('ERROR: cannot grant access to table ' || r.owner || '.' || r.table_name || ' -- ' || substr(sqlerrm,1,200));
@@ -24,9 +24,9 @@ begin
          where owner in ('HR', 'OE', 'PM', 'IX', 'SH', 'BI'))
     loop
         begin
-            execute immediate 'grant select on ' || r.owner || '.' || r.view_name || ' to sandbox';
+            execute immediate 'grant select on ' || r.owner || '.' || r.view_name || ' to sibyl';
             if r.read_only = 'N' then
-                execute immediate 'grant insert, update, delete on ' || r.owner || '.' || r.view_name || ' to sandbox';
+                execute immediate 'grant insert, update, delete on ' || r.owner || '.' || r.view_name || ' to sibyl';
             end if;
         exception
             when others then
@@ -44,13 +44,13 @@ begin
         begin
             case r.object_type
                 when 'SEQUENCE' then
-                    execute immediate 'grant select  on ' || r.owner || '.' || r.object_name || ' to sandbox';
+                    execute immediate 'grant select  on ' || r.owner || '.' || r.object_name || ' to sibyl';
                 when 'FUNCTION' then
-                    execute immediate 'grant execute on ' || r.owner || '.' || r.object_name || ' to sandbox';
+                    execute immediate 'grant execute on ' || r.owner || '.' || r.object_name || ' to sibyl';
                 when 'PROCEDURE' then
-                    execute immediate 'grant execute on ' || r.owner || '.' || r.object_name || ' to sandbox';
+                    execute immediate 'grant execute on ' || r.owner || '.' || r.object_name || ' to sibyl';
                 when 'PACKAGE' then
-                    execute immediate 'grant execute on ' || r.owner || '.' || r.object_name || ' to sandbox';
+                    execute immediate 'grant execute on ' || r.owner || '.' || r.object_name || ' to sibyl';
             end case;
         exception
             when others then
@@ -63,7 +63,7 @@ begin
           from all_directories
          where directory_path like '%/demo/schema/%')
     loop
-        execute immediate 'GRANT read, write ON DIRECTORY '||r.directory_name||' TO sandbox';
+        execute immediate 'GRANT read, write ON DIRECTORY '||r.directory_name||' TO sibyl';
     end loop;
 end;
 /

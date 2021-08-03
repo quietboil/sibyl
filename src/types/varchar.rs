@@ -22,12 +22,11 @@ pub(crate) fn free(txt: &mut *mut OCIString, env: *mut OCIEnv, err: *mut OCIErro
 }
 
 pub(crate) fn capacity(txt: *const OCIString, env: *mut OCIEnv, err: *mut OCIError) -> Result<usize> {
-    let mut size: u32;
+    let mut size = mem::MaybeUninit::<u32>::uninit();
     catch!{err =>
-        size = mem::uninitialized();
-        OCIStringAllocSize(env, err, txt, &mut size)
+        OCIStringAllocSize(env, err, txt, size.as_mut_ptr())
     }
-    Ok( size as usize )
+    Ok( unsafe { size.assume_init() } as usize )
 }
 
 pub(crate) fn to_string(txt: *const OCIString, env: *mut OCIEnv) -> String {
@@ -122,27 +121,30 @@ impl Drop for Varchar<'_> {
 }
 
 impl<'e> Varchar<'e> {
-    /// Returns a new Varchar constructed from the specified string
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let src = "Hello, World!";
-    /// let txt = oracle::Varchar::from_string(src, &env)?;
-    ///
-    /// assert!(13 <= txt.capacity()?);
-    ///
-    /// let len = txt.len();
-    /// assert_eq!(13, len);
-    ///
-    /// let res = unsafe { std::slice::from_raw_parts(txt.as_raw_ptr(), len as usize) };
-    /// let res = String::from_utf8_lossy(res);
-    ///
-    /// assert_eq!(src, res);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
-    pub fn from_string(text: &str, env: &'e Env) -> Result<Self> {
+    /**
+        Returns a new Varchar constructed from the specified string
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let src = "Hello, World!";
+        let txt = oracle::Varchar::from_string(src, &env)?;
+
+        assert!(13 <= txt.capacity()?);
+
+        let len = txt.len();
+        assert_eq!(13, len);
+
+        let res = unsafe { std::slice::from_raw_parts(txt.as_raw_ptr(), len as usize) };
+        let res = String::from_utf8_lossy(res);
+
+        assert_eq!(src, res);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn from_string(text: &str, env: &'e dyn Env) -> Result<Self> {
         let mut txt = ptr::null_mut::<OCIString>();
         catch!{env.err_ptr() =>
             OCIStringAssignText(env.env_ptr(), env.err_ptr(), text.as_ptr(), text.len() as u32, &mut txt)
@@ -150,24 +152,27 @@ impl<'e> Varchar<'e> {
         Ok( Self { env, txt } )
     }
 
-    /// Returns a new Varchar constructed with the copy of the date from the `other` Varchar.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let src = "Hello, World!";
-    /// let inp = oracle::Varchar::from_string(src, &env)?;
-    /// let txt = oracle::Varchar::from_varchar(&inp)?;
-    ///
-    /// let len = txt.len();
-    /// assert_eq!(13, len);
-    ///
-    /// let res = unsafe { std::slice::from_raw_parts(txt.as_raw_ptr(), len as usize) };
-    /// let res = String::from_utf8_lossy(res);
-    /// assert_eq!(src, res);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns a new Varchar constructed with the copy of the date from the `other` Varchar.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let src = "Hello, World!";
+        let inp = oracle::Varchar::from_string(src, &env)?;
+        let txt = oracle::Varchar::from_varchar(&inp)?;
+
+        let len = txt.len();
+        assert_eq!(13, len);
+
+        let res = unsafe { std::slice::from_raw_parts(txt.as_raw_ptr(), len as usize) };
+        let res = String::from_utf8_lossy(res);
+        assert_eq!(src, res);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn from_varchar(other: &'e Varchar) -> Result<Self> {
         let env = other.env;
         let mut txt = ptr::null_mut::<OCIString>();
@@ -191,24 +196,27 @@ impl<'e> Varchar<'e> {
         self.txt
     }
 
-    /// Updates the content of self to `text`
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let mut txt = oracle::Varchar::with_capacity(0, &env)?;
-    /// let src = "Hello, World!";
-    /// txt.set(src)?;
-    ///
-    /// let len = txt.len();
-    /// assert_eq!(13, len);
-    ///
-    /// let res = unsafe { std::slice::from_raw_parts(txt.as_raw_ptr(), len as usize) };
-    /// let res = String::from_utf8_lossy(res);
-    /// assert_eq!(src, res);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Updates the content of self to `text`
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let mut txt = oracle::Varchar::with_capacity(0, &env)?;
+        let src = "Hello, World!";
+        txt.set(src)?;
+
+        let len = txt.len();
+        assert_eq!(13, len);
+
+        let res = unsafe { std::slice::from_raw_parts(txt.as_raw_ptr(), len as usize) };
+        let res = String::from_utf8_lossy(res);
+        assert_eq!(src, res);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn set(&mut self, text: &str) -> Result<()> {
         catch!{self.env.err_ptr() =>
             OCIStringAssignText(self.env.env_ptr(), self.env.err_ptr(), text.as_ptr(), text.len() as u32, &mut self.txt)
@@ -226,35 +234,38 @@ impl<'e> Varchar<'e> {
         capacity(self.as_ptr(), self.env.env_ptr(), self.env.err_ptr())
     }
 
-    /// Changes the size of the memory of a string in the object cache.
-    /// Content of the string is not preserved.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let mut txt = oracle::Varchar::with_capacity(10, &env)?;
-    /// let cap = txt.capacity()?;
-    /// assert!(cap >= 10);
-    ///
-    /// txt.resize(20);
-    /// let cap = txt.capacity()?;
-    /// assert!(cap >= 20);
-    ///
-    /// txt.resize(0);
-    /// // Cannot not ask for capacity after resize to 0.
-    /// // Yes, it works for OCIRaw, but not here.
-    /// let res = txt.capacity();
-    /// assert!(res.is_err());
-    /// if let Err( err ) = res {
-    ///     assert_eq!(err, oracle::Error::Oracle((21500,"internal error code...".to_string())));
-    /// }
-    ///
-    /// txt.resize(16);
-    /// let cap = txt.capacity()?;
-    /// assert!(cap >= 16);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Changes the size of the memory of a string in the object cache.
+        Content of the string is not preserved.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let mut txt = oracle::Varchar::with_capacity(10, &env)?;
+        let cap = txt.capacity()?;
+        assert!(cap >= 10);
+
+        txt.resize(20);
+        let cap = txt.capacity()?;
+        assert!(cap >= 20);
+
+        txt.resize(0);
+        // Cannot not ask for capacity after resize to 0.
+        // Yes, it works for OCIRaw, but not here.
+        let res = txt.capacity();
+        assert!(res.is_err());
+        if let Err( err ) = res {
+            assert_eq!(err, oracle::Error::Oracle((21500,"internal error code...".to_string())));
+        }
+
+        txt.resize(16);
+        let cap = txt.capacity()?;
+        assert!(cap >= 16);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn resize(&mut self, new_size: usize) -> Result<()> {
         catch!{self.env.err_ptr() =>
             OCIStringResize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, &mut self.txt)

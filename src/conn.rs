@@ -185,65 +185,70 @@ impl<'e> Connection<'e> {
         Ok(mode != 0)
     }
 
-    /// Prepares SQL or PL/SQL statement for execution
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     SELECT employee_id
-    ///       FROM (
-    ///             SELECT employee_id, row_number() OVER (ORDER BY hire_date) ord
-    ///               FROM hr.employees
-    ///            )
-    ///      WHERE ord = 1
-    /// ")?;
-    /// let rows = stmt.query(&[])?;
-    /// let optrow = rows.next()?;
-    /// assert!(optrow.is_some());
-    /// if let Some( row ) = optrow {
-    ///     // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
-    ///     let id : usize = row.get(0)?.unwrap();
-    ///
-    ///     assert_eq!(id, 102);
-    /// }
-    /// let optrow = rows.next()?;
-    /// assert!(optrow.is_none());
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Prepares SQL or PL/SQL statement for executionю
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT employee_id
+            FROM (
+                    SELECT employee_id, row_number() OVER (ORDER BY hire_date) ord
+                    FROM hr.employees
+                )
+            WHERE ord = 1
+        ")?;
+        let rows = stmt.query(&[])?;
+        let optrow = rows.next()?;
+        assert!(optrow.is_some());
+        if let Some( row ) = optrow {
+            // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
+            let id : usize = row.get(0)?.unwrap();
+
+            assert_eq!(id, 102);
+        }
+        let optrow = rows.next()?;
+        assert!(optrow.is_none());
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn prepare(&self, sql: &str) -> Result<Statement> {
         Statement::new(sql, self as &dyn Conn)
     }
 
-    /// Commits the current transaction.
-    ///
-    /// Current transaction is defined as the set of statements executed since
-    /// the last commit or since beginning of the user session.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     UPDATE hr.employees
-    ///        SET salary = :new_salary
-    ///      WHERE employee_id = :id
-    /// ")?;
-    /// let num_updated_rows = stmt.execute(&[
-    ///     &( ":id",         107  ),
-    ///     &( ":new_salary", 4200 ),
-    /// ])?;
-    /// assert_eq!(1, num_updated_rows);
-    ///
-    /// conn.commit()?;
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Commits the current transaction.
+
+        Current transaction is defined as the set of statements executed since
+        the last commit or since beginning of the user session.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            UPDATE hr.employees
+            SET salary = :new_salary
+            WHERE employee_id = :id
+        ")?;
+        let num_updated_rows = stmt.execute(&[
+            &( ":id",         107  ),
+            &( ":new_salary", 4200 ),
+        ])?;
+        assert_eq!(1, num_updated_rows);
+
+        conn.commit()?;
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn commit(&self) -> Result<()> {
         catch!{self.err_ptr() =>
             OCITransCommit(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
@@ -251,30 +256,32 @@ impl<'e> Connection<'e> {
         Ok(())
     }
 
-    /// Rolls back the current transaction. The modified or updated objects in
-    /// the object cache for this transaction are also rolled back.
-    ///
-    /// Current transaction is defined as the set of statements executed since
-    /// the last commit or since beginning of the user session.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     UPDATE hr.employees
-    ///        SET salary = ROUND(salary * 1.1)
-    ///      WHERE employee_id = :id
-    /// ")?;
-    /// let num_updated_rows = stmt.execute(&[ &107 ])?;
-    /// assert_eq!(1, num_updated_rows);
-    ///
-    /// conn.rollback()?;
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Rolls back the current transaction. The modified or updated objects in
+        the object cache for this transaction are also rolled back.
+
+        Current transaction is defined as the set of statements executed since
+        the last commit or since beginning of the user session.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            UPDATE hr.employees
+            SET salary = ROUND(salary * 1.1)
+            WHERE employee_id = :id
+        ")?;
+        let num_updated_rows = stmt.execute(&[ &107 ])?;
+        assert_eq!(1, num_updated_rows);
+
+        conn.rollback()?;
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn rollback(&self) -> Result<()> {
         catch!{self.err_ptr() =>
             OCITransRollback(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
@@ -297,128 +304,136 @@ impl<'e> Connection<'e> {
         self.usr.set_attr(OCI_ATTR_COLLECT_CALL_TIME, 0u8, self.err_ptr())
     }
 
-    /// Sets the name of the current module (`V$SESSION.MODULE`) running in the client application.
-    /// When the current module terminates, call with the name of the new module, or use empty
-    /// string if there is no new module. Can be up to 48 bytes long.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// conn.set_module("sibyl");
-    ///
-    /// let stmt = conn.prepare("
-    ///     SELECT module
-    ///       FROM v$session
-    ///      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    /// ")?;
-    /// let rows = stmt.query(&[])?;
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    /// let module = row.get::<&str>(0)?;
-    /// assert!(module.is_some());
-    /// let module = module.unwrap();
-    /// assert_eq!(module, "sibyl");
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Sets the name of the current module (`V$SESSION.MODULE`) running in the client application.
+        When the current module terminates, call with the name of the new module, or use empty
+        string if there is no new module. Can be up to 48 bytes long.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        conn.set_module("sibyl");
+
+        let stmt = conn.prepare("
+            SELECT module
+            FROM v$session
+            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        ")?;
+        let rows = stmt.query(&[])?;
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+        let module = row.get::<&str>(0)?;
+        assert!(module.is_some());
+        let module = module.unwrap();
+        assert_eq!(module, "sibyl");
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn set_module(&self, name: &str) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_MODULE, name, self.err_ptr())
     }
 
-    /// Sets the name of the current action (`V$SESSION.ACTION`) within the current module.
-    /// When the current action terminates, set this attribute again with the name of the
-    /// next action, or empty string if there is no next action. Can be up to 32 bytes long.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// conn.set_action("Session Test");
-    ///
-    /// let stmt = conn.prepare("
-    ///     SELECT action
-    ///       FROM v$session
-    ///      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    /// ")?;
-    /// let rows = stmt.query(&[])?;
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    /// let action = row.get::<&str>(0)?;
-    /// assert!(action.is_some());
-    /// let action = action.unwrap();
-    /// assert_eq!(action, "Session Test");
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Sets the name of the current action (`V$SESSION.ACTION`) within the current module.
+        When the current action terminates, set this attribute again with the name of the
+        next action, or empty string if there is no next action. Can be up to 32 bytes long.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        conn.set_action("Session Test");
+
+        let stmt = conn.prepare("
+            SELECT action
+            FROM v$session
+            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        ")?;
+        let rows = stmt.query(&[])?;
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+        let action = row.get::<&str>(0)?;
+        assert!(action.is_some());
+        let action = action.unwrap();
+        assert_eq!(action, "Session Test");
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn set_action(&self, action: &str) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_ACTION, action, self.err_ptr())
     }
 
-    /// Sets the user identifier (`V$SESSION.CLIENT_IDENTIFIER`) in the session handle.
-    /// Can be up to 64 bytes long.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// conn.set_client_identifier("Test Weilder");
-    ///
-    /// let stmt = conn.prepare("
-    ///     SELECT client_identifier
-    ///       FROM v$session
-    ///      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    /// ")?;
-    /// let rows = stmt.query(&[])?;
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    /// let client_identifier = row.get::<&str>(0)?;
-    /// assert!(client_identifier.is_some());
-    /// let client_identifier = client_identifier.unwrap();
-    /// assert_eq!(client_identifier, "Test Weilder");
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Sets the user identifier (`V$SESSION.CLIENT_IDENTIFIER`) in the session handle.
+        Can be up to 64 bytes long.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        conn.set_client_identifier("Test Weilder");
+
+        let stmt = conn.prepare("
+            SELECT client_identifier
+            FROM v$session
+            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        ")?;
+        let rows = stmt.query(&[])?;
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+        let client_identifier = row.get::<&str>(0)?;
+        assert!(client_identifier.is_some());
+        let client_identifier = client_identifier.unwrap();
+        assert_eq!(client_identifier, "Test Weilder");
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn set_client_identifier(&self, id: &str) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_CLIENT_IDENTIFIER, id, self.err_ptr())
     }
 
-    /// Sets additional client application information (`V$SESSION.CLIENT_INFO`).
-    /// Can be up to 64 bytes long.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// conn.set_client_info("Nothing to see here, move along folks");
-    ///
-    /// let stmt = conn.prepare("
-    ///     SELECT client_info
-    ///       FROM v$session
-    ///      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    /// ")?;
-    /// let rows = stmt.query(&[])?;
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    /// let client_info = row.get::<&str>(0)?;
-    /// assert!(client_info.is_some());
-    /// let client_info = client_info.unwrap();
-    /// assert_eq!(client_info, "Nothing to see here, move along folks");
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Sets additional client application information (`V$SESSION.CLIENT_INFO`).
+        Can be up to 64 bytes long.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        conn.set_client_info("Nothing to see here, move along folks");
+
+        let stmt = conn.prepare("
+            SELECT client_info
+            FROM v$session
+            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        ")?;
+        let rows = stmt.query(&[])?;
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+        let client_info = row.get::<&str>(0)?;
+        assert!(client_info.is_some());
+        let client_info = client_info.unwrap();
+        assert_eq!(client_info, "Nothing to see here, move along folks");
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn set_client_info(&self, info: &str) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_CLIENT_INFO, info, self.err_ptr())
     }
@@ -428,52 +443,54 @@ impl<'e> Connection<'e> {
         self.usr.get_attr::<&str>(OCI_ATTR_CURRENT_SCHEMA, self.err_ptr())
     }
 
-    /// Sets the current schema. It has the same effect as the SQL command ALTER SESSION SET CURRENT_SCHEMA
-    /// if the schema name and the session exist. The schema is altered on the next OCI call that does a
-    /// round-trip to the server, avoiding an extra round-trip. If the new schema name does not exist, the
-    /// same error is returned as the error returned from ALTER SESSION SET CURRENT_SCHEMA. The new schema
-    /// name is placed before database objects in DML or DDL commands that you then enter.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let orig_name = conn.get_current_schema()?;
-    /// conn.set_current_schema("HR")?;
-    /// assert_eq!(conn.get_current_schema()?, "HR");
-    ///
-    /// let stmt = conn.prepare("
-    ///     SELECT schemaname
-    ///       FROM v$session
-    ///      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    /// ")?;
-    /// let rows = stmt.query(&[])?;
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    /// let schema_name = row.get::<&str>(0)?;
-    /// assert!(schema_name.is_some());
-    /// let schema_name = schema_name.unwrap();
-    /// assert_eq!(schema_name, "HR");
-    ///
-    /// conn.set_current_schema(orig_name)?;
-    /// assert_eq!(conn.get_current_schema()?, orig_name);
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Sets the current schema. It has the same effect as the SQL command ALTER SESSION SET CURRENT_SCHEMA
+        if the schema name and the session exist. The schema is altered on the next OCI call that does a
+        round-trip to the server, avoiding an extra round-trip. If the new schema name does not exist, the
+        same error is returned as the error returned from ALTER SESSION SET CURRENT_SCHEMA. The new schema
+        name is placed before database objects in DML or DDL commands that you then enter.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let orig_name = conn.get_current_schema()?;
+        conn.set_current_schema("HR")?;
+        assert_eq!(conn.get_current_schema()?, "HR");
+
+        let stmt = conn.prepare("
+            SELECT schemaname
+            FROM v$session
+            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        ")?;
+        let rows = stmt.query(&[])?;
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+        let schema_name = row.get::<&str>(0)?;
+        assert!(schema_name.is_some());
+        let schema_name = schema_name.unwrap();
+        assert_eq!(schema_name, "HR");
+
+        conn.set_current_schema(orig_name)?;
+        assert_eq!(conn.get_current_schema()?, orig_name);
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn set_current_schema(&self, schema_name: &str) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_CURRENT_SCHEMA, schema_name, self.err_ptr())
     }
 
-    /// Sets the default prefetch buffer size for each LOB locator.
-    ///
-    /// This attribute value enables prefetching for all the LOB locators fetched in the session.
-    /// The default value for this attribute is zero (no prefetch of LOB data). This option
-    /// relieves the application developer from setting the prefetch LOB size for each define handle.
-    ///
-    ///
+    /**
+        Sets the default prefetch buffer size for each LOB locator.
+
+        This attribute value enables prefetching for all the LOB locators fetched in the session.
+        The default value for this attribute is zero (no prefetch of LOB data). This option
+        relieves the application developer from setting the prefetch LOB size for each define handle.
+    */
     pub fn set_lob_prefetch_size(&self, size: u32) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE, size, self.err_ptr())
     }

@@ -9,13 +9,13 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
     let stmt = conn.prepare("
         SELECT first_name, last_name, hire_date
-        FROM ( 
+          FROM (
                 SELECT first_name, last_name, hire_date
-                    , row_number() OVER (ORDER BY hire_date) ord
-                FROM hr.employees
-                WHERE hire_date >= :hire_date 
-            )
-        WHERE ord = 1 
+                     , row_number() OVER (ORDER BY hire_date) ord
+                  FROM hr.employees
+                 WHERE hire_date >= :hire_date
+               )
+         WHERE ord = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
     let rows = stmt.query(&[ &date ])?;
@@ -29,11 +29,11 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
             }
         ;
         let hire_date = row.get::<oracle::Date>(2)?.unwrap();
-        let hire_date = hire_date.to_string("YYYY-MM-DD")?;
+        let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
-        println!("{} was hired {}", name, hire_date);
+        println!("{} was hired on {}", name, hire_date);
     } else {
-        println!("No one was hired after {}", date.to_string("YYYY-MM-DD")?);
+        println!("No one was hired after {}", date.to_string("FMMonth DD, YYYY")?);
     }
     Ok(())
 }

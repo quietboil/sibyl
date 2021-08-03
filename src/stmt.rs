@@ -192,7 +192,7 @@ extern "C" {
 pub trait SqlInArg {
     /// Returns the parameter name or None for positional arguments.
     fn name(&self) -> Option<&str>;
-    /// Returns `ToSql` trait implementation for this argument. 
+    /// Returns `ToSql` trait implementation for this argument.
     fn as_to_sql(&self) -> &dyn ToSql;
 }
 
@@ -210,7 +210,7 @@ impl<T: ToSql> SqlInArg for (&str, T) {
 pub trait SqlOutArg {
     /// Returns the parameter name or None for positional arguments.
     fn name(&self) -> Option<&str>;
-    /// Returns `ToSqlOut` trait implementation for this argument. 
+    /// Returns `ToSqlOut` trait implementation for this argument.
     fn as_to_sql_out(&mut self) -> &mut dyn ToSqlOut;
 }
 
@@ -337,9 +337,11 @@ impl UsrEnv for Statement<'_> {
     fn as_conn(&self) -> Option<&dyn Conn>  { Some( self.conn ) }
 }
 
-/// A trait for types that can provide access to the `OCIStmt` handle.
-/// 
-/// It also exposes other methods that are used by the `FromSql` trait implementations. 
+/**
+    A trait for types that can provide access to the `OCIStmt` handle.
+
+    It also exposes other methods that are used by the `FromSql` trait implementations.
+*/
 pub trait Stmt : Conn {
     fn stmt_ptr(&self) -> *mut OCIStmt;
     fn conn(&self) -> &dyn Conn;
@@ -470,29 +472,31 @@ impl<'a> Statement<'a> {
         }
     }
 
-    /// Executes the prepared statement. Returns the number of rows affected.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     UPDATE hr.departments
-    ///        SET manager_id = :manager_id
-    ///      WHERE department_id = :department_id
-    /// ")?;
-    /// let num_rows = stmt.execute(&[
-    ///     &( ":department_id", 120 ),
-    ///     &( ":manager_id",    101 ),
-    /// ])?;
-    ///
-    /// assert_eq!(1, num_rows);
-    /// # conn.rollback()?;
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Executes the prepared statement. Returns the number of rows affected.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            UPDATE hr.departments
+               SET manager_id = :manager_id
+             WHERE department_id = :department_id
+        ")?;
+        let num_rows = stmt.execute(&[
+            &( ":department_id", 120 ),
+            &( ":manager_id",    101 ),
+        ])?;
+
+        assert_eq!(1, num_rows);
+        # conn.rollback()?;
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn execute(&self, args: &[&dyn SqlInArg]) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
@@ -506,46 +510,48 @@ impl<'a> Statement<'a> {
         self.get_row_count()
     }
 
-    /// Executes a prepared RETURNING statement. Returns the optional vector of booleans where each
-    /// element corresponds to the provided OUT argument and indicates whether the value returned into
-    /// the OUT variable was NULL. Returns `None` when the statement has not created/updated any rows.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     INSERT INTO hr.departments
-    ///            ( department_id, department_name, manager_id, location_id )
-    ///     VALUES ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
-    ///  RETURNING department_id
-    ///       INTO :department_id
-    /// ")?;
-    /// let mut department_id : usize = 0;
-    /// // In this case (no duplicates in the statement parameters and the OUT parameter follows
-    /// // the IN parameters) we could have used positional arguments. However, there are many
-    /// // cases when positional is too difficult to use correcty with `execute_into`. For example,
-    /// // OUT is used as an IN-OUT parameter, OUT precedes or in the middle of the IN parameter
-    /// // list, parameter list is very long, etc. This example shows the call with the named
-    /// // arguments as this might be a more typical use case for it.
-    /// let res = stmt.execute_into(&[
-    ///     &( ":department_name", "Security" ),
-    ///     &( ":manager_id",      ""         ),
-    ///     &( ":location_id",     1700       ),
-    /// ], &mut [
-    ///     &mut ( ":department_id", &mut department_id )
-    /// ])?;
-    ///
-    /// let is_null = res.expect("optional vector of 'is null?' flags");
-    /// assert_eq!(1, is_null.len());
-    /// assert!(!is_null[0]);
-    /// assert!(department_id > 0);
-    /// # conn.rollback()?;
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Executes a prepared RETURNING statement. Returns the optional vector of booleans where each
+        element corresponds to the provided OUT argument and indicates whether the value returned into
+        the OUT variable was NULL. Returns `None` when the statement has not created/updated any rows.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            INSERT INTO hr.departments
+                   ( department_id, department_name, manager_id, location_id )
+            VALUES ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
+         RETURNING department_id
+              INTO :department_id
+        ")?;
+        let mut department_id : usize = 0;
+        // In this case (no duplicates in the statement parameters and the OUT parameter follows
+        // the IN parameters) we could have used positional arguments. However, there are many
+        // cases when positional is too difficult to use correcty with `execute_into`. For example,
+        // OUT is used as an IN-OUT parameter, OUT precedes or in the middle of the IN parameter
+        // list, parameter list is very long, etc. This example shows the call with the named
+        // arguments as this might be a more typical use case for it.
+        let res = stmt.execute_into(&[
+            &( ":department_name", "Security" ),
+            &( ":manager_id",      ""         ),
+            &( ":location_id",     1700       ),
+        ], &mut [
+            &mut ( ":department_id", &mut department_id )
+        ])?;
+
+        let is_null = res.expect("optional vector of 'is null?' flags");
+        assert_eq!(1, is_null.len());
+        assert!(!is_null[0]);
+        assert!(department_id > 0);
+        # conn.rollback()?;
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn execute_into(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<Option<Vec<bool>>> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
@@ -563,147 +569,148 @@ impl<'a> Statement<'a> {
         }
     }
 
-    /// Retrieves a single implicit result (cursor) in the order in which they were returned
-    /// from the PL/SQL procedure or block. If no more results are available, then `None` is
-    /// returned.
-    ///
-    /// PL/SQL provides a subprogram RETURN_RESULT in the DBMS_SQL package to return the result
-    /// of an executed statement. Only SELECT query result-sets can be implicitly returned by a
-    /// PL/SQL procedure or block.
-    ///
-    /// `next_result` can be called iteratively by the application to retrieve each implicit
-    /// result from an executed PL/SQL statement. Applications retrieve each result-set sequentially
-    /// but can fetch rows from any result-set independently.
-    ///
-    /// ## Example
-    /// ```
-    /// use sibyl::Number;
-    /// use std::cmp::Ordering::Equal;
-    ///
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     DECLARE
-    ///         c1 SYS_REFCURSOR;
-    ///         c2 SYS_REFCURSOR;
-    ///     BEGIN
-    ///         OPEN c1 FOR
-    ///             SELECT department_name, first_name, last_name, salary
-    ///              FROM (
-    ///                    SELECT first_name, last_name, salary, department_id
-    ///                         , ROW_NUMBER() OVER (ORDER BY salary) ord
-    ///                      FROM hr.employees
-    ///                   ) e
-    ///              JOIN hr.departments d
-    ///                ON d.department_id = e.department_id
-    ///             WHERE ord = 1
-    ///         ;
-    ///         DBMS_SQL.RETURN_RESULT (c1);
-    ///
-    ///         OPEN c2 FOR
-    ///             SELECT department_name, first_name, last_name, salary
-    ///               FROM (
-    ///                     SELECT first_name, last_name, salary, department_id
-    ///                          , MEDIAN(salary) OVER () median_salary
-    ///                       FROM hr.employees
-    ///                    ) e
-    ///               JOIN hr.departments d
-    ///                 ON d.department_id = e.department_id
-    ///              WHERE salary = median_salary
-    ///           ORDER BY department_name, last_name, first_name
-    ///         ;
-    ///         DBMS_SQL.RETURN_RESULT (c2);
-    ///     END;
-    /// ")?;
-    /// stmt.execute(&[])?;
-    ///
-    /// // <<< c1 >>>
-    /// let res = stmt.next_result()?;
-    /// assert!(res.is_some());
-    ///
-    /// let cursor = res.unwrap();
-    /// let rows = cursor.rows()?;
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    ///
-    /// let department_name = row.get::<&str>(0)?.unwrap();
-    /// assert_eq!(department_name, "Shipping");
-    ///
-    /// let first_name = row.get::<&str>(1)?;
-    /// assert!(first_name.is_some());
-    /// let first_name = first_name.unwrap();
-    /// assert_eq!(first_name, "TJ");
-    ///
-    /// let last_name = row.get::<&str>(2)?.unwrap();
-    /// assert_eq!(last_name, "Olson");
-    ///
-    /// let salary = row.get::<Number>(3)?.unwrap();
-    /// let expected = Number::from_int(2100, &oracle);
-    /// assert!(salary.cmp(&expected)? == Equal);
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_none());
-    ///
-    /// // <<< c2 >>>
-    /// let res = stmt.next_result()?;
-    /// assert!(res.is_some());
-    ///
-    /// let cursor = res.unwrap();
-    /// let rows = cursor.rows()?;
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    ///
-    /// let department_name = row.get::<&str>(0)?.unwrap();
-    /// assert_eq!(department_name, "Sales");
-    ///
-    /// let first_name = row.get::<&str>(1)?;
-    /// assert!(first_name.is_some());
-    /// let first_name = first_name.unwrap();
-    /// assert_eq!(first_name, "Amit");
-    ///
-    /// let last_name = row.get::<&str>(2)?.unwrap();
-    /// assert_eq!(last_name, "Banda");
-    ///
-    /// let expected = Number::from_int(6200, &oracle);
-    ///
-    /// let salary = row.get::<Number>(3)?.unwrap();
-    /// assert!(salary.cmp(&expected)? == Equal);
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    ///
-    /// let department_name = row.get::<&str>(0)?.unwrap();
-    /// assert_eq!(department_name, "Sales");
-    ///
-    /// let first_name = row.get::<&str>(1)?;
-    /// assert!(first_name.is_some());
-    /// let first_name = first_name.unwrap();
-    /// assert_eq!(first_name, "Charles");
-    ///
-    /// let last_name = row.get::<&str>(2)?.unwrap();
-    /// assert_eq!(last_name, "Johnson");
-    ///
-    /// let salary = row.get::<Number>(3)?.unwrap();
-    /// assert!(salary.cmp(&expected)? == Equal);
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_none());
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Retrieves a single implicit result (cursor) in the order in which they were returned
+        from the PL/SQL procedure or block. If no more results are available, then `None` is
+        returned.
+
+        PL/SQL provides a subprogram RETURN_RESULT in the DBMS_SQL package to return the result
+        of an executed statement. Only SELECT query result-sets can be implicitly returned by a
+        PL/SQL procedure or block.
+
+        `next_result` can be called iteratively by the application to retrieve each implicit
+        result from an executed PL/SQL statement. Applications retrieve each result-set sequentially
+        but can fetch rows from any result-set independently.
+
+        ## Example
+        ```
+        use sibyl::Number;
+        use std::cmp::Ordering::Equal;
+
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            DECLARE
+                c1 SYS_REFCURSOR;
+                c2 SYS_REFCURSOR;
+            BEGIN
+                OPEN c1 FOR
+                    SELECT department_name, first_name, last_name, salary
+                     FROM (
+                           SELECT first_name, last_name, salary, department_id
+                                , ROW_NUMBER() OVER (ORDER BY salary) ord
+                             FROM hr.employees
+                          ) e
+                     JOIN hr.departments d
+                       ON d.department_id = e.department_id
+                    WHERE ord = 1
+                ;
+                DBMS_SQL.RETURN_RESULT (c1);
+
+                OPEN c2 FOR
+                    SELECT department_name, first_name, last_name, salary
+                      FROM (
+                            SELECT first_name, last_name, salary, department_id
+                                 , MEDIAN(salary) OVER () median_salary
+                              FROM hr.employees
+                           ) e
+                      JOIN hr.departments d
+                        ON d.department_id = e.department_id
+                     WHERE salary = median_salary
+                  ORDER BY department_name, last_name, first_name
+                ;
+                DBMS_SQL.RETURN_RESULT (c2);
+            END;
+        ")?;
+        stmt.execute(&[])?;
+
+        // <<< c1 >>>
+        let res = stmt.next_result()?;
+        assert!(res.is_some());
+
+        let cursor = res.unwrap();
+        let rows = cursor.rows()?;
+
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+
+        let department_name = row.get::<&str>(0)?.unwrap();
+        assert_eq!(department_name, "Shipping");
+
+        let first_name = row.get::<&str>(1)?;
+        assert!(first_name.is_some());
+        let first_name = first_name.unwrap();
+        assert_eq!(first_name, "TJ");
+
+        let last_name = row.get::<&str>(2)?.unwrap();
+        assert_eq!(last_name, "Olson");
+
+        let salary = row.get::<Number>(3)?.unwrap();
+        let expected = Number::from_int(2100, &oracle);
+        assert!(salary.cmp(&expected)? == Equal);
+
+        let row = rows.next()?;
+        assert!(row.is_none());
+
+        // <<< c2 >>>
+        let res = stmt.next_result()?;
+        assert!(res.is_some());
+
+        let cursor = res.unwrap();
+        let rows = cursor.rows()?;
+
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+
+        let department_name = row.get::<&str>(0)?.unwrap();
+        assert_eq!(department_name, "Sales");
+
+        let first_name = row.get::<&str>(1)?;
+        assert!(first_name.is_some());
+        let first_name = first_name.unwrap();
+        assert_eq!(first_name, "Amit");
+
+        let last_name = row.get::<&str>(2)?.unwrap();
+        assert_eq!(last_name, "Banda");
+
+        let expected = Number::from_int(6200, &oracle);
+
+        let salary = row.get::<Number>(3)?.unwrap();
+        assert!(salary.cmp(&expected)? == Equal);
+
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+
+        let department_name = row.get::<&str>(0)?.unwrap();
+        assert_eq!(department_name, "Sales");
+
+        let first_name = row.get::<&str>(1)?;
+        assert!(first_name.is_some());
+        let first_name = first_name.unwrap();
+        assert_eq!(first_name, "Charles");
+
+        let last_name = row.get::<&str>(2)?.unwrap();
+        assert_eq!(last_name, "Johnson");
+
+        let salary = row.get::<Number>(3)?.unwrap();
+        assert!(salary.cmp(&expected)? == Equal);
+
+        let row = rows.next()?;
+        assert!(row.is_none());
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn next_result(&self) -> Result<Option<Cursor>> {
         let mut stmt = ptr::null_mut::<OCIStmt>();
-        let mut stmt_type: u32;
+        let mut stmt_type = std::mem::MaybeUninit::<u32>::uninit();
         let res = unsafe {
-            stmt_type = std::mem::uninitialized();
-            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), &mut stmt, &mut stmt_type, OCI_DEFAULT)
+            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), &mut stmt, stmt_type.as_mut_ptr(), OCI_DEFAULT)
         };
         match res {
             OCI_NO_DATA => Ok( None ),
@@ -712,22 +719,24 @@ impl<'a> Statement<'a> {
         }
     }
 
-    /// Sets the buffer size for fetching LONG and LONG RAW via the data interface.
-    ///
-    /// By default 32768 bytes are allocated for values from LONG and LONG RAW columns.
-    /// If the actual value is expected to be larger than that, then the "max column
-    /// fetch size" has to be changed before `query` is run.
-    ///
-    /// ## Example
-    /// ```rust,ignore
-    /// let stmt = conn.prepare("
-    ///     SELECT id, long_text
-    ///       FROM all_texts
-    ///      WHERE id = :id
-    /// ")?;
-    /// stmt.set_max_column_fetch_size(250_000);
-    /// let rset = stmt.query(&[ &42 ])?;
-    /// ```
+    /**
+        Sets the buffer size for fetching LONG and LONG RAW via the data interface.
+
+        By default 32768 bytes are allocated for values from LONG and LONG RAW columns.
+        If the actual value is expected to be larger than that, then the "max column
+        fetch size" has to be changed before `query` is run.
+
+        ## Example
+        ```rust,ignore
+        let stmt = conn.prepare("
+            SELECT id, long_text
+              FROM all_texts
+             WHERE id = :id
+        ")?;
+        stmt.set_max_column_fetch_size(250_000);
+        let rset = stmt.query(&[ &42 ])?;
+        ```
+    */
     pub fn set_max_column_fetch_size(&self, size: usize) {
         if size > 128 {
             // 128 is an arbitrary limit, actually it can be anything > 0 to ensure there is a buffer
@@ -735,47 +744,50 @@ impl<'a> Statement<'a> {
         }
     }
 
-    /// Executes the prepared statement. Returns "streaming iterator" over the returned rows.
-    /// ## Example
-    /// ```
-    /// # use std::collections::HashMap;
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     SELECT employee_id, last_name, first_name
-    ///       FROM hr.employees
-    ///      WHERE manager_id = :id
-    ///   ORDER BY employee_id
-    /// ")?;
-    /// stmt.set_prefetch_rows(5)?;
-    /// let rows = stmt.query(&[ &103 ])?;
-    /// let mut subs = HashMap::new();
-    /// while let Some( row ) = rows.next()? {
-    ///     // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-    ///     let id = row.get::<usize>(0)?.unwrap();
-    ///     // Same for the LAST_NAME.
-    ///     // Note that `last_name` is retrieved a slice. This is fast as it
-    ///     // borrows directly from the column buffer, but it can only live until
-    ///     // the end of the current scope, i.e. only during the lifetime of the
-    ///     // current row.
-    ///     let last_name = row.get::<&str>(1)?.unwrap();
-    ///     let name =
-    ///         // FIRST_NAME is NULL-able...
-    ///         if let Some( first_name ) = row.get::<&str>(2)? {
-    ///             format!("{}, {}", last_name, first_name)
-    ///         } else {
-    ///             last_name.to_string()
-    ///         }
-    ///     ;
-    ///     subs.insert(id, name);
-    /// }
-    /// assert_eq!(4, stmt.get_row_count()?);
-    /// assert_eq!(4, subs.len());
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Executes the prepared statement. Returns "streaming iterator" over the returned rows.
+
+        ## Example
+        ```
+        # use std::collections::HashMap;
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT employee_id, last_name, first_name
+              FROM hr.employees
+             WHERE manager_id = :id
+          ORDER BY employee_id
+        ")?;
+        stmt.set_prefetch_rows(5)?;
+        let rows = stmt.query(&[ &103 ])?;
+        let mut subs = HashMap::new();
+        while let Some( row ) = rows.next()? {
+            // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
+            let id = row.get::<usize>(0)?.unwrap();
+            // Same for the LAST_NAME.
+            // Note that `last_name` is retrieved a slice. This is fast as it
+            // borrows directly from the column buffer, but it can only live until
+            // the end of the current scope, i.e. only during the lifetime of the
+            // current row.
+            let last_name = row.get::<&str>(1)?.unwrap();
+            let name =
+                // FIRST_NAME is NULL-able...
+                if let Some( first_name ) = row.get::<&str>(2)? {
+                    format!("{}, {}", last_name, first_name)
+                } else {
+                    last_name.to_string()
+                }
+            ;
+            subs.insert(id, name);
+        }
+        assert_eq!(4, stmt.get_row_count()?);
+        assert_eq!(4, subs.len());
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn query(&self, args: &[&dyn SqlInArg]) -> Result<Rows> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
@@ -822,60 +834,66 @@ impl<'a> Statement<'a> {
         Ok(())
     }
 
-    /// Returns he number of columns in the select-list of this statement.
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     SELECT employee_id, last_name, first_name
-    ///       FROM hr.employees
-    ///      WHERE manager_id = :id
-    /// ")?;
-    /// let _rows = stmt.query(&[ &103 ])?;
-    /// let num_cols = stmt.get_column_count()?;
-    ///
-    /// assert_eq!(3, num_cols);
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Returns he number of columns in the select-list of this statement.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT employee_id, last_name, first_name
+              FROM hr.employees
+             WHERE manager_id = :id
+        ")?;
+        let _rows = stmt.query(&[ &103 ])?;
+        let num_cols = stmt.get_column_count()?;
+
+        assert_eq!(3, num_cols);
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn get_column_count(&self) -> Result<usize> {
         let num_columns = self.get_attr::<u32>(OCI_ATTR_PARAM_COUNT)? as usize;
         Ok( num_columns )
     }
 
-    /// Returns `pos` column meta data handler. `pos` is 0 based. Returns None if
-    /// `pos` is greater than the number of columns in the query.
-    /// ## Example
-    /// ```
-    /// # use sibyl::ColumnType;
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     SELECT employee_id, last_name, first_name
-    ///       FROM hr.employees
-    ///      WHERE manager_id = :id
-    /// ")?;
-    /// let _rows = stmt.query(&[ &103 ])?;
-    /// let col = stmt.get_column(0)?;
-    /// assert!(col.is_some());
-    ///
-    /// let col = col.unwrap();
-    /// assert_eq!("EMPLOYEE_ID", col.name()?);
-    /// assert_eq!(ColumnType::Number, col.data_type()?);
-    /// assert_eq!(6, col.precision()?);
-    /// assert_eq!(0, col.scale()?);
-    /// assert!(!col.is_null()?);
-    /// assert!(col.is_visible()?);
-    /// let props = col.generated()?;
-    /// assert!(!props.is_identity());
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Returns `pos` column meta data handler. `pos` is 0 based. Returns None if
+        `pos` is greater than the number of columns in the query.
+
+        ## Example
+        ```
+        # use sibyl::ColumnType;
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT employee_id, last_name, first_name
+              FROM hr.employees
+             WHERE manager_id = :id
+        ")?;
+        let _rows = stmt.query(&[ &103 ])?;
+        let col = stmt.get_column(0)?;
+        assert!(col.is_some());
+
+        let col = col.unwrap();
+        assert_eq!("EMPLOYEE_ID", col.name()?);
+        assert_eq!(ColumnType::Number, col.data_type()?);
+        assert_eq!(6, col.precision()?);
+        assert_eq!(0, col.scale()?);
+        assert!(!col.is_null()?);
+        assert!(col.is_visible()?);
+        let props = col.generated()?;
+        assert!(!props.is_identity());
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn get_column(&self, pos: usize) -> Result<Option<ColumnInfo>> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
@@ -891,63 +909,68 @@ impl<'a> Statement<'a> {
         Ok( opt_col )
     }
 
-    /// Returns the number of rows processed/seen so far in SELECT statements.
-    ///
-    /// For INSERT, UPDATE, and DELETE statements, it is the number of rows processed
-    /// by the most recent statement.
-    ///
-    /// For nonscrollable cursors, it is the total number of rows fetched into user buffers
-    /// since this statement handle was executed. Because they are forward sequential only,
-    /// this also represents the highest row number seen by the application.
-    ///
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     SELECT employee_id, first_name, last_name
-    ///       FROM hr.employees
-    ///      WHERE manager_id = :id
-    ///   ORDER BY employee_id
-    /// ")?;
-    /// stmt.set_prefetch_rows(5)?;
-    /// let rows = stmt.query(&[ &103 ])?;
-    /// let mut ids = Vec::new();
-    /// while let Some( row ) = rows.next()? {
-    ///     // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-    ///     let id = row.get::<usize>(0)?.unwrap();
-    ///     ids.push(id);
-    /// }
-    ///
-    /// assert_eq!(4, stmt.get_row_count()?);
-    /// assert_eq!(4, ids.len());
-    /// assert_eq!(&[104 as usize, 105, 106, 107], ids.as_slice());
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Returns the number of rows processed/seen so far in SELECT statements.
+
+        For INSERT, UPDATE, and DELETE statements, it is the number of rows processed
+        by the most recent statement.
+
+        For nonscrollable cursors, it is the total number of rows fetched into user buffers
+        since this statement handle was executed. Because they are forward sequential only,
+        this also represents the highest row number seen by the application.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT employee_id, first_name, last_name
+              FROM hr.employees
+             WHERE manager_id = :id
+          ORDER BY employee_id
+        ")?;
+        stmt.set_prefetch_rows(5)?;
+        let rows = stmt.query(&[ &103 ])?;
+        let mut ids = Vec::new();
+        while let Some( row ) = rows.next()? {
+            // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
+            let id = row.get::<usize>(0)?.unwrap();
+            ids.push(id);
+        }
+
+        assert_eq!(4, stmt.get_row_count()?);
+        assert_eq!(4, ids.len());
+        assert_eq!(&[104 as usize, 105, 106, 107], ids.as_slice());
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn get_row_count(&self) -> Result<usize> {
         let num_rows = self.get_attr::<u64>(OCI_ATTR_UB8_ROW_COUNT)? as usize;
         Ok( num_rows )
     }
 
-    /// Sets the number of top-level rows to be prefetched. The default value is 1 row.
-    /// ## Example
-    /// ```
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     SELECT employee_id, first_name, last_name
-    ///       FROM hr.employees
-    ///      WHERE manager_id = :id
-    /// ")?;
-    /// stmt.set_prefetch_rows(10)?;
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Sets the number of top-level rows to be prefetched. The default value is 1 row.
+
+        ## Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT employee_id, first_name, last_name
+              FROM hr.employees
+             WHERE manager_id = :id
+        ")?;
+        stmt.set_prefetch_rows(10)?;
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn set_prefetch_rows(&self, num_rows: u32) -> Result<()> {
         self.set_attr(OCI_ATTR_PREFETCH_ROWS, num_rows)
     }

@@ -1,6 +1,6 @@
 [package]
 name = "sibyl"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2018"
 description = "An OCI-based driver for Rust applications to interface with Oracle databases"
 authors = ["Alex Demenchuk <alexander.demenchuk@gmail.com>"]
@@ -9,10 +9,8 @@ keywords = ["database","sql","oracle","oci","ffi"]
 categories = ["database"]
 repository = "https://github.com/quietboil/sibyl"
 homepage = "https://github.com/quietboil/sibyl"
+documentation = "https://docs.rs/sibyl"
 readme = "README.md"
 
 [dependencies]
 libc = "0.2"
-
-[build-dependencies]
-build-helper = "0.1"

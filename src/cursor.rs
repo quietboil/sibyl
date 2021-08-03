@@ -72,123 +72,125 @@ impl ToSqlOut for Cursor<'_> {
 }
 
 impl<'a> Cursor<'a> {
-    /// Creates a Cursor that can be used as an OUT argument to receive a returning REF CURSOR.
-    ///
-    /// ## Example
-    /// ```
-    /// use sibyl::{Cursor, Number};
-    /// use std::cmp::Ordering::Equal;
-    ///
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     BEGIN
-    ///         OPEN :lowest_payed_employee FOR
-    ///             SELECT department_name, first_name, last_name, salary
-    ///              FROM (
-    ///                    SELECT first_name, last_name, salary, department_id
-    ///                         , ROW_NUMBER() OVER (ORDER BY salary) ord
-    ///                      FROM hr.employees
-    ///                   ) e
-    ///              JOIN hr.departments d
-    ///                ON d.department_id = e.department_id
-    ///             WHERE ord = 1
-    ///         ;
-    ///         OPEN :median_salary_employees FOR
-    ///             SELECT department_name, first_name, last_name, salary
-    ///               FROM (
-    ///                     SELECT first_name, last_name, salary, department_id
-    ///                          , MEDIAN(salary) OVER () median_salary
-    ///                       FROM hr.employees
-    ///                    ) e
-    ///               JOIN hr.departments d
-    ///                 ON d.department_id = e.department_id
-    ///              WHERE salary = median_salary
-    ///           ORDER BY department_name, last_name, first_name
-    ///         ;
-    ///     END;
-    /// ")?;
-    ///
-    /// let mut lowest_payed_employee   = Cursor::new(&stmt)?;
-    /// let mut median_salary_employees = Cursor::new(&stmt)?;
-    ///
-    /// stmt.execute_into(&[], &mut [
-    ///     &mut ( ":lowest_payed_employee",   &mut lowest_payed_employee   ),
-    ///     &mut ( ":median_salary_employees", &mut median_salary_employees ),
-    /// ])?;
-    ///
-    /// let rows = lowest_payed_employee.rows()?;
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    ///
-    /// let department_name = row.get::<&str>(0)?.unwrap();
-    /// assert_eq!(department_name, "Shipping");
-    ///
-    /// let first_name = row.get::<&str>(1)?;
-    /// assert!(first_name.is_some());
-    /// let first_name = first_name.unwrap();
-    /// assert_eq!(first_name, "TJ");
-    ///
-    /// let last_name = row.get::<&str>(2)?.unwrap();
-    /// assert_eq!(last_name, "Olson");
-    ///
-    /// let salary = row.get::<Number>(3)?.unwrap();
-    /// let expected = Number::from_int(2100, &oracle);
-    /// assert!(salary.cmp(&expected)? == Equal);
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_none());
-    ///
-    /// let rows = median_salary_employees.rows()?;
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    ///
-    /// let department_name = row.get::<&str>(0)?.unwrap();
-    /// assert_eq!(department_name, "Sales");
-    ///
-    /// let first_name = row.get::<&str>(1)?;
-    /// assert!(first_name.is_some());
-    /// let first_name = first_name.unwrap();
-    /// assert_eq!(first_name, "Amit");
-    ///
-    /// let last_name = row.get::<&str>(2)?.unwrap();
-    /// assert_eq!(last_name, "Banda");
-    ///
-    /// let expected = Number::from_int(6200, &oracle);
-    ///
-    /// let salary = row.get::<Number>(3)?.unwrap();
-    /// assert!(salary.cmp(&expected)? == Equal);
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    ///
-    /// let department_name = row.get::<&str>(0)?.unwrap();
-    /// assert_eq!(department_name, "Sales");
-    ///
-    /// let first_name = row.get::<&str>(1)?;
-    /// assert!(first_name.is_some());
-    /// let first_name = first_name.unwrap();
-    /// assert_eq!(first_name, "Charles");
-    ///
-    /// let last_name = row.get::<&str>(2)?.unwrap();
-    /// assert_eq!(last_name, "Johnson");
-    ///
-    /// let salary = row.get::<Number>(3)?.unwrap();
-    /// assert!(salary.cmp(&expected)? == Equal);
-    ///
-    /// let row = rows.next()?;
-    /// assert!(row.is_none());
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
-    /// See also `Statement::next_result` for another method to return REF CURSORs.
+    /**
+        Creates a Cursor that can be used as an OUT argument to receive a returning REF CURSOR.
+
+        ## Example
+        ```
+        use sibyl::{Cursor, Number};
+        use std::cmp::Ordering::Equal;
+
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            BEGIN
+                OPEN :lowest_payed_employee FOR
+                    SELECT department_name, first_name, last_name, salary
+                    FROM (
+                        SELECT first_name, last_name, salary, department_id
+                                , ROW_NUMBER() OVER (ORDER BY salary) ord
+                            FROM hr.employees
+                        ) e
+                    JOIN hr.departments d
+                    ON d.department_id = e.department_id
+                    WHERE ord = 1
+                ;
+                OPEN :median_salary_employees FOR
+                    SELECT department_name, first_name, last_name, salary
+                    FROM (
+                            SELECT first_name, last_name, salary, department_id
+                                , MEDIAN(salary) OVER () median_salary
+                            FROM hr.employees
+                        ) e
+                    JOIN hr.departments d
+                        ON d.department_id = e.department_id
+                    WHERE salary = median_salary
+                ORDER BY department_name, last_name, first_name
+                ;
+            END;
+        ")?;
+
+        let mut lowest_payed_employee   = Cursor::new(&stmt)?;
+        let mut median_salary_employees = Cursor::new(&stmt)?;
+
+        stmt.execute_into(&[], &mut [
+            &mut ( ":lowest_payed_employee",   &mut lowest_payed_employee   ),
+            &mut ( ":median_salary_employees", &mut median_salary_employees ),
+        ])?;
+
+        let rows = lowest_payed_employee.rows()?;
+
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+
+        let department_name = row.get::<&str>(0)?.unwrap();
+        assert_eq!(department_name, "Shipping");
+
+        let first_name = row.get::<&str>(1)?;
+        assert!(first_name.is_some());
+        let first_name = first_name.unwrap();
+        assert_eq!(first_name, "TJ");
+
+        let last_name = row.get::<&str>(2)?.unwrap();
+        assert_eq!(last_name, "Olson");
+
+        let salary = row.get::<Number>(3)?.unwrap();
+        let expected = Number::from_int(2100, &oracle);
+        assert!(salary.cmp(&expected)? == Equal);
+
+        let row = rows.next()?;
+        assert!(row.is_none());
+
+        let rows = median_salary_employees.rows()?;
+
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+
+        let department_name = row.get::<&str>(0)?.unwrap();
+        assert_eq!(department_name, "Sales");
+
+        let first_name = row.get::<&str>(1)?;
+        assert!(first_name.is_some());
+        let first_name = first_name.unwrap();
+        assert_eq!(first_name, "Amit");
+
+        let last_name = row.get::<&str>(2)?.unwrap();
+        assert_eq!(last_name, "Banda");
+
+        let expected = Number::from_int(6200, &oracle);
+
+        let salary = row.get::<Number>(3)?.unwrap();
+        assert!(salary.cmp(&expected)? == Equal);
+
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+
+        let department_name = row.get::<&str>(0)?.unwrap();
+        assert_eq!(department_name, "Sales");
+
+        let first_name = row.get::<&str>(1)?;
+        assert!(first_name.is_some());
+        let first_name = first_name.unwrap();
+        assert_eq!(first_name, "Charles");
+
+        let last_name = row.get::<&str>(2)?.unwrap();
+        assert_eq!(last_name, "Johnson");
+
+        let salary = row.get::<Number>(3)?.unwrap();
+        assert!(salary.cmp(&expected)? == Equal);
+
+        let row = rows.next()?;
+        assert!(row.is_none());
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+        See also `Statement::next_result` for another method to return REF CURSORs.
+    */
     pub fn new(stmt: &'a dyn Stmt) -> Result<Self> {
         let handle = Handle::<OCIStmt>::new(stmt.env_ptr())?;
         Ok( Self {
@@ -223,67 +225,69 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    /// Returns rows selected by this cursor
-    /// 
-    /// ## Example
-    /// ```
-    /// use sibyl::Cursor;
-    ///
-    /// # let dbname = std::env::var("DBNAME")?;
-    /// # let dbuser = std::env::var("DBUSER")?;
-    /// # let dbpass = std::env::var("DBPASS")?;
-    /// # let oracle = sibyl::env()?;
-    /// # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    /// let stmt = conn.prepare("
-    ///     SELECT last_name
-    ///          , CURSOR(
-    ///                 SELECT department_name
-    ///                   FROM hr.departments
-    ///                  WHERE department_id IN (
-    ///                             SELECT department_id
-    ///                               FROM hr.employees
-    ///                              WHERE last_name = e.last_name)
-    ///               ORDER BY department_name
-    ///            ) AS departments
-    ///       FROM (
-    ///             SELECT distinct last_name
-    ///               FROM hr.employees
-    ///              WHERE last_name = :last_name
-    ///            ) e
-    /// ")?;
-    /// let rows = stmt.query(&[ &"King" ])?;
-    /// 
-    /// let row = rows.next()?;
-    /// assert!(row.is_some());
-    /// let row = row.unwrap();
-    /// 
-    /// let last_name = row.get::<&str>(0)?.unwrap();
-    /// assert_eq!(last_name, "King");
-    /// 
-    /// let departments = row.get::<Cursor>(1)?.unwrap();
-    /// let dept_rows = departments.rows()?;
-    /// 
-    /// let dept_row = dept_rows.next()?;
-    /// assert!(dept_row.is_some());
-    /// let dept_row = dept_row.unwrap();
-    /// 
-    /// let department_name = dept_row.get::<&str>(0)?.unwrap();
-    /// assert_eq!("Executive", department_name);
-    /// 
-    /// let dept_row = dept_rows.next()?;
-    /// assert!(dept_row.is_some());
-    /// let dept_row = dept_row.unwrap();
-    /// 
-    /// let department_name = dept_row.get::<&str>(0)?.unwrap();
-    /// assert_eq!("Sales", department_name);
-    /// 
-    /// let dept_row = dept_rows.next()?;
-    /// assert!(dept_row.is_none());
-    /// 
-    /// let row = rows.next()?;
-    /// assert!(row.is_none());
-    /// # Ok::<(),Box<dyn std::error::Error>>(())
-    /// ```
+    /**
+        Returns rows selected by this cursor
+
+        ## Example
+        ```
+        use sibyl::Cursor;
+
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT last_name
+                 , CURSOR(
+                        SELECT department_name
+                          FROM hr.departments
+                         WHERE department_id IN (
+                                    SELECT department_id
+                                      FROM hr.employees
+                                     WHERE last_name = e.last_name)
+                      ORDER BY department_name
+                   ) AS departments
+              FROM (
+                    SELECT distinct last_name
+                      FROM hr.employees
+                     WHERE last_name = :last_name
+                   ) e
+        ")?;
+        let rows = stmt.query(&[ &"King" ])?;
+
+        let row = rows.next()?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+
+        let last_name = row.get::<&str>(0)?.unwrap();
+        assert_eq!(last_name, "King");
+
+        let departments = row.get::<Cursor>(1)?.unwrap();
+        let dept_rows = departments.rows()?;
+
+        let dept_row = dept_rows.next()?;
+        assert!(dept_row.is_some());
+        let dept_row = dept_row.unwrap();
+
+        let department_name = dept_row.get::<&str>(0)?.unwrap();
+        assert_eq!("Executive", department_name);
+
+        let dept_row = dept_rows.next()?;
+        assert!(dept_row.is_some());
+        let dept_row = dept_row.unwrap();
+
+        let department_name = dept_row.get::<&str>(0)?.unwrap();
+        assert_eq!("Sales", department_name);
+
+        let dept_row = dept_rows.next()?;
+        assert!(dept_row.is_none());
+
+        let row = rows.next()?;
+        assert!(row.is_none());
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn rows(&self) -> Result<Rows> {
         self.define_columns()?;
         let cols = self.borrow_columns()?;

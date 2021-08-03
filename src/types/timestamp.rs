@@ -182,11 +182,9 @@ extern "C" {
 }
 
 pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: *const OCIDateTime, usrenv: &dyn UsrEnv) -> Result<String> {
-    let mut name: [u8;128];
-    let mut size: u32;
+    let mut name: [u8;128] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let mut size = name.len() as u32;
     catch!{usrenv.err_ptr() =>
-        name = mem::uninitialized();
-        size = name.len() as u32;
         OCIDateTimeToText(
             usrenv.as_ptr(), usrenv.err_ptr(), ts,
             if fmt.len() == 0 { ptr::null() } else { fmt.as_ptr() }, fmt.len() as u8, fsprec,
@@ -239,15 +237,18 @@ impl<'e, T> Timestamp<'e, T>
         self.datetime.get_type()
     }
 
-    /// Creates an uninitialized timestamp.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let _ts = oracle::Timestamp::new(&env)?;
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Creates an uninitialized timestamp.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let _ts = oracle::Timestamp::new(&env)?;
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn new(usrenv: &'e dyn UsrEnv) -> Result<Self> {
         let datetime = Descriptor::new(usrenv.env_ptr())?;
         Ok( Self { usrenv, datetime } )
@@ -258,45 +259,47 @@ impl<'e, T> Timestamp<'e, T>
         self.usrenv = usrenv;
     }
 
-    /// Creates a timestamp and populates its fields.
-    ///
-    /// Time zone, a string, is represented in the format "[+|-][HH:MM]". If the time zone is not
-    /// specified, then the session default time zone is assumed.
-    ///
-    /// Time zone is ignored for timestamps that do not have one.
-    ///
-    /// For timestamps with a time zone, the date and time fields are assumed to be in the local time
-    /// of the specified time zone.
-    ///
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::Timestamp::from_datetime(1969,7,20,20,18,4,000000160,"", &env)?;
-    /// let (y,m,d) = ts.get_date()?;
-    /// assert_eq!((1969,7,20), (y,m,d));
-    ///
-    /// let (h,m,s,f) = ts.get_time()?;
-    /// assert_eq!((20,18,4,160), (h,m,s,f));
-    ///
-    /// let res = ts.get_tz_offset();
-    /// assert!(res.is_err());
-    /// if let Err( oracle::Error::Oracle((errcode, _errmsg)) ) = res {
-    ///     assert_eq!(1878, errcode); // field not found
-    /// }
-    ///
-    /// let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,000000160,"+00:00", &env)?;
-    /// let (y,m,d) = ts.get_date()?;
-    /// assert_eq!((1969,7,20), (y,m,d));
-    ///
-    /// let (h,m,s,f) = ts.get_time()?;
-    /// assert_eq!((20,18,4,160), (h,m,s,f));
-    ///
-    /// let (tzh,tzm) = ts.get_tz_offset()?;
-    /// assert_eq!((0,0), (tzh,tzm));
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Creates a timestamp and populates its fields.
+
+        Time zone, as a string, is represented in the format "[+|-][HH:MM]". If the time zone is not
+        specified, then the session default time zone is assumed.
+
+        Time zone is ignored for timestamps that do not have one.
+
+        For timestamps with a time zone, the date and time fields are assumed to be in the local time
+        of the specified time zone.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::Timestamp::from_datetime(1969,7,20,20,18,4,000000160,"", &env)?;
+        let (y,m,d) = ts.get_date()?;
+        assert_eq!((1969,7,20), (y,m,d));
+
+        let (h,m,s,f) = ts.get_time()?;
+        assert_eq!((20,18,4,160), (h,m,s,f));
+
+        let res = ts.get_tz_offset();
+        assert!(res.is_err());
+        if let Err( oracle::Error::Oracle((errcode, _errmsg)) ) = res {
+            assert_eq!(1878, errcode); // field not found
+        }
+
+        let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,000000160,"+00:00", &env)?;
+        let (y,m,d) = ts.get_date()?;
+        assert_eq!((1969,7,20), (y,m,d));
+
+        let (h,m,s,f) = ts.get_time()?;
+        assert_eq!((20,18,4,160), (h,m,s,f));
+
+        let (tzh,tzm) = ts.get_tz_offset()?;
+        assert_eq!((0,0), (tzh,tzm));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn from_datetime(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, fsec: u32, tz: &str, usrenv: &'e dyn UsrEnv) -> Result<Self> {
         let datetime = Descriptor::new(usrenv.env_ptr())?;
         catch!{usrenv.err_ptr() =>
@@ -308,29 +311,31 @@ impl<'e, T> Timestamp<'e, T>
         Ok( Self { usrenv, datetime } )
     }
 
-    /// Creates new timestamp from the given string according to the specified format.
-    ///
-    /// If the timestamp is in the user session, the conversion occurs in the session's NLS_LANGUAGE and
-    /// the session's NLS_CALENDAR; otherwise, the default is used.
-    ///
-    /// See the description of the TO_DATE conversion function for a description of the format argument.
-    ///
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
-    /// let (y,m,d) = ts.get_date()?;
-    /// assert_eq!((1969,7,20), (y,m,d));
-    ///
-    /// let (h,m,s,f) = ts.get_time()?;
-    /// assert_eq!((20,18,4,160000000), (h,m,s,f));
-    ///
-    /// let (tzh,tzm) = ts.get_tz_offset()?;
-    /// assert_eq!((0,0), (tzh,tzm));
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Creates new timestamp from the given string according to the specified format.
+
+        If the timestamp is in the user session, the conversion occurs in the session's NLS_LANGUAGE and
+        the session's NLS_CALENDAR; otherwise, the default is used.
+
+        See the description of the TO_DATE conversion function for a description of the format argument.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
+        let (y,m,d) = ts.get_date()?;
+        assert_eq!((1969,7,20), (y,m,d));
+
+        let (h,m,s,f) = ts.get_time()?;
+        assert_eq!((20,18,4,160000000), (h,m,s,f));
+
+        let (tzh,tzm) = ts.get_tz_offset()?;
+        assert_eq!((0,0), (tzh,tzm));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn from_string(txt: &str, fmt: &str, usrenv: &'e dyn UsrEnv) -> Result<Self> {
         let datetime = Descriptor::new(usrenv.env_ptr())?;
         catch!{usrenv.err_ptr() =>
@@ -344,32 +349,35 @@ impl<'e, T> Timestamp<'e, T>
         Ok( Self { usrenv, datetime } )
     }
 
-    /// This function converts this datetime type to another.
-    /// The session default time zone (ORA_SDTZ) is used when converting a datetime
-    /// without a time zone to one with a time zone.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
-    /// let ts: oracle::Timestamp = ts.convert_into(&env)?;
-    ///
-    /// let (y,m,d) = ts.get_date()?;
-    /// assert_eq!((1969,7), (y,m));
-    ///
-    /// let (h,m,s,f) = ts.get_time()?;
-    /// assert_eq!((18,4,0), (m,s,f));
-    ///
-    /// let lts = oracle::TimestampTZ::from_systimestamp(&env)?;
-    /// let (tzh,_tzm) = lts.get_tz_offset()?;
-    ///
-    /// let (ld, lh) = if tzh < 4 { (20,20+tzh) } else { (21,tzh-4) };
-    /// assert_eq!(d, ld);
-    /// assert_eq!(h, ld);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
-    ///
+    /**
+        Converts this datetime type to another.
+
+        The session default time zone (ORA_SDTZ) is used when converting a datetime
+        without a time zone to one with a time zone.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
+        let ts: oracle::Timestamp = ts.convert_into(&env)?;
+
+        let (y,m,d) = ts.get_date()?;
+        assert_eq!((1969,7), (y,m));
+
+        let (h,m,s,f) = ts.get_time()?;
+        assert_eq!((18,4,0), (m,s,f));
+
+        let lts = oracle::TimestampTZ::from_systimestamp(&env)?;
+        let (tzh,_tzm) = lts.get_tz_offset()?;
+
+        let (ld, lh) = if tzh < 4 { (20,20+tzh) } else { (21,tzh-4) };
+        assert_eq!(d, ld);
+        assert_eq!(h, ld);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn convert_into<U>(&self, usrenv: &'e dyn UsrEnv) -> Result<Timestamp<'e, U>>
         where U: DescriptorType<OCIType=OCIDateTime>
     {
@@ -380,35 +388,42 @@ impl<'e, T> Timestamp<'e, T>
         self.datetime.get() as *const OCIDateTime
     }
 
-    /// Creates a copy of the other timestamp
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts1 = oracle::TimestampTZ::from_systimestamp(&env)?;
-    /// let ts2 = oracle::TimestampTZ::from_timestamp(&ts1, &env)?;
-    /// let cmp = ts2.compare(&ts1)?;
-    /// assert_eq!(std::cmp::Ordering::Equal, cmp);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Creates a copy of the other timestamp
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts1 = oracle::TimestampTZ::from_systimestamp(&env)?;
+        let ts2 = oracle::TimestampTZ::from_timestamp(&ts1, &env)?;
+        let cmp = ts2.compare(&ts1)?;
+        assert_eq!(std::cmp::Ordering::Equal, cmp);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn from_timestamp(other: &Self, usrenv: &'e dyn UsrEnv) -> Result<Self> {
         from_timestamp(&other.datetime, usrenv)
     }
 
-    /// Adds an interval to self and returns the result as a new timestamp.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts1 = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"UTC", &env)?;
-    /// let int = oracle::IntervalDS::from_duration(0,21,35,56,0,&env)?;
-    /// let ts2 = ts1.add(&int)?;
-    /// let txt = ts2.to_string("YYYY-MM-DD HH24:MI:SS.FF TZR",1)?;
-    ///
-    /// assert_eq!("1969-07-21 17:54:00.0 UTC", txt);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Adds an interval to self and returns the result as a new timestamp.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts1 = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"UTC", &env)?;
+        let int = oracle::IntervalDS::from_duration(0,21,35,56,0,&env)?;
+        let ts2 = ts1.add(&int)?;
+        let txt = ts2.to_string("YYYY-MM-DD HH24:MI:SS.FF TZR",1)?;
+
+        assert_eq!("1969-07-21 17:54:00.0 UTC", txt);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn add<I: DescriptorType<OCIType=OCIInterval>>(&self, interval: &Interval<I>) -> Result<Self> {
         let usrenv = self.usrenv;
         let datetime = Descriptor::new(usrenv.env_ptr())?;
@@ -422,20 +437,23 @@ impl<'e, T> Timestamp<'e, T>
         Ok( Self { usrenv, datetime } )
     }
 
-    /// Subtracts an interval from self and returns the result as a new timestamp.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts2 = oracle::TimestampTZ::from_datetime(1969,7,21,17,54,0,0,"UTC", &env)?;
-    /// let int = oracle::IntervalDS::from_duration(0,21,35,56,0,&env)?;
-    /// let ts1 = ts2.sub(&int)?;
-    /// let txt = ts1.to_string("YYYY-MM-DD HH24:MI:SS.FF TZR",1)?;
-    ///
-    /// assert_eq!("1969-07-20 20:18:04.0 UTC", txt);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Subtracts an interval from self and returns the result as a new timestamp.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts2 = oracle::TimestampTZ::from_datetime(1969,7,21,17,54,0,0,"UTC", &env)?;
+        let int = oracle::IntervalDS::from_duration(0,21,35,56,0,&env)?;
+        let ts1 = ts2.sub(&int)?;
+        let txt = ts1.to_string("YYYY-MM-DD HH24:MI:SS.FF TZR",1)?;
+
+        assert_eq!("1969-07-20 20:18:04.0 UTC", txt);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn sub<I: DescriptorType<OCIType=OCIInterval>>(&self, interval: &Interval<I>) -> Result<Self> {
         let usrenv = self.usrenv;
         let datetime = Descriptor::new(usrenv.env_ptr())?;
@@ -449,20 +467,23 @@ impl<'e, T> Timestamp<'e, T>
         Ok( Self { usrenv, datetime } )
     }
 
-    /// Returns the differnce between self and the `other` timestamp as an interval.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts1 = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"UTC", &env)?;
-    /// let ts2 = oracle::TimestampTZ::from_datetime(1969,7,21,17,54,0,0,"UTC", &env)?;
-    /// let int: oracle::IntervalDS = ts2.subtract(&ts1)?;
-    /// let (d,h,m,s,n) = int.get_duration()?;
-    ///
-    /// assert_eq!((0,21,35,56,0), (d,h,m,s,n));
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns the differnce between self and the `other` timestamp as an interval.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts1 = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"UTC", &env)?;
+        let ts2 = oracle::TimestampTZ::from_datetime(1969,7,21,17,54,0,0,"UTC", &env)?;
+        let int: oracle::IntervalDS = ts2.subtract(&ts1)?;
+        let (d,h,m,s,n) = int.get_duration()?;
+
+        assert_eq!((0,21,35,56,0), (d,h,m,s,n));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn subtract<U, I>(&self, other: &Timestamp<U>) -> Result<Interval<I>>
         where U: DescriptorType<OCIType=OCIDateTime>
             , I: DescriptorType<OCIType=OCIInterval>
@@ -479,118 +500,121 @@ impl<'e, T> Timestamp<'e, T>
         Ok( interval )
     }
 
-    /// Compares this timestamp with the `other` one.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts1 = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
-    /// let ts2 = oracle::TimestampTZ::from_datetime(1969,7,20,16,18,4,0,"-04:00", &env)?;
-    /// let cmp = ts2.compare(&ts1)?;
-    ///
-    /// assert_eq!(std::cmp::Ordering::Equal, cmp);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Compares this timestamp with the `other` one.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts1 = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
+        let ts2 = oracle::TimestampTZ::from_datetime(1969,7,20,16,18,4,0,"-04:00", &env)?;
+        let cmp = ts2.compare(&ts1)?;
+
+        assert_eq!(std::cmp::Ordering::Equal, cmp);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn compare<U>(&self, other: &Timestamp<U>) -> Result<Ordering>
         where U: DescriptorType<OCIType=OCIDateTime>
     {
-        let mut res: i32;
+        let mut res = mem::MaybeUninit::<i32>::uninit();
         catch!{self.usrenv.err_ptr() =>
-            res = mem::uninitialized();
             OCIDateTimeCompare(
                 self.usrenv.as_ptr(), self.usrenv.err_ptr(),
                 self.as_ptr(), other.as_ptr(),
-                &mut res
+                res.as_mut_ptr()
             )
         }
+        let res = unsafe { res.assume_init() };
         let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
         Ok( ordering )
     }
 
-    /// Returns the date (year, month, day) portion of a timestamp
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::Timestamp::from_datetime(1969,7,20,20,18,4,0,"", &env)?;
-    /// let (y,m,d) = ts.get_date()?;
-    ///
-    /// assert_eq!((1969,7,20), (y,m,d));
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns the date (year, month, day) portion of a timestamp
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::Timestamp::from_datetime(1969,7,20,20,18,4,0,"", &env)?;
+        let (y,m,d) = ts.get_date()?;
+
+        assert_eq!((1969,7,20), (y,m,d));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn get_date(&self) -> Result<(i16, u8, u8)> {
-        let mut year: i16;
-        let mut month: u8;
-        let mut day:   u8;
+        let mut year  = mem::MaybeUninit::<i16>::uninit();
+        let mut month = mem::MaybeUninit::<u8>::uninit();
+        let mut day   = mem::MaybeUninit::<u8>::uninit();
         catch!{self.usrenv.err_ptr() =>
-            year  = mem::uninitialized();
-            month = mem::uninitialized();
-            day   = mem::uninitialized();
             OCIDateTimeGetDate(
                 self.usrenv.as_ptr(), self.usrenv.err_ptr(), self.as_ptr(),
-                &mut year, &mut month, &mut day
+                year.as_mut_ptr(), month.as_mut_ptr(), day.as_mut_ptr()
             )
         }
-        Ok((year, month, day))
+        Ok( unsafe { (year.assume_init(), month.assume_init(), day.assume_init()) } )
     }
 
-    /// Returns the time (hour, min, second, fractional second) of a timestamp
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::Timestamp::from_datetime(1969,7,20,20,18,4,0,"", &env)?;
-    /// let (h,m,s,f) = ts.get_time()?;
-    ///
-    /// assert_eq!((20,18,4,0), (h,m,s,f));
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns the time (hour, min, second, fractional second) of a timestamp
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::Timestamp::from_datetime(1969,7,20,20,18,4,0,"", &env)?;
+        let (h,m,s,f) = ts.get_time()?;
+
+        assert_eq!((20,18,4,0), (h,m,s,f));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn get_time(&self) -> Result<(u8, u8, u8, u32)> {
-        let mut hour: u8;
-        let mut min:  u8;
-        let mut sec:  u8;
-        let mut fsec: u32;
+        let mut hour = mem::MaybeUninit::<u8>::uninit();
+        let mut min  = mem::MaybeUninit::<u8>::uninit();
+        let mut sec  = mem::MaybeUninit::<u8>::uninit();
+        let mut fsec = mem::MaybeUninit::<u32>::uninit();
         catch!{self.usrenv.err_ptr() =>
-            hour = mem::uninitialized();
-            min  = mem::uninitialized();
-            sec  = mem::uninitialized();
-            fsec = mem::uninitialized();
             OCIDateTimeGetTime(
                 self.usrenv.as_ptr(), self.usrenv.err_ptr(), self.as_ptr(),
-                &mut hour, &mut min, &mut sec, &mut fsec
+                hour.as_mut_ptr(), min.as_mut_ptr(), sec.as_mut_ptr(), fsec.as_mut_ptr()
             )
         }
-        Ok((hour, min, sec, fsec))
+        Ok( unsafe { (hour.assume_init(), min.assume_init(), sec.assume_init(), fsec.assume_init()) } )
     }
 
-    /// Returns the time zone name portion of a timestamp
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
-    /// let tz = ts.get_tz_name()?;
-    /// assert_eq!("UTC", tz);
-    ///
-    /// let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
-    /// let tz = ts.get_tz_name()?;
-    /// assert_eq!("+00:00", tz);
-    ///
-    /// let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"EST", &env)?;
-    /// let tz = ts.get_tz_name()?;
-    /// assert_eq!("EST", tz);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns the time zone name portion of a timestamp
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
+        let tz = ts.get_tz_name()?;
+        assert_eq!("UTC", tz);
+
+        let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
+        let tz = ts.get_tz_name()?;
+        assert_eq!("+00:00", tz);
+
+        let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"EST", &env)?;
+        let tz = ts.get_tz_name()?;
+        assert_eq!("EST", tz);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn get_tz_name(&self) -> Result<String> {
-        let mut name: [u8;64];
-        let mut size: u32;
+        let mut name: [u8;64] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+        let mut size = name.len() as u32;
         catch!{self.usrenv.err_ptr() =>
-            name = mem::uninitialized();
-            size = name.len() as u32;
             OCIDateTimeGetTimeZoneName(
                 self.usrenv.as_ptr(), self.usrenv.err_ptr(), self.as_ptr(),
                 name.as_mut_ptr(), &mut size
@@ -600,53 +624,57 @@ impl<'e, T> Timestamp<'e, T>
         Ok( String::from_utf8_lossy(txt).to_string() )
     }
 
-    /// Returns the time zone hour and the time zone minute portion from a timestamp.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
-    /// let (tzh,tzm) = ts.get_tz_offset()?;
-    ///
-    /// assert_eq!((0,0), (tzh,tzm));
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Returns the time zone hour and the time zone minute portion from a timestamp.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
+        let (tzh,tzm) = ts.get_tz_offset()?;
+
+        assert_eq!((0,0), (tzh,tzm));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn get_tz_offset(&self) -> Result<(i8, i8)> {
-        let mut hours: i8;
-        let mut min:   i8;
+        let mut hours = mem::MaybeUninit::<i8>::uninit();
+        let mut min   = mem::MaybeUninit::<i8>::uninit();
         catch!{self.usrenv.err_ptr() =>
-            hours = mem::uninitialized();
-            min   = mem::uninitialized();
             OCIDateTimeGetTimeZoneOffset(
                 self.usrenv.as_ptr(), self.usrenv.err_ptr(), self.as_ptr(),
-                &mut hours, &mut min
+                hours.as_mut_ptr(), min.as_mut_ptr()
             )
         }
-        Ok((hours, min))
+        Ok( unsafe { (hours.assume_init(), min.assume_init()) } )
     }
 
-    /// Converts the given date to a string according to the specified format.
-    ///
-    /// If timestamp is at the user session, the conversion occurs in the session's NLS_LANGUAGE
-    /// and the session's NLS_CALENDAR; otherwise, the default is used.
-    ///
-    /// If the conversion format is an empty (zero-length) string, then the date is converted to
-    /// a character string in the default format for that type.
-    ///
-    /// See the description of the TO_DATE conversion function for a description of the format argument.
-    ///
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0,"UTC", &env)?;
-    /// let txt = ts.to_string("Dy, Mon DD, YYYY HH:MI:SS.FF PM TZR",3)?;
-    ///
-    /// assert_eq!("Sun, Jul 20, 1969 08:18:04.000 PM UTC", txt);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+    /**
+        Converts the given date to a string according to the specified format.
+
+        If timestamp originated in the user session, the conversion occurs in
+        the session's NLS_LANGUAGE and the session's NLS_CALENDAR; otherwise,
+        the default is used.
+
+        If the conversion format is an empty (zero-length) string, then the date is converted to
+        a character string in the default format for that type.
+
+        See the description of the TO_DATE conversion function for a description of the format argument.
+
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::TimestampTZ::from_datetime(1969,7,20,20,18,4,0, "UTC", &env)?;
+        let txt = ts.to_string("Dy, Mon DD, YYYY HH:MI:SS.FF PM TZR",3)?;
+
+        assert_eq!("Sun, Jul 20, 1969 08:18:04.000 PM UTC", txt);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn to_string(&self, fmt: &str, fsprec: u8) -> Result<String> {
         to_string(fmt, fsprec, self.as_ptr(), self.usrenv)
     }
@@ -663,19 +691,21 @@ impl<'e, T> Timestamp<'e, T>
 // For now, let's just limit `from_systimestamp` to `TimestampTZ` where it produces the expected
 // results.
 impl<'e> Timestamp<'e, OCITimestampTZ> {
+    /**
+        Creates new timestamp from the system current date and time.
 
-    /// Creates new timestamp from the system current date and time.
-    /// ## Example
-    /// ```
-    /// use sibyl as oracle;
-    ///
-    /// let env = oracle::env()?;
-    /// let ts = oracle::TimestampTZ::from_systimestamp(&env)?;
-    /// let (y,_m,_d) = ts.get_date()?;
-    ///
-    /// assert!(2019 <= y);
-    /// # Ok::<(),oracle::Error>(())
-    /// ```
+        ## Example
+        ```
+        use sibyl as oracle;
+
+        let env = oracle::env()?;
+        let ts = oracle::TimestampTZ::from_systimestamp(&env)?;
+        let (y,_m,_d) = ts.get_date()?;
+
+        assert!(2019 <= y);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn from_systimestamp(usrenv: &'e dyn UsrEnv) -> Result<Self> {
         let datetime = Descriptor::new(usrenv.env_ptr())?;
         catch!{usrenv.err_ptr() =>

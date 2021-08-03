@@ -43,7 +43,7 @@ fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
 
 macro_rules! catch {
     ( $err:expr => $( $stmt:stmt );+ ) => {{
-        let res = unsafe { $($stmt);+ };
+        let res = unsafe { $($stmt)+ };
         match res {
             OCI_ERROR | OCI_INVALID_HANDLE => {
                 return Err( crate::Error::oci($err, res) );
