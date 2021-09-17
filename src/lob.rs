@@ -326,6 +326,16 @@ pub trait InternalLob {}
 impl InternalLob for OCICLobLocator {}
 impl InternalLob for OCIBLobLocator {}
 
+pub(crate) fn is_initialized<T>(locator: &Descriptor<T>, env: *mut OCIEnv, err: *mut OCIError) -> Result<bool>
+    where T: DescriptorType<OCIType=OCILobLocator>
+{
+    let mut flag = 0u8;
+    catch!{err =>
+        OCILobLocatorIsInit(env, err, locator.get(), &mut flag)
+    }
+    Ok( flag != 0 )
+}
+
 /// LOB locator.
 ///
 pub struct LOB<'a,T>
@@ -336,7 +346,7 @@ pub struct LOB<'a,T>
     chunk_size: Cell<u32>,
 }
 
-impl<'a,T> Drop for LOB<'a,T>
+impl<T> Drop for LOB<'_,T>
     where T: DescriptorType<OCIType=OCILobLocator>
 {
     fn drop(&mut self) {
@@ -407,11 +417,11 @@ impl<'a,T> LOB<'a,T>
         locator is created until the first modification. In both these cases, after new locator is
         constructed any changes to either LOB do not reflect in the other LOB.
 
-        ## Failures
+        # Failures
 
         Returns `Err` when a remote locator is passed to it.
 
-        ## Example
+        # Example
         ```
         use sibyl::{ CLOB };
 
@@ -483,7 +493,7 @@ impl<'a,T> LOB<'a,T>
         ")?;
         let mut saved_lob_id : usize = 0;
         let mut saved_lob = CLOB::new(&conn)?;
-        let res = stmt.execute_into(&[ &lob2 ], &mut [ &mut saved_lob_id, &mut saved_lob ])?;
+        stmt.execute_into(&[ &lob2 ], &mut [ &mut saved_lob_id, &mut saved_lob ])?;
 
         // And thus `saved_lob` locator points to a distinct LOB value ...
         assert!(!saved_lob.is_equal(&lob2)?);
@@ -537,7 +547,7 @@ impl<'a,T> LOB<'a,T>
         It is not required to close LOB explicitly as it will be automatically closed when Rust drops
         the locator.
 
-        ## Failures
+        # Failures
         - An error is returned if the internal LOB is not open.
 
         No error is returned if the BFILE exists but is not opened.
@@ -547,7 +557,7 @@ impl<'a,T> LOB<'a,T>
         but the domain and function-based indexing are not updated. If this happens, rebuild your functional
         and domain indexes on the LOB column.
 
-        ## Example
+        # Example
         ```
         use sibyl::{ CLOB };
 
@@ -631,9 +641,10 @@ impl<'a,T> LOB<'a,T>
         if and only if they both refer to the same LOB or BFILE value.
 
         Two NULL locators are considered not equal by this function.
-        ## Example
+
+        # Example
         ```
-        use sibyl::{ CLOB };
+        use sibyl::CLOB;
 
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -679,11 +690,16 @@ impl<'a,T> LOB<'a,T>
         ")?;
         let rows = stmt.query(&[ &id ])?;
         let row = rows.next()?.expect("selected row");
-        let selected_lob = row.get::<CLOB>(0)?.expect("CLOB locator");
+        let selected_lob : CLOB = row.get(0)?.expect("CLOB locator");
 
         assert_eq!(lob.len()?, selected_lob.len()?);
-        // Every once in a while `is_equal` in this test would return `false`...
-        assert!(selected_lob.is_equal(&lob)?);
+        // Every once in a while for some unfathomable reason `is_equal` (below) would fail...
+        // Simply rerunning this test immediately after failure, without exceptions (thus far),
+        // makes it succeed.
+        match selected_lob.is_equal(&lob) {
+            Ok(is_equal) => assert!(is_equal),
+            Err(err) => panic!("{:?}", err)
+        };
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -695,7 +711,6 @@ impl<'a,T> LOB<'a,T>
             OCILobIsEqual(self.conn.env_ptr(), self.as_mut_ptr(), other.as_mut_ptr(), flag.as_mut_ptr())
         }
         let flag = unsafe { flag.assume_init() };
-        println!("is_equal={}", flag);
         Ok( flag != 0 )
     }
 
@@ -736,11 +751,7 @@ impl<'a,T> LOB<'a,T>
         - Calling `set_file_name`
     */
     pub fn is_initialized(&self) -> Result<bool> {
-        let mut flag = mem::MaybeUninit::<u8>::uninit();
-        catch!{self.conn.err_ptr() =>
-            OCILobLocatorIsInit(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), flag.as_mut_ptr())
-        }
-        Ok( unsafe { flag.assume_init() } != 0 )
+        is_initialized(&self.locator, self.conn.env_ptr(), self.conn.err_ptr())
     }
 
     /**
@@ -750,7 +761,7 @@ impl<'a,T> LOB<'a,T>
         LOBs, the open triggers other code that relies on the open call. For external LOBs (BFILEs), open
         requires a round-trip because the actual operating system file on the server side is being opened.
 
-        ## Failures
+        # Failures
         - It is an error to open the same LOB twice.
         - If a user tries to write to a LOB that was opened in read-only mode, an error is returned.
     */
@@ -795,7 +806,7 @@ impl<'a,T> LOB<'a,T>
         For CLOBs and NCLOBs, if you do not pass `char_len`, then `char_len` is calculated internally as
         `byte_len/max char width`, so if max char width is 4, `char_len` is calculated as `byte_len/4`.
         OCILobRead2() does not calculate how many bytes are required for each character. Instead, OCILobRead2()
-        fetches in the worst case the number of characters that can fit in `byte_len`. To fill the buffer, check
+        fetches the number of characters that in the worst case can fit in `byte_len`. To fill the buffer, check
         the returned value to see how much of the buffer is filled, then call OCILobRead2() again to fetch the
         remaining bytes.
     */
@@ -827,7 +838,7 @@ impl<'a,T> LOB<'a,T>
     }
 }
 
-impl<'a,T> LOB<'a,T>
+impl<'a, T> LOB<'a,T>
     where T: DescriptorType<OCIType=OCILobLocator> + InternalLob
 {
     /**
@@ -837,7 +848,7 @@ impl<'a,T> LOB<'a,T>
         to initialize the LOB to empty. Once the LOB is empty, `write` can be called to
         populate the LOB with data.
 
-        ## Example
+        # Example
         ```
         use sibyl::{ CLOB };
 
@@ -893,7 +904,7 @@ impl<'a,T> LOB<'a,T>
     /**
         Appends another LOB value at the end of this LOB.
 
-        ## Example
+        # Example
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
@@ -957,7 +968,7 @@ impl<'a,T> LOB<'a,T>
           beginning of the LOB - start at 0.
         - You can call `len` to determine the length of the source LOB.
 
-        ## Example
+        # Example
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
@@ -1061,11 +1072,11 @@ impl<'a,T> LOB<'a,T>
         written data from the source. The destination LOB is extended to accommodate the newly written data if it
         extends beyond the current length of the destination LOB.
 
-        ## Failures
+        # Failures
         - This function throws an error when a remote locator is passed to it.
         - It is an error to try to copy from a NULL BFILE.
 
-        ## Example
+        # Example
         Note that this example assumes that the demo directories were created (@?/demo/schema/mk_dir) and
         the test user has permissions to read them (see `etc/create_sandbox.sql`)
 
@@ -1210,7 +1221,7 @@ impl<'a,T> LOB<'a,T>
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn load_from_file(&self, src: &BFile<'a>, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
+    pub fn load_from_file(&self, src: &BFile, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
         catch!{self.conn.err_ptr() =>
             OCILobLoadFromFile2(
                 self.conn.svc_ptr(), self.conn.err_ptr(),
@@ -1336,7 +1347,7 @@ impl<'a,T> LOB<'a,T>
         performance. If you have functional or domain indexes, Oracle recommends that you enclose
         write operations to the LOB within the open or close statements.
 
-        ## Failures
+        # Failures
         - It is an error to open the same LOB twice.
     */
     pub fn open(&self) -> Result<()> {
@@ -1412,7 +1423,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     /**
         Returns `true` if the LOB locator is for an NCLOB.
 
-        ## Example
+        # Example
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
@@ -1437,7 +1448,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
         Returns the number of bytes written to the database.
 
-        ## Example
+        # Example
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
@@ -1464,7 +1475,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
         Returns the number of bytes written to the database for the first piece.
 
-        ## Example
+        # Example
         ```
         use sibyl::{ CLOB, CharSetForm, Cache };
 
@@ -1522,7 +1533,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
         Returns the number of bytes written to the database.
 
-        ## Example
+        # Example
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
@@ -1549,7 +1560,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
         Returns the number of bytes written to the database for the first piece.
 
-        ## Example
+        # Example
         ```
         use sibyl::{ CLOB, CharSetForm, Cache };
 
@@ -1613,7 +1624,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
         it fetches the number of characters that even in **the worst case** - for example when all characters in the requested
         fragment are from the supplementary planes - would fit in the provided buffer.
 
-        ## Example
+        # Example
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
@@ -1647,7 +1658,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
         returning a flag which indicates whether there are more pieces to read until the requested fragment is
         complete. Application should call `read_next` repeatedly until `read_next` returns `false`.
 
-        ## Example
+        # Example
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
@@ -1726,7 +1737,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
         Returns the number of bytes written to the database.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BLOB, Cache};
 
@@ -1753,7 +1764,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
         Returns the number of bytes written to the database for the first piece.
 
-        ## Example
+        # Example
         ```
         use sibyl::BLOB;
 
@@ -1831,7 +1842,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
         Returns the number of bytes written to the database.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BLOB, Cache};
 
@@ -1858,7 +1869,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
         Returns the number of bytes written to the database for the first piece.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BLOB, Cache};
 
@@ -1913,7 +1924,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         Reads specified number of bytes from this LOB, appending them to `buf`.
         If successful, this function returns the number of bytes that were read and appended to `buf`.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BLOB, Cache, BFile};
 
@@ -1950,7 +1961,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         pieces to read until the requested fragment is complete. Application should call `read_next` repeatedly until "more
         data" flag becomes `false`.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BLOB, Cache, BFile};
 
@@ -2004,7 +2015,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     }
 }
 
-impl<'a> LOB<'a,OCIBFileLocator> {
+impl LOB<'_,OCIBFileLocator> {
     /**
         Closes a previously opened BFILE.
 
@@ -2026,7 +2037,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     /**
         Tests to see if the BFILE exists on the server's operating system.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BFile};
 
@@ -2056,7 +2067,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     /**
         Returns the directory object and file name associated with this BFILE locator.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BFile};
 
@@ -2088,8 +2099,10 @@ impl<'a> LOB<'a,OCIBFileLocator> {
                 name.as_mut_ptr(), &mut name_len as *mut u16
             )
         }
-        dir.set_len(dir_len as usize);
-        name.set_len(name_len as usize);
+        unsafe {
+            dir.as_mut_vec().set_len(dir_len as usize);
+            name.as_mut_vec().set_len(name_len as usize);
+        }
         Ok( ( dir, name ) )
     }
 
@@ -2098,7 +2111,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         However, a different locator may have the file open. Openness is associated
         with a particular locator.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BFile};
 
@@ -2138,7 +2151,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         BFILE locator. Subsequent calls to this function using the same BFILE locator
         have no effect.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BFile};
 
@@ -2169,7 +2182,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     /**
         Sets the directory object and file name in the BFILE locator.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BFile};
 
@@ -2203,7 +2216,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         Reads specified number of bytes from this LOB, appending them to `buf`.
         If successful, this function returns the number of bytes that were read and appended to `buf`.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BFile};
 
@@ -2236,7 +2249,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         pieces to read until the requested fragment is complete. Application should call `read_next` repeatedly until "more
         data" flag becomes `false`.
 
-        ## Example
+        # Example
         ```
         use sibyl::{BFile};
 
@@ -2283,9 +2296,81 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     }
 }
 
+impl LOB<'_,OCICLobLocator> {
+    fn content_head(&self) -> Result<String> {
+        const MAX_LEN : usize = 50;
+        let len = self.len()?;
+        let len = std::cmp::min(len, MAX_LEN);
+        let mut buf = String::with_capacity(len * 4);
+        let len = self.read(0, len, &mut buf)?;
+        if len == MAX_LEN {
+            buf.push_str("...");
+        }
+        Ok(buf)
+    }
+}
+
+impl std::fmt::Debug for LOB<'_,OCICLobLocator> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.content_head() {
+            Ok(text) => f.write_fmt(format_args!("CLOB {}", text)),
+            Err(err) => f.write_fmt(format_args!("CLOB {:?}", err))
+        }
+    }
+}
+
+impl LOB<'_,OCIBLobLocator> {
+    fn content_head(&self) -> Result<String> {
+        const MAX_LEN : usize = 50;
+        let len = self.len()?;
+        let len = std::cmp::min(len, MAX_LEN);
+        let mut buf = Vec::with_capacity(len);
+        let len = self.read(0, len, &mut buf)?;
+        let res = &buf[..len];
+        let res = if len == MAX_LEN { format!("{:?}...", res) } else { format!("{:?}", res) };
+        Ok(res)
+    }
+}
+
+impl std::fmt::Debug for LOB<'_,OCIBLobLocator> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.content_head() {
+            Ok(text) => f.write_fmt(format_args!("BLOB {}", text)),
+            Err(err) => f.write_fmt(format_args!("BLOB {:?}", err))
+        }
+    }
+}
+
+impl LOB<'_,OCIBFileLocator> {
+    fn content_head(&self) -> Result<String> {
+        const MAX_LEN : usize = 50;
+        let len = self.len()?;
+        let len = std::cmp::min(len, MAX_LEN);
+        let mut buf = Vec::with_capacity(len);
+        let len = self.read(0, len, &mut buf)?;
+        let res = &buf[..len];
+        let res = if len == MAX_LEN { format!("{:?}...", res) } else { format!("{:?}", res) };
+        Ok(res)
+    }
+}
+
+impl std::fmt::Debug for LOB<'_,OCIBFileLocator> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.content_head() {
+            Ok(text) => f.write_fmt(format_args!("BFILE {}", text)),
+            Err(err) => f.write_fmt(format_args!("BFILE {:?}", err))
+        }
+    }
+}
+
 macro_rules! impl_lob_to_sql {
     ($ts:ty => $sqlt:ident) => {
         impl ToSql for LOB<'_, $ts> {
+            fn to_sql(&self) -> (u16, *const c_void, usize) {
+                ( $sqlt, self.locator.as_ptr() as *const c_void, std::mem::size_of::<*mut OCILobLocator>() )
+            }
+        }
+        impl ToSql for &LOB<'_, $ts> {
             fn to_sql(&self) -> (u16, *const c_void, usize) {
                 ( $sqlt, self.locator.as_ptr() as *const c_void, std::mem::size_of::<*mut OCILobLocator>() )
             }
@@ -2300,13 +2385,13 @@ impl_lob_to_sql!{ OCIBFileLocator => SQLT_BFILE }
 macro_rules! impl_lob_to_sql_output {
     ($ts:ty => $sqlt:ident) => {
         impl ToSqlOut for Descriptor<$ts> {
-            fn to_sql_output(&mut self, _col_size: usize) -> (u16, *mut c_void, usize) {
-                ($sqlt, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCILobLocator>())
+            fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
+                ($sqlt, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCILobLocator>(), std::mem::size_of::<*mut OCILobLocator>())
             }
         }
         impl ToSqlOut for LOB<'_, $ts> {
-            fn to_sql_output(&mut self, col_size: usize) -> (u16, *mut c_void, usize) {
-                self.locator.to_sql_output(col_size)
+            fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
+                self.locator.to_sql_output()
             }
         }
     };
@@ -2315,3 +2400,106 @@ macro_rules! impl_lob_to_sql_output {
 impl_lob_to_sql_output!{ OCICLobLocator  => SQLT_CLOB  }
 impl_lob_to_sql_output!{ OCIBLobLocator  => SQLT_BLOB  }
 impl_lob_to_sql_output!{ OCIBFileLocator => SQLT_BFILE }
+
+#[cfg(test)]
+mod tests {
+    use crate::*;
+    #[test]
+    fn partial_eq() -> std::result::Result<(),Box<dyn std::error::Error>> {
+        let dbname = std::env::var("DBNAME")?;
+        let dbuser = std::env::var("DBUSER")?;
+        let dbpass = std::env::var("DBPASS")?;
+        let oracle = crate::env()?;
+        let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+
+        let stmt = conn.prepare("
+            declare
+                name_already_used exception; pragma exception_init(name_already_used, -955);
+            begin
+                execute immediate '
+                    create table test_lobs (
+                        id       number generated always as identity,
+                        text     clob,
+                        data     blob,
+                        ext_file bfile
+                    )
+                ';
+            exception
+              when name_already_used then
+                execute immediate '
+                    truncate table test_lobs
+                ';
+            end;
+        ")?;
+        stmt.execute(&[])?;
+
+        let stmt = conn.prepare("
+            insert into test_lobs (text) values (empty_clob()) returning id, text into :id, :text
+        ")?;
+        let mut id1 : usize = 0;
+        let mut lob1 = CLOB::new(&conn)?;
+        stmt.execute_into(&[], &mut [ &mut id1, &mut lob1 ])?;
+
+        let text = [
+            "To see a World in a Grain of Sand\n",
+            "And a Heaven in a Wild Flower\n",
+            "Hold Infinity in the palm of your hand\n",
+            "And Eternity in an hour\n"
+        ];
+
+        let written = lob1.append(text[0])?;
+        assert_eq!(written, text[0].len());
+        assert_eq!(lob1.len()?, text[0].len());
+
+        let lob2 = lob1.clone()?;
+
+        // They point to the same value and at this time they are completely in sync
+        assert!(lob1.is_equal(&lob2)?);
+
+        let written = lob2.append(text[1])?;
+        assert_eq!(written, text[1].len());
+
+        // Now they are out of sync
+        assert!(!lob1.is_equal(&lob2)?);
+
+        // At this time `lob1` is not yet aware that `lob2` added more text the LOB they "share".
+        assert_eq!(lob2.len()?, text[0].len() + text[1].len());
+        assert_eq!(lob1.len()?, text[0].len());
+
+        let written = lob1.append(text[2])?;
+        assert_eq!(written, text[2].len());
+
+        // Now, after writing text[2], `lob1` has caught up with `lob2` prior writing and added more
+        // text on its own. But now it's `lob2` turn to lag behind and not be aware of the added text.
+        assert_eq!(lob1.len()?, text[0].len() + text[1].len() + text[2].len());
+        assert_eq!(lob2.len()?, text[0].len() + text[1].len());
+
+        // Let's save `lob2` now. It is still only knows about `text[0]` and `text[1]` fragments.
+        let stmt = conn.prepare("
+            insert into test_lobs (text) values (:text) returning id, text into :id, :saved_text
+        ")?;
+        let mut saved_lob_id : usize = 0;
+        let mut saved_lob = CLOB::new(&conn)?;
+        let res = stmt.execute_into(&[ &lob2 ], &mut [ &mut saved_lob_id, &mut saved_lob ])?;
+        assert_eq!(res, 1);
+        assert!(!stmt.is_null(":id")?, "id is not null");
+        assert!(!stmt.is_null(":saved_text")?, "text is not null");
+
+        // And thus `saved_lob` locator points to a distinct LOB value ...
+        assert!(!saved_lob.is_equal(&lob2)?);
+        // ... that has only the `text[0]` and `text[1]`
+        assert_eq!(saved_lob.len()?, text[0].len() + text[1].len());
+
+        let written = lob2.append(text[3])?;
+        assert_eq!(written, text[3].len());
+
+        assert_eq!(lob2.len()?, text[0].len() + text[1].len() + text[2].len() + text[3].len());
+        assert_eq!(lob1.len()?, text[0].len() + text[1].len() + text[2].len());
+
+        // As `saved_lob` points to the enturely different LOB ...
+        assert!(!saved_lob.is_equal(&lob2)?);
+        // ... it is not affected by `lob1` and `lob2` additions.
+        assert_eq!(saved_lob.len()?, text[0].len() + text[1].len());
+        Ok(())
+    }
+}

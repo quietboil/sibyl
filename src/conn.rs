@@ -186,7 +186,7 @@ impl<'e> Connection<'e> {
     }
 
     /**
-        Prepares SQL or PL/SQL statement for executionю
+        Prepares SQL or PL/SQL statement for execution.
 
         ## Example
         ```
@@ -197,10 +197,10 @@ impl<'e> Connection<'e> {
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             SELECT employee_id
-            FROM (
+              FROM (
                     SELECT employee_id, row_number() OVER (ORDER BY hire_date) ord
                     FROM hr.employees
-                )
+                   )
             WHERE ord = 1
         ")?;
         let rows = stmt.query(&[])?;
@@ -225,7 +225,7 @@ impl<'e> Connection<'e> {
         Commits the current transaction.
 
         Current transaction is defined as the set of statements executed since
-        the last commit or since beginning of the user session.
+        the last commit or since the beginning of the user session.
 
         ## Example
         ```
@@ -236,8 +236,8 @@ impl<'e> Connection<'e> {
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             UPDATE hr.employees
-            SET salary = :new_salary
-            WHERE employee_id = :id
+               SET salary = :new_salary
+             WHERE employee_id = :id
         ")?;
         let num_updated_rows = stmt.execute(&[
             &( ":id",         107  ),
@@ -260,9 +260,6 @@ impl<'e> Connection<'e> {
         Rolls back the current transaction. The modified or updated objects in
         the object cache for this transaction are also rolled back.
 
-        Current transaction is defined as the set of statements executed since
-        the last commit or since beginning of the user session.
-
         ## Example
         ```
         # let dbname = std::env::var("DBNAME")?;
@@ -272,8 +269,8 @@ impl<'e> Connection<'e> {
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             UPDATE hr.employees
-            SET salary = ROUND(salary * 1.1)
-            WHERE employee_id = :id
+               SET salary = ROUND(salary * 1.1)
+             WHERE employee_id = :id
         ")?;
         let num_updated_rows = stmt.execute(&[ &107 ])?;
         assert_eq!(1, num_updated_rows);
@@ -320,14 +317,14 @@ impl<'e> Connection<'e> {
 
         let stmt = conn.prepare("
             SELECT module
-            FROM v$session
-            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+              FROM v$session
+             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
         let rows = stmt.query(&[])?;
         let row = rows.next()?;
         assert!(row.is_some());
         let row = row.unwrap();
-        let module = row.get::<&str>(0)?;
+        let module : Option<&str> = row.get(0)?;
         assert!(module.is_some());
         let module = module.unwrap();
         assert_eq!(module, "sibyl");
@@ -354,14 +351,14 @@ impl<'e> Connection<'e> {
 
         let stmt = conn.prepare("
             SELECT action
-            FROM v$session
-            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+              FROM v$session
+             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
         let rows = stmt.query(&[])?;
         let row = rows.next()?;
         assert!(row.is_some());
         let row = row.unwrap();
-        let action = row.get::<&str>(0)?;
+        let action : Option<&str> = row.get(0)?;
         assert!(action.is_some());
         let action = action.unwrap();
         assert_eq!(action, "Session Test");
@@ -387,14 +384,14 @@ impl<'e> Connection<'e> {
 
         let stmt = conn.prepare("
             SELECT client_identifier
-            FROM v$session
-            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+              FROM v$session
+             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
         let rows = stmt.query(&[])?;
         let row = rows.next()?;
         assert!(row.is_some());
         let row = row.unwrap();
-        let client_identifier = row.get::<&str>(0)?;
+        let client_identifier : Option<&str> = row.get(0)?;
         assert!(client_identifier.is_some());
         let client_identifier = client_identifier.unwrap();
         assert_eq!(client_identifier, "Test Weilder");
@@ -420,14 +417,14 @@ impl<'e> Connection<'e> {
 
         let stmt = conn.prepare("
             SELECT client_info
-            FROM v$session
-            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+              FROM v$session
+             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
         let rows = stmt.query(&[])?;
         let row = rows.next()?;
         assert!(row.is_some());
         let row = row.unwrap();
-        let client_info = row.get::<&str>(0)?;
+        let client_info : Option<&str> = row.get(0)?;
         assert!(client_info.is_some());
         let client_info = client_info.unwrap();
         assert_eq!(client_info, "Nothing to see here, move along folks");
@@ -438,7 +435,26 @@ impl<'e> Connection<'e> {
         self.usr.set_attr(OCI_ATTR_CLIENT_INFO, info, self.err_ptr())
     }
 
-    /// Returns the current schema.
+    /**
+        Returns the current schema.
+
+        # Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let orig_name = conn.get_current_schema()?;
+
+        conn.set_current_schema("HR")?;
+        assert_eq!(conn.get_current_schema()?, "HR");
+
+        conn.set_current_schema(orig_name)?;
+        assert_eq!(conn.get_current_schema()?, orig_name);
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
     pub fn get_current_schema(&self) -> Result<&str> {
         self.usr.get_attr::<&str>(OCI_ATTR_CURRENT_SCHEMA, self.err_ptr())
     }
@@ -463,14 +479,14 @@ impl<'e> Connection<'e> {
 
         let stmt = conn.prepare("
             SELECT schemaname
-            FROM v$session
-            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+              FROM v$session
+             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
         let rows = stmt.query(&[])?;
         let row = rows.next()?;
         assert!(row.is_some());
         let row = row.unwrap();
-        let schema_name = row.get::<&str>(0)?;
+        let schema_name : Option<&str> = row.get(0)?;
         assert!(schema_name.is_some());
         let schema_name = schema_name.unwrap();
         assert_eq!(schema_name, "HR");

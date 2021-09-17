@@ -4,20 +4,11 @@ use crate::*;
 use crate::types::*;
 use crate::env::Env;
 use crate::conn::Conn;
-use crate::desc::Descriptor;
 use crate::column::Column;
 use crate::rows::Rows;
 use crate::cursor::Cursor;
 use libc::c_void;
-use std::{
-    ptr,
-    cell::{
-        Cell,
-        RefCell,
-        Ref
-    },
-    collections::HashMap
-};
+use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, ptr};
 
 // Parsing Syntax Types
 const OCI_NTV_SYNTAX   : u32 = 1;
@@ -97,22 +88,22 @@ extern "C" {
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-CD63DF78-2178-4727-A896-B9673C4A37F0
-    fn OCIBindByName2(
-        stmtp:      *mut OCIStmt,
-        bindpp:     *mut *mut OCIBind,
-        errhp:      *mut OCIError,
-        namep:      *const u8,
-        name_len:   i32,
-        valuep:     *mut c_void,
-        value_sz:   i64,
-        dty:        u16,
-        indp:       *mut c_void,
-        alenp:      *mut u32,
-        rcodep:     *mut u16,
-        maxarr_len: u32,
-        curelep:    *mut u32,
-        mode:       u32
-    ) -> i32;
+    // fn OCIBindByName2(
+    //     stmtp:      *mut OCIStmt,
+    //     bindpp:     *mut *mut OCIBind,
+    //     errhp:      *mut OCIError,
+    //     namep:      *const u8,
+    //     name_len:   i32,
+    //     valuep:     *mut c_void,
+    //     value_sz:   i64,
+    //     dty:        u16,
+    //     indp:       *mut c_void,
+    //     alenp:      *mut u32,
+    //     rcodep:     *mut u16,
+    //     maxarr_len: u32,
+    //     curelep:    *mut u32,
+    //     mode:       u32
+    // ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-D28DF5A7-3C75-4E52-82F7-A5D6D5714E69
     fn OCIBindByPos2(
@@ -219,106 +210,21 @@ impl<T: ToSqlOut> SqlOutArg for T {
     fn as_to_sql_out(&mut self) -> &mut dyn ToSqlOut    { self }
 }
 
-impl<T: ToSqlOut> SqlOutArg for (&str, T) {
+impl<T: ToSqlOut> SqlOutArg for (&str, &mut T) {
     fn name(&self) -> Option<&str>                      { Some( self.0 ) }
-    fn as_to_sql_out(&mut self) -> &mut dyn ToSqlOut    { &mut self.1    }
-}
-
-struct Binds {
-    list: Vec<Cell<*mut OCIBind>>,
-    idxs: HashMap<String,usize>
-}
-
-impl Binds {
-    fn new() -> Self {
-        Self {
-            list: Vec::new(),
-            idxs: HashMap::new()
-        }
-    }
-
-    fn init(&mut self, stmt: *mut OCIStmt, err: *mut OCIError) -> Result<()> {
-        let num_binds = attr::get::<u32>(OCI_ATTR_BIND_COUNT, OCI_HTYPE_STMT, stmt as *const c_void, err)? as usize;
-        self.list.reserve(num_binds);
-        self.idxs.reserve(num_binds);
-        if num_binds > 0 {
-            let bind_names          = vec![ptr::null_mut::<u8>(); num_binds];
-            let mut bind_name_lens  = vec![0u8; num_binds];
-            let ind_names           = vec![ptr::null_mut::<u8>(); num_binds];
-            let mut ind_name_lens   = vec![0u8; num_binds];
-            let mut dups            = vec![0u8; num_binds];
-            let mut binds           = vec![ptr::null_mut::<OCIBind>(); num_binds];
-            let mut found: i32      = 0;
-            catch!{err =>
-                OCIStmtGetBindInfo(
-                    stmt, err,
-                    num_binds as u32, 1, &mut found,
-                    bind_names.as_ptr(), bind_name_lens.as_mut_ptr(),
-                    ind_names.as_ptr(), ind_name_lens.as_mut_ptr(),
-                    dups.as_mut_ptr(),
-                    binds.as_mut_ptr()
-                )
-            }
-            for i in 0..found as usize {
-                let name = unsafe { std::slice::from_raw_parts(bind_names[i], bind_name_lens[i] as usize) };
-                let name = String::from_utf8_lossy(name).to_string();
-                if dups[i] == 0 {
-                    self.idxs.insert(name, i);
-                }
-                self.list.push(Cell::new(binds[i]));
-            }
-        }
-        Ok(())
-    }
-
-    fn bind_by_pos(&self, idx: usize, stmt: &Statement, sql_type: u16, data: *mut c_void, buff_size: usize, null_ind: *mut i16, data_size: *mut u32) -> Result<()> {
-        catch!{stmt.err_ptr() =>
-            OCIBindByPos2(
-                stmt.stmt_ptr(), self.list[idx].as_ptr(), stmt.err_ptr(),
-                (idx + 1) as u32,
-                data, buff_size as i64, sql_type,
-                null_ind as *mut c_void,    // Pointer to an indicator variable or array
-                data_size,                  // Pointer to an array of actual lengths of array elements
-                ptr::null_mut::<u16>(),     // Pointer to an array of column-level return codes
-                0,                          // Maximum array length
-                ptr::null_mut::<u32>(),     // Pointer to the actual number of elements in the array
-                OCI_DEFAULT
-            )
-        }
-        Ok(())
-    }
-
-    /// Binds the argument to a named placeholder in the SQL statement
-    fn bind_by_name(&self, name: &str, stmt: &Statement, sql_type: u16, data: *mut c_void, buff_size: usize, null_ind: *mut i16, data_size: *mut u32) -> Result<()> {
-        let name = name[1..].to_uppercase();
-        if let Some( &idx ) = self.idxs.get(&name) {
-            catch!{stmt.err_ptr() =>
-                OCIBindByName2(
-                    stmt.stmt_ptr(), self.list[idx].as_ptr(), stmt.err_ptr(),
-                    name.as_ptr(), name.len() as i32,
-                    data, buff_size as i64, sql_type,
-                    null_ind as *mut c_void,    // Pointer to an indicator variable or array
-                    data_size,                  // Pointer to an array of actual lengths of array elements
-                    ptr::null_mut::<u16>(),     // Pointer to an array of column-level return codes
-                    0,                          // Maximum array length
-                    ptr::null_mut::<u32>(),     // Pointer to the actual number of elements in the array
-                    OCI_DEFAULT
-                )
-            }
-            Ok(())
-        } else {
-            Err( Error::new(&format!("Statement does not define {} placeholder", name)) )
-        }
-    }
+    fn as_to_sql_out(&mut self) -> &mut dyn ToSqlOut    { self.1 }
 }
 
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
-    stmt: *mut OCIStmt,
-    max_col_size: Cell<usize>,
-    cols: RefCell<Vec<Column>>,
-    binds: Binds,
-    conn: &'a dyn Conn,
+    conn:        &'a dyn Conn,
+    stmt:        *mut OCIStmt,
+    param_idxs:  HashMap<String,usize>,
+    args_binds:  Vec<Cell<*mut OCIBind>>,
+    indicators:  Vec<Cell<i16>>,
+    data_sizes:  Vec<Cell<u32>>,
+    cols:        RefCell<Vec<Column>>,
+    col_names:   RefCell<HashMap<String,usize>>,
 }
 
 impl Env for Statement<'_> {
@@ -345,62 +251,118 @@ impl UsrEnv for Statement<'_> {
 pub trait Stmt : Conn {
     fn stmt_ptr(&self) -> *mut OCIStmt;
     fn conn(&self) -> &dyn Conn;
-    fn get_max_col_size(&self) -> usize;
+    fn env(&self) -> &dyn Env;
     fn usr_env(&self) -> &dyn UsrEnv;
+    fn get_cols(&self) -> &RefCell<Vec<Column>>;
+    fn col_index(&self, name: &str) -> Option<usize>;
 }
 
 impl Stmt for Statement<'_> {
     fn stmt_ptr(&self) -> *mut OCIStmt    { self.stmt }
     fn conn(&self) -> &dyn Conn           { self.conn }
-    fn get_max_col_size(&self) -> usize   { self.max_col_size.get() }
+    fn env(&self) -> &dyn Env             { self }
     fn usr_env(&self) -> &dyn UsrEnv      { self }
+    fn get_cols(&self) -> &RefCell<Vec<Column>> { &self.cols }
+    fn col_index(&self, name: &str) -> Option<usize> {
+        self.col_names.borrow().get(name).map(|pos| *pos)
+    }
 }
 
 impl Drop for Statement<'_> {
     fn drop(&mut self) {
         let env = self.env_ptr();
         let err = self.err_ptr();
-        let cols = self.cols.get_mut();
-        while let Some( mut col ) = cols.pop() {
-            col.drop_output(env, err);
+        for col in self.cols.borrow_mut().iter_mut() {
+            col.drop_output_buffer(env, err);
         }
         if !self.stmt.is_null() {
             unsafe {
-                OCIStmtRelease(self.stmt, self.err_ptr(), ptr::null(), 0, OCI_DEFAULT);
+                OCIStmtRelease(self.stmt, err, ptr::null(), 0, OCI_DEFAULT);
             }
         }
     }
 }
 
+fn define_binds(stmt: *mut OCIStmt, err: *mut OCIError) -> Result<(HashMap<String,usize>, Vec<Cell<*mut OCIBind>>, Vec<Cell<i16>>, Vec<Cell<u32>>)> {
+    let num_binds = attr::get::<u32>(OCI_ATTR_BIND_COUNT, OCI_HTYPE_STMT, stmt as *const c_void, err)? as usize;
+    let mut param_idxs = HashMap::with_capacity(num_binds);
+    let mut args_binds = Vec::with_capacity(num_binds);
+    let mut indicators = Vec::with_capacity(num_binds);
+    let mut data_sizes = Vec::with_capacity(num_binds);
+    if num_binds > 0 {
+        let bind_names          = vec![ptr::null_mut::<u8>(); num_binds];
+        let mut bind_name_lens  = vec![0u8; num_binds];
+        let ind_names           = vec![ptr::null_mut::<u8>(); num_binds];
+        let mut ind_name_lens   = vec![0u8; num_binds];
+        let mut dups            = vec![0u8; num_binds];
+        let mut oci_binds       = vec![ptr::null_mut::<OCIBind>(); num_binds];
+        let mut found: i32      = 0;
+        catch!{err =>
+            OCIStmtGetBindInfo(
+                stmt, err,
+                num_binds as u32, 1, &mut found,
+                bind_names.as_ptr(), bind_name_lens.as_mut_ptr(),
+                ind_names.as_ptr(), ind_name_lens.as_mut_ptr(),
+                dups.as_mut_ptr(),
+                oci_binds.as_mut_ptr()
+            )
+        }
+        for i in 0..found as usize {
+            if dups[i] == 0 {
+                let name = unsafe { std::slice::from_raw_parts(bind_names[i], bind_name_lens[i] as usize) };
+                let name = String::from_utf8_lossy(name).to_string();
+                param_idxs.insert(name, i);
+            }
+            args_binds.push(Cell::new(oci_binds[i]));
+            indicators.push(Cell::new(OCI_IND_NOTNULL));
+            data_sizes.push(Cell::new(0u32));
+        }
+    }
+    Ok((param_idxs, args_binds, indicators, data_sizes))
+}
+
 impl<'a> Statement<'a> {
     pub(crate) fn new(sql: &str, conn: &'a dyn Conn) -> Result<Self> {
-        let mut oci_stmt = ptr::null_mut::<OCIStmt>();
+        let mut stmt = ptr::null_mut::<OCIStmt>();
         catch!{conn.err_ptr() =>
             OCIStmtPrepare2(
-                conn.svc_ptr(), &mut oci_stmt, conn.err_ptr(),
+                conn.svc_ptr(), &mut stmt, conn.err_ptr(),
                 sql.as_ptr(), sql.len() as u32,
                 ptr::null(), 0,
                 OCI_NTV_SYNTAX, OCI_DEFAULT
             )
         }
-        let mut stmt = Self {
-            conn,
-            stmt: oci_stmt,
-            binds: Binds::new(),
-            max_col_size: Cell::new(32768),
-            cols: RefCell::new(Vec::new())
-        };
-        stmt.binds.init(oci_stmt, conn.err_ptr())?;
-        Ok( stmt )
+        let (param_idxs, args_binds, indicators, data_sizes) = define_binds(stmt, conn.err_ptr())?;
+        Ok(Self {
+            conn, stmt, param_idxs, args_binds, indicators, data_sizes,
+            cols: RefCell::new(Vec::new()),
+            col_names: RefCell::new(HashMap::new())
+        })
     }
 
-    pub(crate) fn borrow_columns(&self) -> Result<Ref<Vec<Column>>> {
-        let borrow = self.cols.try_borrow();
-        if borrow.is_err() {
-            Err( Error::new("cannot borrow projection") )
-        } else {
-            Ok( borrow.unwrap() )
+    fn setup_columns(&self) -> Result<()> {
+        let mut cols = self.cols.borrow_mut();
+        if cols.is_empty() {
+            let num_columns = self.get_attr::<u32>(OCI_ATTR_PARAM_COUNT)? as usize;
+            cols.reserve_exact(num_columns);
+            for pos in 1..=num_columns {
+                let col = Column::new(pos, self.stmt_ptr(), self.err_ptr())?;
+                cols.push(col)
+            }
+            // Now that columns are in the vector and thus their locations in memory are fixed,
+            // define their output buffers
+            for col in cols.iter_mut() {
+                col.setup_output_buffer(self.stmt_ptr(), self.env_ptr(), self.err_ptr())?;
+            }
+            let mut col_names = self.col_names.borrow_mut();
+            col_names.reserve(num_columns);
+            for col in cols.iter() {
+                let col_info = ColumnInfo::new(self, col.as_ptr());
+                let name = col_info.name()?;
+                col_names.insert(name.to_string(), col.position() - 1);
+            }
         }
+        Ok(())
     }
 
     fn get_attr<V: attr::AttrGet>(&self, attr_type: u32) -> Result<V> {
@@ -411,39 +373,116 @@ impl<'a> Statement<'a> {
         attr::set::<V>(attr_type, attr_val, OCI_HTYPE_STMT, self.stmt_ptr() as *mut c_void, self.err_ptr())
     }
 
-    fn get_param(&self, pos: usize) -> Result<Descriptor<OCIParam>> {
-        param::get::<OCIParam>(pos as u32, OCI_HTYPE_STMT, self.stmt_ptr() as *const c_void, self.err_ptr())
+    /// Binds the argument to a parameter placeholder at the specified position in the SQL statement
+    fn bind_by_pos(&self, idx: usize, sql_type: u16, data: *mut c_void, buff_size: usize, data_size: *mut u32, null_ind: *mut i16) -> Result<()> {
+        let pos = idx + 1;
+        catch!{self.err_ptr() =>
+            OCIBindByPos2(
+                self.stmt_ptr(), self.args_binds[idx].as_ptr(), self.err_ptr(),
+                pos as u32,
+                data, buff_size as i64, sql_type,
+                null_ind as *mut c_void,  // Pointer to an indicator variable or array
+                data_size,                // Pointer to an array of actual lengths of array elements
+                ptr::null_mut::<u16>(),   // Pointer to an array of column-level return codes
+                0,                        // Maximum array length
+                ptr::null_mut::<u32>(),   // Pointer to the actual number of elements in the array
+                OCI_DEFAULT
+            )
+        }
+        Ok(())
     }
 
-    /// Executes the prepared statement. Returns the statement execution result code.
-    fn exec(&self, stmt_type: u16, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg], null_ind: &mut [i16]) -> Result<i32>{
-        if out_args.len() != null_ind.len() {
-            return Err( Error::new("sizes of out_args and null_ind must be the same") );
-        }
+    /// Binds the argument to a named placeholder in the SQL statement
+    // fn bind_by_name(&self, name: &str, sql_type: u16, data: *mut c_void, buff_size: usize, data_size: *mut u32, null_ind: *mut i16) -> Result<()> {
+    //     let arg_idx;
+    //     if let Some( &idx ) = self.param_idxs.get(&name[1..]) {
+    //         arg_idx = idx;
+    //     } else if let Some( &idx ) = self.param_idxs.get(name[1..0].to_uppercase().as_str()) {
+    //         arg_idx = idx;
+    //     } else {
+    //         return Err( Error::new(&format!("Statement does not define {} parameter placeholder", name)) );
+    //     }
+    //     catch!{self.err_ptr() =>
+    //         OCIBindByName2(
+    //             self.stmt_ptr(), self.args_binds[arg_idx].as_ptr(), self.err_ptr(),
+    //             name.as_ptr(), name.len() as i32,
+    //             data, buff_size as i64, sql_type,
+    //             null_ind as *mut c_void,
+    //             data_size,
+    //             ptr::null_mut::<u16>(),
+    //             0,
+    //             ptr::null_mut::<u32>(),
+    //             OCI_DEFAULT
+    //         )
+    //     }
+    //     Ok(())
+    // }
 
-        let mut arg_idx = 0;
+    /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
+    fn exec(&self, stmt_type: u16, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<i32>{
+        let mut args_idxs : HashSet<_> = self.param_idxs.values().cloned().collect();
+
+        let mut idx = 0;
         for arg in in_args {
             let (sql_type, data, size) = arg.as_to_sql().to_sql();
             if let Some( name ) = arg.name() {
-                self.binds.bind_by_name(name, self, sql_type, data as *mut c_void, size, ptr::null_mut::<i16>(), ptr::null_mut::<u32>())?;
-            } else {
-                self.binds.bind_by_pos(arg_idx, self, sql_type, data as *mut c_void, size, ptr::null_mut::<i16>(), ptr::null_mut::<u32>())?;
+                if let Some(&ix) = self.param_idxs.get(&name[1..]) {
+                    idx = ix;
+                } else if let Some(&ix) = self.param_idxs.get(name[1..].to_uppercase().as_str()) {
+                    idx = ix;
+                } else {
+                    return Err( Error::new(&format!("Statement does not define {} parameter placeholder", name)) );
+                }
             }
-            arg_idx += 1;
+            self.bind_by_pos(idx, sql_type, data as *mut c_void, size, ptr::null_mut::<u32>(), ptr::null_mut::<i16>())?;
+            args_idxs.remove(&idx);
+            idx += 1;
         }
 
-        let mut data_sizes = Vec::with_capacity(out_args.len());
-        let mut out_idx = 0;
-        for arg in out_args.iter_mut() {
-            let (sql_type, data, size) = arg.as_to_sql_out().to_sql_output(0);
-            data_sizes.push(size as u32);
-            if let Some( name ) = arg.name() {
-                self.binds.bind_by_name(name, self, sql_type, data as *mut c_void, size, &mut null_ind[out_idx], &mut data_sizes[out_idx])?;
-            } else {
-                self.binds.bind_by_pos(arg_idx, self, sql_type, data as *mut c_void, size, &mut null_ind[out_idx], &mut data_sizes[out_idx])?;
+        let out_idxs = if out_args.is_empty() {
+            None
+        } else {
+            let mut idxs = Vec::with_capacity(out_args.len());
+            for arg in out_args {
+                let mut out_idx = idx;
+                if let Some( name ) = arg.name() {
+                    if let Some( &param_idx ) = self.param_idxs.get(&name[1..]) {
+                        out_idx = param_idx;
+                    } else if let Some( &param_idx ) = self.param_idxs.get(name[1..].to_uppercase().as_str()) {
+                        out_idx = param_idx;
+                    } else {
+                        return Err(Error::new(&format!("Statement does not define {} parameter placeholder", name)));
+                    }
+                } else {
+                    idx += 1;
+                }
+                let (sql_type, data, data_buffer_size, in_size) = arg.as_to_sql_out().to_sql_output();
+                if data_buffer_size == 0 {
+                    let msg = if let Some( name ) = arg.name() {
+                        format!("Storage capacity of output variable {} is 0", name)
+                    } else {
+                        format!("Storage capacity of output variable {} is 0", out_idx)
+                    };
+                    return Err(Error::new(&msg));
+                }
+                self.data_sizes[out_idx].set(in_size as u32);
+                self.bind_by_pos(
+                    out_idx, sql_type, data as *mut c_void, data_buffer_size,
+                    self.data_sizes[out_idx].as_ptr(),
+                    self.indicators[out_idx].as_ptr()
+                )?;
+                args_idxs.remove(&out_idx);
+                idxs.push((arg, out_idx));
             }
-            out_idx += 1;
-            arg_idx += 1;
+            Some(idxs)
+        };
+
+        // Check whether all placeholders are bound for this execution.
+        // While OCIStmtExecute would see missing binds on the first run, the subsequent
+        // execution of the same prepared statement might try to reuse previously bound
+        // values, and those might already be gone. Hense the explicit check here.
+        if !args_idxs.is_empty() {
+            return Err( Error::new("Not all parameters are bound") );
         }
 
         let iters: u32 = if stmt_type == OCI_STMT_SELECT { 0 } else { 1 };
@@ -456,26 +495,25 @@ impl<'a> Statement<'a> {
             )
         };
         match res {
+            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
+                if let Some(idxs) = out_idxs {
+                    for (arg,ix) in idxs {
+                        arg.as_to_sql_out().set_len(self.data_sizes[ix].get() as usize);
+                    }
+                }
+                Ok(res)
+            },
             OCI_ERROR | OCI_INVALID_HANDLE => {
                 Err( Error::oci(self.err_ptr(), res) )
             }
-            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
-                out_idx = 0;
-                for arg in out_args {
-                    let out = arg.as_to_sql_out();
-                    out.set_len(data_sizes[out_idx] as usize);
-                    out_idx += 1;
-                }
-                Ok( res )
-            }
-            _ => Ok( res )
+            _ => Ok(res)
         }
     }
 
     /**
         Executes the prepared statement. Returns the number of rows affected.
 
-        ## Example
+        # Example
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -491,8 +529,7 @@ impl<'a> Statement<'a> {
             &( ":department_id", 120 ),
             &( ":manager_id",    101 ),
         ])?;
-
-        assert_eq!(1, num_rows);
+        assert_eq!(num_rows, 1);
         # conn.rollback()?;
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
@@ -506,16 +543,14 @@ impl<'a> Statement<'a> {
         if is_returning != 0 {
             return Err( Error::new("Use `execute_into` with output arguments to execute a RETURNING statement") );
         }
-        self.exec(stmt_type, args, &mut [], &mut [])?;
+        self.exec(stmt_type, args, &mut [])?;
         self.get_row_count()
     }
 
     /**
-        Executes a prepared RETURNING statement. Returns the optional vector of booleans where each
-        element corresponds to the provided OUT argument and indicates whether the value returned into
-        the OUT variable was NULL. Returns `None` when the statement has not created/updated any rows.
+        Executes a prepared RETURNING statement. Returns the number of rows affected.
 
-        ## Example
+        # Example
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -536,37 +571,43 @@ impl<'a> Statement<'a> {
         // OUT is used as an IN-OUT parameter, OUT precedes or in the middle of the IN parameter
         // list, parameter list is very long, etc. This example shows the call with the named
         // arguments as this might be a more typical use case for it.
-        let res = stmt.execute_into(&[
+        let num_rows = stmt.execute_into(&[
             &( ":department_name", "Security" ),
             &( ":manager_id",      ""         ),
             &( ":location_id",     1700       ),
         ], &mut [
             &mut ( ":department_id", &mut department_id )
         ])?;
-
-        let is_null = res.expect("optional vector of 'is null?' flags");
-        assert_eq!(1, is_null.len());
-        assert!(!is_null[0]);
+        assert_eq!(num_rows, 1);
+        assert!(!stmt.is_null(":department_id")?);
         assert!(department_id > 0);
         # conn.rollback()?;
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn execute_into(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<Option<Vec<bool>>> {
+    pub fn execute_into(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
         }
-        let mut null_ind = vec![OCI_IND_NOTNULL; out_args.len()];
-        let null_ind = null_ind.as_mut_slice();
-        self.exec(stmt_type, in_args, out_args, null_ind)?;
-        let row_count = self.get_row_count()?;
-        if row_count == 0 {
-            Ok( None )
-        } else {
-            let nulls: Vec<_> = null_ind.iter().map(|&ind| ind == OCI_IND_NULL).collect();
-            Ok( Some(nulls) )
-        }
+        self.exec(stmt_type, in_args, out_args)?;
+        self.get_row_count()
+    }
+
+    /**
+        Checks whether the value returned for the output parameter is NULL.
+    */
+    pub fn is_null(&self, pos: impl Position) -> Result<bool> {
+        pos.name()
+            .and_then(|name|
+                self.param_idxs.get(&name[1..])
+                    .or(self.param_idxs.get(name[1..].to_uppercase().as_str()))
+            )
+            .map(|ix| *ix)
+            .or(pos.index())
+            .and_then(|ix| self.indicators.get(ix))
+            .map(|cell| cell.get() == OCI_IND_NULL)
+            .ok_or_else(|| Error::new("Parameter not found."))
     }
 
     /**
@@ -582,7 +623,7 @@ impl<'a> Statement<'a> {
         result from an executed PL/SQL statement. Applications retrieve each result-set sequentially
         but can fetch rows from any result-set independently.
 
-        ## Example
+        # Example
         ```
         use sibyl::Number;
         use std::cmp::Ordering::Equal;
@@ -625,84 +666,60 @@ impl<'a> Statement<'a> {
                 DBMS_SQL.RETURN_RESULT (c2);
             END;
         ")?;
+        let expected_lowest_salary = Number::from_int(2100, &conn)?;
+        let expected_median_salary = Number::from_int(6200, &conn)?;
+
         stmt.execute(&[])?;
 
-        // <<< c1 >>>
-        let res = stmt.next_result()?;
-        assert!(res.is_some());
+        let lowest_payed_employee = stmt.next_result()?.unwrap();
 
-        let cursor = res.unwrap();
-        let rows = cursor.rows()?;
+        let rows = lowest_payed_employee.rows()?;
+        let row = rows.next()?.unwrap();
 
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
+        let department_name : &str = row.get(0)?.unwrap();
+        let first_name : &str = row.get(1)?.unwrap();
+        let last_name : &str = row.get(2)?.unwrap();
+        let salary : Number = row.get(3)?.unwrap();
 
-        let department_name = row.get::<&str>(0)?.unwrap();
         assert_eq!(department_name, "Shipping");
-
-        let first_name = row.get::<&str>(1)?;
-        assert!(first_name.is_some());
-        let first_name = first_name.unwrap();
         assert_eq!(first_name, "TJ");
-
-        let last_name = row.get::<&str>(2)?.unwrap();
         assert_eq!(last_name, "Olson");
-
-        let salary = row.get::<Number>(3)?.unwrap();
-        let expected = Number::from_int(2100, &oracle);
-        assert!(salary.cmp(&expected)? == Equal);
+        assert_eq!(salary.compare(&expected_lowest_salary)?, Equal);
 
         let row = rows.next()?;
         assert!(row.is_none());
 
-        // <<< c2 >>>
-        let res = stmt.next_result()?;
-        assert!(res.is_some());
+        let median_salary_employees = stmt.next_result()?.unwrap();
 
-        let cursor = res.unwrap();
-        let rows = cursor.rows()?;
+        let rows = median_salary_employees.rows()?;
 
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
+        let row = rows.next()?.unwrap();
+        let department_name : &str = row.get(0)?.unwrap();
+        let first_name : &str = row.get(1)?.unwrap();
+        let last_name : &str = row.get(2)?.unwrap();
+        let salary : Number = row.get(3)?.unwrap();
 
-        let department_name = row.get::<&str>(0)?.unwrap();
         assert_eq!(department_name, "Sales");
-
-        let first_name = row.get::<&str>(1)?;
-        assert!(first_name.is_some());
-        let first_name = first_name.unwrap();
         assert_eq!(first_name, "Amit");
-
-        let last_name = row.get::<&str>(2)?.unwrap();
         assert_eq!(last_name, "Banda");
+        assert_eq!(salary.compare(&expected_median_salary)?, Equal);
 
-        let expected = Number::from_int(6200, &oracle);
+        let row = rows.next()?.unwrap();
 
-        let salary = row.get::<Number>(3)?.unwrap();
-        assert!(salary.cmp(&expected)? == Equal);
+        let department_name : &str = row.get(0)?.unwrap();
+        let first_name : &str = row.get(1)?.unwrap();
+        let last_name : &str = row.get(2)?.unwrap();
+        let salary : Number = row.get(3)?.unwrap();
 
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
-
-        let department_name = row.get::<&str>(0)?.unwrap();
         assert_eq!(department_name, "Sales");
-
-        let first_name = row.get::<&str>(1)?;
-        assert!(first_name.is_some());
-        let first_name = first_name.unwrap();
         assert_eq!(first_name, "Charles");
-
-        let last_name = row.get::<&str>(2)?.unwrap();
         assert_eq!(last_name, "Johnson");
-
-        let salary = row.get::<Number>(3)?.unwrap();
-        assert!(salary.cmp(&expected)? == Equal);
+        assert_eq!(salary.compare(&expected_median_salary)?, Equal);
 
         let row = rows.next()?;
         assert!(row.is_none());
+
+        assert!(stmt.next_result()?.is_none());
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -723,31 +740,47 @@ impl<'a> Statement<'a> {
         Sets the buffer size for fetching LONG and LONG RAW via the data interface.
 
         By default 32768 bytes are allocated for values from LONG and LONG RAW columns.
-        If the actual value is expected to be larger than that, then the "max column
-        fetch size" has to be changed before `query` is run.
+        If the actual value is expected to be larger than that, then the "column size"
+        has to be changed before `query` is run.
+    */
+    #[deprecated="Use set_column_size"]
+    pub fn set_max_column_fetch_size(&self, size: usize) -> Result<()> {
+        for col in self.cols.borrow_mut().iter_mut() {
+            col.change_buffer_size(size, self)?;
+        }
+        Ok(())
+    }
 
-        ## Example
+    /**
+        Sets the buffer size for fetching LONG and LONG RAW via the data interface.
+
+        By default 32768 bytes are allocated for values from LONG and LONG RAW columns.
+        If the actual value is expected to be larger than that, then the "column size"
+        has to be changed before `query` is run.
+
+        # Example
         ```rust,ignore
         let stmt = conn.prepare("
             SELECT id, long_text
               FROM all_texts
              WHERE id = :id
         ")?;
-        stmt.set_max_column_fetch_size(250_000);
+        stmt.set_column_size(1, 250_000)?;
         let rset = stmt.query(&[ &42 ])?;
         ```
     */
-    pub fn set_max_column_fetch_size(&self, size: usize) {
-        if size > 128 {
-            // 128 is an arbitrary limit, actually it can be anything > 0 to ensure there is a buffer
-            self.max_col_size.replace(size);
+    pub fn set_column_size(&self, pos: usize, size: usize) -> Result<()> {
+        if let Some(col) = self.cols.borrow_mut().get_mut(pos) {
+            col.change_buffer_size(size, self)
+        } else {
+            Err(Error::new("No such column"))
         }
     }
 
     /**
         Executes the prepared statement. Returns "streaming iterator" over the returned rows.
 
-        ## Example
+        # Example
         ```
         # use std::collections::HashMap;
         # let dbname = std::env::var("DBNAME")?;
@@ -766,25 +799,22 @@ impl<'a> Statement<'a> {
         let mut subs = HashMap::new();
         while let Some( row ) = rows.next()? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-            let id = row.get::<usize>(0)?.unwrap();
+            let id : usize = row.get(0)?.unwrap();
             // Same for the LAST_NAME.
             // Note that `last_name` is retrieved a slice. This is fast as it
             // borrows directly from the column buffer, but it can only live until
             // the end of the current scope, i.e. only during the lifetime of the
             // current row.
-            let last_name = row.get::<&str>(1)?.unwrap();
-            let name =
-                // FIRST_NAME is NULL-able...
-                if let Some( first_name ) = row.get::<&str>(2)? {
-                    format!("{}, {}", last_name, first_name)
-                } else {
-                    last_name.to_string()
-                }
-            ;
+            let last_name : &str = row.get(1)?.unwrap();
+            // FIRST_NAME is NULL-able...
+            let first_name : Option<&str> = row.get(2)?;
+            let name = first_name.map_or(last_name.to_string(),
+                |first_name| format!("{}, {}", last_name, first_name)
+            );
             subs.insert(id, name);
         }
-        assert_eq!(4, stmt.get_row_count()?);
-        assert_eq!(4, subs.len());
+        assert_eq!(stmt.get_row_count()?, 3);
+        assert_eq!(subs.len(), 3);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -793,51 +823,23 @@ impl<'a> Statement<'a> {
         if stmt_type != OCI_STMT_SELECT {
             return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
         }
-        let res = self.exec(stmt_type, args, &mut [], &mut [])?;
-        self.define_columns()?;
+        let res = self.exec(stmt_type, args, &mut [])?;
+        self.setup_columns()?;
         match res {
             OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
-                self.define_column_buffers()?;
-                let cols = self.borrow_columns()?;
-                Ok( Rows::new(res, cols, self) )
+                Ok( Rows::new(res, self) )
             }
             OCI_NO_DATA => {
-                let cols = self.borrow_columns()?;
-                Ok( Rows::new(res, cols, self) )
+                Ok( Rows::new(res, self) )
             }
             _ => Err( Error::oci(self.err_ptr(), res) )
         }
     }
 
-    /// Initializes, if necessary, the internal vector of columns
-    fn define_columns(&self) -> Result<()> {
-        let mut cols = self.cols.borrow_mut();
-        if cols.is_empty() {
-            let num_columns = self.get_column_count()?;
-            cols.reserve_exact(num_columns);
-            for pos in 1..=num_columns {
-                let col = self.get_param(pos)?;
-                let col = Column::new(pos, col)?;
-                cols.push(col)
-            }
-        }
-        Ok(())
-    }
-
-    /// Ensures each column has an internal value buffer that matches
-    /// its type and column output is redirected into that buffer
-    fn define_column_buffers(&self) -> Result<()> {
-        let mut cols = self.cols.borrow_mut();
-        for col in cols.iter_mut() {
-            col.define_output_buffer(self)?;
-        }
-        Ok(())
-    }
-
     /**
         Returns he number of columns in the select-list of this statement.
 
-        ## Example
+        # Example
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -862,10 +864,11 @@ impl<'a> Statement<'a> {
     }
 
     /**
-        Returns `pos` column meta data handler. `pos` is 0 based. Returns None if
-        `pos` is greater than the number of columns in the query.
+        Returns `pos` column meta data handler. `pos` is 0-based. Returns None if
+        `pos` is greater than the number of columns in the query or if the prepared
+        statement is not a SELECT and has no columns.
 
-        ## Example
+        # Example
         ```
         # use sibyl::ColumnType;
         # let dbname = std::env::var("DBNAME")?;
@@ -879,7 +882,7 @@ impl<'a> Statement<'a> {
              WHERE manager_id = :id
         ")?;
         let _rows = stmt.query(&[ &103 ])?;
-        let col = stmt.get_column(0)?;
+        let col = stmt.get_column(0);
         assert!(col.is_some());
 
         let col = col.unwrap();
@@ -894,19 +897,9 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_column(&self, pos: usize) -> Result<Option<ColumnInfo>> {
-        let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
-        if stmt_type != OCI_STMT_SELECT {
-            return Err( Error::new("Columns are only available in SELECT statements") );
-        }
-        let opt_col = if let Some( col ) = self.cols.borrow().get(pos) {
-            Some(
-                ColumnInfo::new(self as &dyn Stmt, col)
-            )
-        } else {
-            None
-        };
-        Ok( opt_col )
+    pub fn get_column(&self, pos: usize) -> Option<ColumnInfo> {
+        self.cols.borrow().get(pos)
+            .map(|col| ColumnInfo::new(self, col.as_ptr()))
     }
 
     /**
@@ -919,7 +912,7 @@ impl<'a> Statement<'a> {
         since this statement handle was executed. Because they are forward sequential only,
         this also represents the highest row number seen by the application.
 
-        ## Example
+        # Example
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -937,13 +930,13 @@ impl<'a> Statement<'a> {
         let mut ids = Vec::new();
         while let Some( row ) = rows.next()? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-            let id = row.get::<usize>(0)?.unwrap();
+            let id : usize = row.get(0)?.unwrap();
             ids.push(id);
         }
 
-        assert_eq!(4, stmt.get_row_count()?);
-        assert_eq!(4, ids.len());
-        assert_eq!(&[104 as usize, 105, 106, 107], ids.as_slice());
+        assert_eq!(stmt.get_row_count()?, 3);
+        assert_eq!(ids.len(), 3);
+        assert_eq!(&[104 as usize, 105, 106], ids.as_slice());
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -955,7 +948,7 @@ impl<'a> Statement<'a> {
     /**
         Sets the number of top-level rows to be prefetched. The default value is 1 row.
 
-        ## Example
+        # Example
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -1069,8 +1062,8 @@ pub struct ColumnInfo<'s> {
 }
 
 impl<'s> ColumnInfo<'s> {
-    fn new(stmt: &'s dyn Stmt, col: &Column) -> Self {
-        Self { stmt, desc: col.as_ptr() }
+    pub(crate) fn new(stmt: &'s dyn Stmt, desc: *mut OCIParam) -> Self {
+        Self { stmt, desc }
     }
 
     fn get_attr<T: attr::AttrGet>(&self, attr: u32) -> Result<T> {
@@ -1188,3 +1181,35 @@ impl<'s> ColumnInfo<'s> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use crate::*;
+    #[test]
+    fn stmt_args() -> std::result::Result<(),Box<dyn std::error::Error>> {
+        let dbname = std::env::var("DBNAME")?;
+        let dbuser = std::env::var("DBUSER")?;
+        let dbpass = std::env::var("DBPASS")?;
+        let oracle = env()?;
+        let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            INSERT INTO hr.departments
+                   ( department_id, department_name, manager_id, location_id )
+            VALUES ( 9, :department_name, :manager_id, :location_id )
+         RETURNING department_id
+              INTO :department_id
+        ")?;
+        let mut department_id : i32 = 0;
+        let num_rows = stmt.execute_into(&[
+            &( ":department_name", "Security" ),
+            &( ":manager_id",      ""         ),
+            &( ":location_id",     1700       ),
+        ], &mut [
+            &mut ( ":department_id", &mut department_id )
+        ])?;
+        assert_eq!(num_rows, 1);
+        assert!(!stmt.is_null(":department_id")?);
+        assert_eq!(department_id, 9);
+        conn.rollback()?;
+        Ok(())
+    }
+}

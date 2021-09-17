@@ -45,9 +45,7 @@ macro_rules! catch {
     ( $err:expr => $( $stmt:stmt );+ ) => {{
         let res = unsafe { $($stmt)+ };
         match res {
-            OCI_ERROR | OCI_INVALID_HANDLE => {
-                return Err( crate::Error::oci($err, res) );
-            }
+            OCI_ERROR | OCI_INVALID_HANDLE => { return Err( crate::Error::oci($err, res) ); },
             _ => {}
         }
     }};
@@ -57,13 +55,13 @@ macro_rules! catch {
 #[derive(Debug)]
 pub enum Error {
     Interface(String),
-    Oracle((i32,String))
+    Oracle(i32,String)
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::Oracle((errcode, errmsg)) => write!(f, "ORA-{:05}: {}", errcode, errmsg),
+            Error::Oracle(errcode, errmsg) => write!(f, "ORA-{:05}: {}", errcode, errmsg),
             Error::Interface(errmsg) => write!(f, "{}", errmsg),
         }
     }
@@ -74,7 +72,7 @@ impl error::Error for Error {}
 impl cmp::PartialEq for Error {
     fn eq(&self, other: &Error) -> bool {
         match (self, other) {
-            (Error::Oracle((this_code, _)), Error::Oracle((other_code, _))) =>
+            (Error::Oracle(this_code, _), Error::Oracle(other_code, _)) =>
                 this_code == other_code,
             (Error::Interface(this_msg), Error::Interface(other_msg)) =>
                 this_msg == other_msg,
@@ -96,10 +94,12 @@ impl Error {
     }
 
     pub(crate) fn env(env: *mut OCIEnv, rc: i32) -> Self {
-        Error::Oracle( get_oracle_error(rc, env as *mut c_void, OCI_HTYPE_ENV) )
+        let (code, msg) = get_oracle_error(rc, env as *mut c_void, OCI_HTYPE_ENV);
+        Error::Oracle(code, msg)
     }
 
     pub(crate) fn oci(err: *mut OCIError, rc: i32) -> Self {
-        Error::Oracle( get_oracle_error(rc, err as *mut c_void, OCI_HTYPE_ERROR) )
+        let (code, msg) = get_oracle_error(rc, err as *mut c_void, OCI_HTYPE_ERROR);
+        Error::Oracle(code, msg)
     }
 }

@@ -1,13 +1,7 @@
 use crate::*;
 use crate::stmt::Stmt;
-use crate::column::Column;
 use libc::c_void;
-use std::{
-    cell::{
-        Cell,
-        Ref
-    },
-};
+use std::cell::Cell;
 
 const OCI_ATTR_ROWID : u32 = 19;
 
@@ -28,18 +22,17 @@ extern "C" {
 /// Result set of a query
 pub struct Rows<'s> {
     stmt: &'s dyn Stmt,
-    cols: Ref<'s,Vec<Column>>,
     last_result: Cell<i32>,
 }
 
 impl<'s> Rows<'s> {
-    pub(crate) fn new(res: i32, cols: Ref<'s,Vec<Column>>, stmt: &'s dyn Stmt) -> Self {
-        Self { stmt, cols, last_result: Cell::new(res) }
+    pub(crate) fn new(res: i32, stmt: &'s dyn Stmt) -> Self {
+        Self { stmt, last_result: Cell::new(res) }
     }
 
     /**
         Returns the next row in the SELECT's result set.
-        ## Example
+        # Example
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -83,12 +76,10 @@ impl<'s> Rows<'s> {
             let res = unsafe {
                 OCIStmtFetch2(self.stmt.stmt_ptr(), self.stmt.err_ptr(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
             };
-            self.last_result.replace(res);
+            self.last_result.set(res);
             match res {
                 OCI_NO_DATA => Ok( None ),
-                OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
-                    Ok(Some( Row::new(self.stmt, Ref::clone(&self.cols)) ))
-                }
+                OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::new(self.stmt)) ),
                 _ => Err( Error::oci(self.stmt.err_ptr(), res) )
             }
         }
@@ -96,19 +87,20 @@ impl<'s> Rows<'s> {
 }
 
 /// A row in the returned result set
-pub struct Row<'s> {
-    stmt: &'s dyn Stmt,
-    cols: Ref<'s,Vec<Column>>
+pub struct Row<'a> {
+    stmt: &'a dyn Stmt,
 }
 
-impl<'r,'s:'r> Row<'s> {
-    fn new(stmt: &'s dyn Stmt, cols: Ref<'s,Vec<Column>>) -> Self {
-        Self { stmt, cols }
+impl<'a> Row<'a> {
+    fn new(stmt: &'a dyn Stmt) -> Self {
+        Self { stmt }
     }
 
     /**
         Returns `true` if the value in the specified column is NULL.
-        ## Example
+
+        # Example
+
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -131,20 +123,27 @@ impl<'r,'s:'r> Row<'s> {
         assert!(!commission_exists);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
+
         ## Note
-        This method considers the out of bounds "columns"
-        to be NULL.
+
+        This method considers the out of bounds or unknown/misnamed
+        "columns" to be NULL.
     */
-    pub fn is_null(&self, pos: usize) -> bool {
-        let opt_col = self.cols.get(pos);
-        if let Some( col ) = opt_col { col.is_null() } else { true }
+    pub fn is_null(&self, pos: impl Position) -> bool {
+        let index = pos.name().and_then(|name| self.stmt.col_index(name)).or(pos.index());
+        if let Some(index) = index {
+            if let Some(col) = self.stmt.get_cols().borrow().get(index) {
+                return col.is_null();
+            }
+        }
+        true
     }
 
     /**
         Returns `Option`-al value of the specified column in the current row.
         The returned value is `None` when the SQL value is `NULL`
 
-        ## Example
+        # Example
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -164,33 +163,34 @@ impl<'r,'s:'r> Row<'s> {
         let row = cur_row.unwrap();
         let manager_id: u32 = row.get(0)?.unwrap_or_default();
 
-        assert_eq!(103, manager_id);
+        assert_eq!(manager_id, 102);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get<T: FromSql<'r>>(&'r self, pos: usize) -> Result<Option<T>> {
-        let opt_col = self.cols.get(pos);
-        if let Some( col ) = opt_col {
-            if col.is_null() {
-                Ok(None)
-            } else {
-                let value = FromSql::value(&col.borrow_buffer(), self.stmt)?;
-                Ok(Some(value))
+    pub fn get<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<Option<T>> {
+        let index = pos.name().and_then(|name| self.stmt.col_index(name)).or(pos.index());
+        if let Some(index) = index {
+            if let Some(col) = self.stmt.get_cols().borrow().get(index) {
+                if col.is_null() {
+                    return Ok(None);
+                } else {
+                    let value = FromSql::value(col.get_column_buffer(), self.stmt)?;
+                    return Ok(Some(value));
+                }
             }
-        } else {
-            Err( Error::new("column position is out of bounds") )
         }
+        Err( Error::new("column position is out of bounds") )
     }
 
     /**
         Returns the implicitily returned `RowID` of the current row in the SELECT...FOR UPDATE results.
         The returned `RowID` can be used in a later UPDATE or DELETE statement.
 
-        ## Notes
+        # Notes
         This method is only valid for the SELECT...FOR UPDATE results as only those return ROWIDs implicitly.
         For all others the returned `RowID` will be empty (one might think about it as NULL).
 
-        ## Example
+        # Example
         ```
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
@@ -211,7 +211,7 @@ impl<'r,'s:'r> Row<'s> {
         let row = cur_row.unwrap();
         let manager_id: u32 = row.get(0)?.unwrap_or_default();
 
-        assert_eq!(103, manager_id);
+        assert_eq!(manager_id, 102);
 
         let rowid = row.get_rowid()?;
 
@@ -224,7 +224,7 @@ impl<'r,'s:'r> Row<'s> {
             &( ":mid", 102 ),
             &( ":rid", &rowid )
         ])?;
-        assert_eq!(1, num_updated);
+        assert_eq!(num_updated, 1);
         # conn.rollback()?;
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```

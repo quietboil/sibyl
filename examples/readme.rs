@@ -6,6 +6,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let dbpass = std::env::var("DBPASS")?;
 
     let oracle = oracle::env()?;
+
     let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
     let stmt = conn.prepare("
         SELECT first_name, last_name, hire_date
@@ -17,18 +18,13 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
                )
          WHERE ord = 1
     ")?;
-    let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
+    let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &conn)?;
     let rows = stmt.query(&[ &date ])?;
     if let Some( row ) = rows.next()? {
-        let last_name = row.get::<&str>(0)?.unwrap();
-        let name =
-            if let Some( first_name ) = row.get::<&str>(1)? {
-                format!("{}, {}", last_name, first_name)
-            } else {
-                last_name.to_string()
-            }
-        ;
-        let hire_date = row.get::<oracle::Date>(2)?.unwrap();
+        let first_name : Option<&str> = row.get(0)?;
+        let last_name : &str = row.get(1)?.unwrap();
+        let name = first_name.map_or(last_name.to_string(), |first_name| format!("{}, {}", last_name, first_name));
+        let hire_date : oracle::Date = row.get(2)?.unwrap();
         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
         println!("{} was hired on {}", name, hire_date);

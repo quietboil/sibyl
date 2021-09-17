@@ -1,10 +1,32 @@
-//! OCI functions to manipulate Oracle Numbers:
+//! Functions to manipulate Oracle Numbers:
 //! NUMBER, NUMERIC, INT, SHORTINT, REAL, DOUBLE PRECISION, FLOAT and DECIMAL.
+
+mod convert;
+mod tosql;
 
 use crate::*;
 use super::*;
 use libc::c_void;
 use std::{ mem, ptr, cmp::Ordering };
+
+/// Marker trait for integer numbers
+pub trait Integer : convert::IntoNumber + convert::FromNumber {}
+
+macro_rules! impl_int {
+    ($($t:ty),+) => {
+        $(
+            impl Integer for $t {}
+        )+
+    };
+}
+
+impl_int!(i8, i16, i32, i64, i128, isize);
+impl_int!(u8, u16, u32, u64, u128, usize);
+
+/// Marker trait for floating ppoint numbers
+pub trait Real : convert::IntoNumber + convert::FromNumber {}
+impl Real for f32 {}
+impl Real for f64 {}
 
 /// C mapping of the Oracle NUMBER
 #[repr(C)] pub struct OCINumber { _private: [u8; 22] }
@@ -386,208 +408,17 @@ extern "C" {
     ) -> i32;
 }
 
-fn u128_to_number(mut val: u128) -> OCINumber {
+pub(crate) fn real_into_number<T:Real>(val: T, err: *mut OCIError) -> Result<OCINumber> {
     let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-    let ptr = num.as_mut_ptr();
-    if val == 0 {
-        unsafe {
-            (*ptr)._private[0] = 1;
-            (*ptr)._private[1]= 128;
-        }
-    } else {
-        let mut digits = [0u8;20];
-        let mut idx = digits.len();
-        let mut exp = 192u8;
-        while val != 0 {
-            let digit = (val % 100) as u8;
-            if digit > 0 || idx < digits.len() {
-                idx -= 1;
-                digits[idx] = digit + 1;
-            }
-            val /= 100;
-            exp += 1;
-        }
-        let len = digits.len() - idx;
-        unsafe {
-            (*ptr)._private[0] = len as u8 + 1;
-            (*ptr)._private[1] = exp;
-            (*ptr)._private[2..2 + len].copy_from_slice(&digits[idx..]);
-        }
+    catch!{err =>
+        OCINumberFromReal(
+            err,
+            &val as *const T as *const c_void, mem::size_of::<T>() as u32,
+            num.as_mut_ptr()
+        )
     }
-    unsafe { num.assume_init() }
+    Ok( unsafe { num.assume_init() } )
 }
-
-fn i128_to_number(mut val: i128) -> OCINumber {
-    if val >= 0 {
-        (val as u128).into_number()
-    } else {
-        let mut digits = [0u8;21];
-        let mut idx = digits.len() - 1;
-        let mut exp = 63u8;
-        val = -val;
-        digits[idx] = 102;
-        while val != 0 {
-            let digit = (val % 100) as u8;
-            if digit > 0 || idx < digits.len() - 1 {
-                idx -= 1;
-                digits[idx] = 101 - digit;
-            }
-            val /= 100;
-            exp -= 1;
-        }
-        let len = if idx > 0 { digits.len() - idx } else { digits.len() - 1 };
-        let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        let ptr = num.as_mut_ptr();
-        unsafe {
-            (*ptr)._private[0] = len as u8 + 1;
-            (*ptr)._private[1] = exp;
-            (*ptr)._private[2..2 + len].copy_from_slice(&digits[idx..idx + len]);
-            num.assume_init()
-        }
-    }
-}
-
-fn u128_from_number(num: &OCINumber) -> Result<u128> {
-    let len = num._private[0] as usize;
-    let exp = num._private[1];
-    if len == 0 || len >= num._private.len() {
-        Err( Error::new("uninitialized number") )
-    } else if len == 1 || 62 < exp && exp < 193 {
-        Ok( 0 )
-    } else if exp <= 62 {
-        Err( Error::new("cannot convert negative number into an unsigned integer") )
-    } else if exp > 212 {
-        Err( Error::new("overflow") )
-    } else {
-        let mut exp = exp - 193;
-        let mut val = (num._private[2] - 1) as u128;
-        let mut idx = 3;
-        while idx <= len && exp > 0 {
-            let digit = (num._private[idx] - 1) as u128;
-            val = val * 100 + digit;
-            idx += 1;
-            exp -= 1;
-        }
-        if exp > 0 {
-            val *= 100u128.pow(exp as u32);
-        } else if idx <= len {
-            let digit = num._private[idx];
-            if digit >= 50 {
-                val += 1;
-            }
-        }
-        Ok( val )
-    }
-}
-
-fn i128_from_number(num: &OCINumber) -> Result<i128> {
-    let len = num._private[0] as usize;
-    let exp = num._private[1];
-    if exp >= 193 {
-        let val = u128_from_number(num)?;
-        Ok( val as i128 )
-    } else if len == 0 || len >= num._private.len() {
-        Err( Error::new("uninitialized number") )
-    } else if len == 1 || 62 < exp && exp < 193 {
-        Ok( 0 )
-    } else if exp < 43 {
-        Err( Error::new("overflow") )
-    } else {
-        let mut exp = 62 - exp;
-        let mut val = (101 - num._private[2]) as i128;
-        let mut idx = 3;
-        while idx <= len && exp > 0 && num._private[idx] <= 101 {
-            let digit = (101 - num._private[idx]) as i128;
-            val = val * 100 + digit;
-            idx += 1;
-            exp -= 1;
-        }
-        if exp > 0 {
-            val *= 100i128.pow(exp as u32);
-        } else if idx <= len && num._private[idx] <= 101 {
-            let digit = num._private[idx];
-            if digit <= 52 {
-                val += 1;
-            }
-        }
-        Ok( -val )
-    }
-}
-
-pub trait Integer : Sized {
-    fn into_number(self) -> OCINumber;
-    fn from_number(num: &OCINumber) -> Result<Self>;
-}
-
-impl Integer for u128 {
-    fn into_number(self) -> OCINumber {
-        u128_to_number(self)
-    }
-
-    fn from_number(num: &OCINumber) -> Result<u128> {
-        u128_from_number(&num)
-    }
-}
-
-impl Integer for i128 {
-    fn into_number(self) -> OCINumber {
-        i128_to_number(self)
-    }
-
-    fn from_number(num: &OCINumber) -> Result<i128> {
-        i128_from_number(&num)
-    }
-}
-
-macro_rules! impl_int {
-    ($($t:ty),+) => {
-        $(
-            impl Integer for $t {
-                fn into_number(self) -> OCINumber {
-                    let val = self as i128;
-                    val.into_number()
-                }
-                fn from_number(num: &OCINumber) -> Result<$t> {
-                    let val = i128_from_number(num)?;
-                    if <$t>::min_value() as i128 <= val && val <= <$t>::max_value() as i128 {
-                        Ok( val as $t)
-                    } else {
-                        Err( Error::new("overflow") )
-                    }
-                }
-            }
-        )+
-    };
-}
-
-impl_int! { i8, i16, i32, i64, isize }
-
-macro_rules! impl_uint {
-    ($($t:ty),+) => {
-        $(
-            impl Integer for $t {
-                fn into_number(self) -> OCINumber {
-                    let val = self as u128;
-                    val.into_number()
-                }
-                fn from_number(num: &OCINumber) -> Result<$t> {
-                    let val = u128_from_number(num)?;
-                    if val <= <$t>::max_value() as u128 {
-                        Ok( val as $t)
-                    } else {
-                        Err( Error::new("overflow") )
-                    }
-                }
-            }
-        )+
-    };
-}
-
-impl_uint! { u8, u16, u32, u64, usize }
-
-pub trait Real {}
-impl Real for f32 {}
-impl Real for f64 {}
 
 pub(crate) fn to_real<T:Real>(num: &OCINumber, err: *mut OCIError) -> Result<T> {
     let mut res = mem::MaybeUninit::<T>::uninit();
@@ -597,8 +428,18 @@ pub(crate) fn to_real<T:Real>(num: &OCINumber, err: *mut OCIError) -> Result<T> 
     Ok( unsafe { res.assume_init() } )
 }
 
+fn compare(num1: &OCINumber, num2: &OCINumber, err: *mut OCIError) -> Result<Ordering> {
+    let mut res = mem::MaybeUninit::<i32>::uninit();
+    catch!{err =>
+        OCINumberCmp(err, num1 as *const OCINumber, num2 as *const OCINumber, res.as_mut_ptr())
+    }
+    let res = unsafe { res.assume_init() };
+    let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
+    Ok( ordering )
+}
+
 macro_rules! impl_query {
-    ($this:tt => $f:ident) => {
+    ($this:ident => $f:ident) => {
         let mut res : i32 = 0;
         catch!{$this.env.err_ptr() =>
             $f($this.env.err_ptr(), $this.as_ptr(), &mut res)
@@ -608,7 +449,7 @@ macro_rules! impl_query {
 }
 
 macro_rules! impl_fn {
-    ($this:tt => $f:ident) => {
+    ($this:ident => $f:ident) => {
         let env = $this.env;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
         catch!{env.err_ptr() =>
@@ -619,7 +460,7 @@ macro_rules! impl_fn {
 }
 
 macro_rules! impl_op {
-    ($this:tt, $arg:ident => $f:ident) => {
+    ($this:ident, $arg:ident => $f:ident) => {
         let env = $this.env;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
         catch!{env.err_ptr() =>
@@ -630,7 +471,7 @@ macro_rules! impl_op {
 }
 
 macro_rules! impl_opi {
-    ($this:tt, $arg:ident => $f:ident) => {
+    ($this:ident, $arg:ident => $f:ident) => {
         let env = $this.env;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
         catch!{env.err_ptr() =>
@@ -642,7 +483,7 @@ macro_rules! impl_opi {
 
 /// Represents OTS types NUMBER, NUMERIC, INT, SHORTINT, REAL, DOUBLE PRECISION, FLOAT and DECIMAL.
 pub struct Number<'e> {
-    env: &'e dyn UsrEnv,
+    pub(crate) env: &'e dyn UsrEnv,
     num: OCINumber,
 }
 
@@ -655,19 +496,14 @@ impl<'e> Number<'e> {
     /**
         Creates a new Number that is equal to zero.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::zero(&env);
-        let is_zero = num.is_zero()?;
 
-        assert!(is_zero);
+        let num = Number::zero(&env);
 
-        let val: i32 = num.to_int::<i32>()?;
-
-        assert_eq!(0, val);
+        assert!(num.is_zero()?);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -682,15 +518,14 @@ impl<'e> Number<'e> {
     /**
         Creates a new Number that is equal to Pi.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::pi(&env);
-        let txt = num.to_string("TM")?;
 
-        assert_eq!("3.1415926535897932384626433832795028842", txt);
+        let num = Number::pi(&env);
+
+        assert_eq!(num.to_string("TM")?, "3.1415926535897932384626433832795028842");
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -705,15 +540,14 @@ impl<'e> Number<'e> {
     /**
         Creates a new Number from a string using specified format.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_string("6.62607004E-34", "9D999999999EEEE", &env)?;
-        let txt = num.to_string("TME")?;
 
-        assert_eq!("6.62607004E-34", txt);
+        let num = Number::from_string("6.62607004E-34", "9D999999999EEEE", &env)?;
+
+        assert_eq!(num.to_string("TME")?, "6.62607004E-34");
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -732,70 +566,61 @@ impl<'e> Number<'e> {
     }
 
     /**
-        Creates a new Number from any Oracle standard machine-native integer type.
+        Creates a new Number from an integer.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(42, &env);
-        let val = num.to_int::<i32>()?;
 
-        assert_eq!(42, val);
+        let num = Number::from_int(42, &env)?;
+
+        assert!(num.is_int()?);
+        assert_eq!(num.to_int::<i32>()?, 42);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_int<T:Integer>(val: T, env: &'e dyn UsrEnv) -> Self {
-        let num = val.into_number();
-        Self { env, num }
+    pub fn from_int<T:Integer>(val: T, env: &'e dyn UsrEnv) -> Result<Self> {
+        let num = val.into_number(env.err_ptr())?;
+        Ok( Self { env, num } )
     }
 
     /**
-        Converts a machine-native floating point number to Oracle number
+        Creates a new Number from a floating point number.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(2.7182818284590452353602874713527, &env)?;
-        let txt = num.to_string("TM")?;
 
-        assert_eq!("2.71828182845905", txt);
+        let num = Number::from_real(2.7182818284590452353602874713527, &env)?;
+
+        assert_eq!(num.to_string("TM")?, "2.71828182845905");
         # Ok::<(),oracle::Error>(())
         ```
     */
     pub fn from_real<T:Real>(val: T, env: &'e dyn UsrEnv) -> Result<Self> {
-        let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        catch!{env.err_ptr() =>
-            OCINumberFromReal(
-                env.err_ptr(),
-                &val as *const T as *const c_void, mem::size_of::<T>() as u32,
-                num.as_mut_ptr()
-            )
-        }
-        Ok( Self { env, num: unsafe { num.assume_init() } } )
+        let num = val.into_number(env.err_ptr())?;
+        Ok( Self { env, num } )
     }
 
     /**
-        Creates a "copy" of the other number.
+        Creates a clone of the other number.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(8128, &env);
-        let dup = oracle::Number::from_number(&num, &env)?;
-        let val: i32 = dup.to_int::<i32>()?;
 
-        assert_eq!(8128, val);
+        let num = Number::from_int(8128, &env)?;
+        let dup = Number::from_number(&num)?;
+
+        assert_eq!(dup.to_int::<i32>()?, 8128);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_number(other: &Number, env: &'e dyn UsrEnv) -> Result<Self> {
-        from_number(&other.num, env)
+    pub fn from_number(other: &'e Number) -> Result<Self> {
+        from_number(&other.num, other.env)
     }
 
     /**
@@ -821,21 +646,17 @@ impl<'e> Number<'e> {
     /**
         Assigns self the value of the specified number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let src = oracle::Number::from_int(33550336, &env);
-        let mut dst = oracle::Number::zero(&env);
-        let val: i32 = dst.to_int::<i32>()?;
 
-        assert_eq!(0, val);
+        let src = Number::from_int(33550336, &env)?;
+        let mut dst = Number::zero(&env);
+        assert_eq!(dst.to_int::<i32>()?, 0);
 
         dst.assign(&src)?;
-        let val: i32 = dst.to_int::<i32>()?;
-
-        assert_eq!(33550336, val);
+        assert_eq!(dst.to_int::<i32>()?, 33550336);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -849,15 +670,15 @@ impl<'e> Number<'e> {
     /**
         Converts the given number to a character string according to the specified format.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(42, &env);
+
+        let num = Number::from_int(42, &env)?;
         let txt = num.to_string("FM0G999")?;
 
-        assert_eq!("0,042", txt);
+        assert_eq!(txt, "0,042");
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -866,34 +687,33 @@ impl<'e> Number<'e> {
     }
 
     /**
-        Converts this Number into a u128, u64, u32, u16, u8, i128, i64, i32, i16, i8
-        i128 and u128 are not supported by the OCI
+        Converts this Number into an integer (u128, u64, u32, u16, u8, i128, i64, i32, i16, i8).
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::pi(&env);
+
+        let num = Number::pi(&env);
         let val = num.to_int::<i32>()?;
 
-        assert_eq!(3, val);
+        assert_eq!(val, 3);
         # Ok::<(),oracle::Error>(())
         ```
     */
     pub fn to_int<T:Integer>(&self) -> Result<T> {
-        <T>::from_number(&self.num)
+        <T>::from_number(&self.num, self.env.err_ptr())
     }
 
     /**
-        Returns machine-native floating point representation of self
+        Returns floating point representation of self
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::pi(&env);
+
+        let num = Number::pi(&env);
         let val = num.to_real::<f64>()?;
 
         assert!(3.14159265358978 < val && val < 3.14159265358980);
@@ -907,12 +727,12 @@ impl<'e> Number<'e> {
     /**
         Test if this number is equal to zero
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let mut num = oracle::Number::zero(&env);
+
+        let mut num = Number::zero(&env);
 
         assert!(num.is_zero()?);
 
@@ -927,18 +747,18 @@ impl<'e> Number<'e> {
     }
 
     /**
-        Test if this number is an integer
+        Tests if this number is an integer
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::zero(&env);
+
+        let num = Number::zero(&env);
 
         assert!(num.is_int()?);
 
-        let num = oracle::Number::pi(&env);
+        let num = Number::pi(&env);
 
         assert!(!num.is_int()?);
         # Ok::<(),oracle::Error>(())
@@ -955,16 +775,15 @@ impl<'e> Number<'e> {
         If the is input too large, it will be treated as 0 - the result will be an Oracle number 1.
         If the input is not a positive integer, the result will be unpredictable.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let mut num = oracle::Number::zero(&env);
-        num.inc()?;
-        let val = num.to_int::<i32>()?;
 
-        assert_eq!(1, val);
+        let mut num = Number::zero(&env);
+        num.inc()?;
+
+        assert_eq!(num.to_int::<i32>()?, 1);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -982,16 +801,15 @@ impl<'e> Number<'e> {
         If the is input too large, it will be treated as 0 - the result will be an Oracle number 1.
         If the input is not a positive integer, the result will be unpredictable.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let mut num = oracle::Number::from_int(97, &env);
-        num.dec()?;
-        let val = num.to_int::<i32>()?;
 
-        assert_eq!(96, val);
+        let mut num = Number::from_int(97, &env)?;
+        num.dec()?;
+
+        assert_eq!(num.to_int::<i32>()?, 96);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -1005,25 +823,23 @@ impl<'e> Number<'e> {
     /**
         Returns sign of a number (as a result of comparing it to zero).
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
+        use std::cmp::Ordering;
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(19, &env);
-        let ord = num.sign()?;
 
-        assert_eq!(std::cmp::Ordering::Greater as u32, ord as u32);
+        let num = Number::from_int(19, &env)?;
 
-        let num = oracle::Number::from_int(-17, &env);
-        let ord = num.sign()?;
+        assert_eq!(num.sign()?, Ordering::Greater);
 
-        assert_eq!(std::cmp::Ordering::Less as u32, ord as u32);
+        let num = Number::from_int(-17, &env)?;
 
-        let num = oracle::Number::zero(&env);
-        let ord = num.sign()?;
+        assert_eq!(num.sign()?, Ordering::Less);
 
-        assert_eq!(std::cmp::Ordering::Equal, ord);
+        let num = Number::zero(&env);
+
+        assert_eq!(num.sign()?, Ordering::Equal);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -1033,158 +849,144 @@ impl<'e> Number<'e> {
             OCINumberSign(self.env.err_ptr(), self.as_ptr(), res.as_mut_ptr())
         }
         let res = unsafe { res.assume_init() };
-        let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
+        let ordering = if res == 0 { Ordering::Equal } else if res < 0 { Ordering::Less } else { Ordering::Greater };
         Ok( ordering )
     }
 
     /**
         Compares self to a number.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
+        use std::cmp::Ordering;
         let env = oracle::env()?;
-        let pi = oracle::Number::pi(&env);
-        let e = oracle::Number::from_real(2.71828182845905, &env)?;
-        let cmp = pi.cmp(&e)?;
 
-        assert_eq!(std::cmp::Ordering::Greater as u32, cmp as u32);
+        let pi = Number::pi(&env);
+        let e = Number::from_real(2.71828182845905, &env)?;
 
-        let cmp = e.cmp(&pi)?;
-
-        assert_eq!(std::cmp::Ordering::Less as u32, cmp as u32);
+        assert_eq!(pi.compare(&e)?, Ordering::Greater);
+        assert_eq!(e.compare(&pi)?, Ordering::Less);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn cmp(&self, num: &Number) -> Result<Ordering> {
-        let mut res = mem::MaybeUninit::<i32>::uninit();
-        catch!{self.env.err_ptr() =>
-            OCINumberCmp(self.env.err_ptr(), self.as_ptr(), num.as_ptr(), res.as_mut_ptr())
-        }
-        let res = unsafe { res.assume_init() };
-        let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
-        Ok( ordering )
+    pub fn compare(&self, other: &Self) -> Result<Ordering> {
+        compare(&self.num, &other.num, self.env.err_ptr())
     }
 
     /**
         Adds a Number to this Number and returns the sum as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(19, &env);
-        let arg = oracle::Number::from_int(50, &env);
-        let res = num.add(&arg)?;
-        let val = res.to_int::<i32>()?;
 
-        assert_eq!(69, val);
+        let num = Number::from_int(19, &env)?;
+        let arg = Number::from_int(50, &env)?;
+        let res = num.add(&arg)?;
+
+        assert_eq!(res.to_int::<i32>()?, 69);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn add(&self, num: &Number) -> Result<Number> {
+    pub fn add(&self, num: &Number) -> Result<Self> {
         impl_op!{ self, num => OCINumberAdd }
     }
 
     /**
         Subtracts a Number from this Number and returns the difference as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(90, &env);
-        let arg = oracle::Number::from_int(21, &env);
-        let res = num.sub(&arg)?;
-        let val = res.to_int::<i32>()?;
 
-        assert_eq!(69, val);
+        let num = Number::from_int(90, &env)?;
+        let arg = Number::from_int(21, &env)?;
+        let res = num.sub(&arg)?;
+
+        assert_eq!(res.to_int::<i32>()?, 69);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn sub(&self, num: &Number) -> Result<Number> {
+    pub fn sub(&self, num: &Number) -> Result<Self> {
         impl_op!{ self, num => OCINumberSub }
     }
 
     /**
         Multiplies a Number to this Number and returns the product as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(3.5, &env)?;
-        let arg = oracle::Number::from_int(8, &env);
+
+        let num = Number::from_real(3.5, &env)?;
+        let arg = Number::from_int(8, &env)?;
         let res = num.mul(&arg)?;
 
         assert!(res.is_int()?);
-
-        let val = res.to_int::<i32>()?;
-
-        assert_eq!(28, val);
+        assert_eq!(res.to_int::<i32>()?, 28);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn mul(&self, num: &Number) -> Result<Number> {
+    pub fn mul(&self, num: &Number) -> Result<Self> {
         impl_op!{ self, num => OCINumberMul }
     }
 
     /**
         Divides a Number (dividend) by a Number (divisor) and returns the quotient as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(256, &env);
-        let arg = oracle::Number::from_int(8, &env);
-        let res = num.div(&arg)?;
-        let val = res.to_int::<i32>()?;
 
-        assert_eq!(32, val);
+        let num = Number::from_int(256, &env)?;
+        let arg = Number::from_int(8, &env)?;
+        let res = num.div(&arg)?;
+
+        assert!(res.is_int()?);
+        assert_eq!(res.to_int::<i32>()?, 32);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn div(&self, num: &Number) -> Result<Number> {
+    pub fn div(&self, num: &Number) -> Result<Self> {
         impl_op!{ self, num => OCINumberDiv }
     }
 
     /**
         Finds the remainder of the division of two Numbers and returns it as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(255, &env);
-        let arg = oracle::Number::from_int(32, &env);
-        let res = num.rem(&arg)?;
-        let val = res.to_int::<i32>()?;
 
-        assert_eq!(31, val);
+        let num = Number::from_int(255, &env)?;
+        let arg = Number::from_int(32, &env)?;
+        let res = num.rem(&arg)?;
+
+        assert!(res.is_int()?);
+        assert_eq!(res.to_int::<i32>()?, 31);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn rem(&self, num: &Number) -> Result<Number> {
+    pub fn rem(&self, num: &Number) -> Result<Self> {
         impl_op!{ self, num => OCINumberMod }
     }
 
     /**
         Raises a number to an arbitrary power and returns the result as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(2.55, &env)?;
-        let arg = oracle::Number::from_real(3.2, &env)?;
+
+        let num = Number::from_real(2.55, &env)?;
+        let arg = Number::from_real(3.2, &env)?;
         let res = num.pow(&arg)?;
         let val = res.to_real::<f64>()?;
 
@@ -1192,19 +994,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn pow(&self, num: &Number) -> Result<Number> {
+    pub fn pow(&self, num: &Number) -> Result<Self> {
         impl_op!{ self, num => OCINumberPower }
     }
 
     /**
         Raises a number to an integer power and returns the result as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(2.55, &env)?;
+
+        let num = Number::from_real(2.55, &env)?;
         let res = num.powi(3)?;
         let val = res.to_real::<f64>()?;
 
@@ -1212,32 +1014,28 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn powi(&self, num: i32) -> Result<Number> {
+    pub fn powi(&self, num: i32) -> Result<Self> {
         impl_opi!{ self, num => OCINumberIntPower }
     }
 
     /**
         Multiplies a number by by a power of 10 and returns the result as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(2.55, &env)?;
-        let res = num.shift(2)?;
-        let val = res.to_int::<i32>()?;
 
-        assert_eq!(255, val);
+        let num = Number::from_real(2.55, &env)?;
+        let res = num.pow10(2)?;
+        assert_eq!(res.to_int::<i32>()?, 255);
 
-        let res = res.shift(-1)?;
-        let val = res.to_real::<f64>()?;
-
-        assert_eq!(25.5, val);
+        let res = res.pow10(-1)?;
+        assert_eq!(res.to_real::<f64>()?, 25.5);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn shift(&self, num: i32) -> Result<Number> {
+    pub fn pow10(&self, num: i32) -> Result<Self> {
         impl_opi!{ self, num => OCINumberShift }
     }
 
@@ -1246,30 +1044,24 @@ impl<'e> Number<'e> {
         `num` is the number of decimal digits to the right of the decimal point to truncate at.
         Negative values are allowed.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::pi(&env);
+
+        let num = Number::pi(&env);
         let res = num.trunc(7)?;
-        let val = res.to_string("TM")?;
+        assert_eq!(res.to_string("TM")?, "3.1415926");
 
-        assert_eq!("3.1415926", val);
-
-        let res = res.shift(5)?;
-        let val = res.to_real::<f64>()?;
-
-        assert_eq!(314159.26, val);
+        let res = res.pow10(5)?;
+        assert_eq!(res.to_real::<f64>()?, 314159.26);
 
         let res = res.trunc(-3)?;
-        let val = res.to_real::<f64>()?;
-
-        assert_eq!(314000.0, val);
+        assert_eq!(res.to_real::<f64>()?, 314000.0);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn trunc(&self, num: i32) -> Result<Number> {
+    pub fn trunc(&self, num: i32) -> Result<Self> {
         impl_opi!{ self, num => OCINumberTrunc }
     }
 
@@ -1278,20 +1070,19 @@ impl<'e> Number<'e> {
         `num` is the number of decimal digits to the right of the decimal point to truncate at.
         Negative values are allowed.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::pi(&env);
-        let res = num.round(7)?;
-        let val = res.to_string("TM")?;
 
-        assert_eq!("3.1415927", val);
+        let num = Number::pi(&env);
+        let res = num.round(7)?;
+
+        assert_eq!(res.to_string("TM")?, "3.1415927");
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn round(&self, num: i32) -> Result<Number> {
+    pub fn round(&self, num: i32) -> Result<Self> {
         impl_opi!{ self, num => OCINumberRound }
     }
 
@@ -1301,140 +1092,129 @@ impl<'e> Number<'e> {
 
         `num` is the number of decimal digits desired in the result.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::pi(&env);
-        let res = num.prec(10)?;
-        let val = res.to_string("TM")?;
 
-        assert_eq!("3.141592654", val);
+        let num = Number::pi(&env);
+        let res = num.prec(10)?;
+
+        assert_eq!(res.to_string("TM")?, "3.141592654");
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn prec(&self, num: i32) -> Result<Number> {
+    pub fn prec(&self, num: i32) -> Result<Self> {
         impl_opi!{ self, num => OCINumberPrec }
     }
 
     /**
         Negates a number and returns the result as a new Number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(42, &env);
-        let res = num.neg()?;
-        let val = res.to_int::<i32>()?;
 
-        assert_eq!(-42, val);
+        let num = Number::from_int(42, &env)?;
+        let res = num.neg()?;
+
+        assert_eq!(res.to_int::<i32>()?, -42);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn neg(&self) -> Result<Number> {
+    pub fn neg(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberNeg }
     }
 
     /**
         Returns the absolute value of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(-42, &env);
-        let res = num.abs()?;
-        let val = res.to_int::<i32>()?;
 
-        assert_eq!(42, val);
+        let num = Number::from_int(-42, &env)?;
+        let res = num.abs()?;
+
+        assert_eq!(res.to_int::<i32>()?, 42);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn abs(&self) -> Result<Number> {
+    pub fn abs(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberAbs }
     }
 
     /**
         Returns the smallers integer greater than or equal to a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::pi(&env);
+
+        let num = Number::pi(&env);
         let res = num.ceil()?;
 
         assert!(res.is_int()?);
-
-        let val = res.to_int::<i32>()?;
-
-        assert_eq!(4, val);
+        assert_eq!(res.to_int::<i32>()?, 4);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn ceil(&self) -> Result<Number> {
+    pub fn ceil(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberCeil }
     }
 
     /**
         Returns the largest integer less than or equal to a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::pi(&env);
+
+        let num = Number::pi(&env);
         let res = num.floor()?;
 
         assert!(res.is_int()?);
-
-        let val = res.to_int::<i32>()?;
-
-        assert_eq!(3, val);
+        assert_eq!(res.to_int::<i32>()?, 3);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn floor(&self) -> Result<Number> {
+    pub fn floor(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberFloor }
     }
 
     /**
         Returns the square root of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(121, &env);
+
+        let num = Number::from_int(121, &env)?;
         let res = num.sqrt()?;
 
         assert!(res.is_int()?);
-
-        let val = res.to_int::<i32>()?;
-        assert_eq!(11, val);
+        assert_eq!(res.to_int::<i32>()?, 11);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn sqrt(&self) -> Result<Number> {
+    pub fn sqrt(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberSqrt }
     }
 
     /**
         Return the sine in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(0.52359877559, &env)?;
+
+        let num = Number::from_real(0.52359877559, &env)?;
         let res = num.sin()?;
         let val = res.to_real::<f64>()?;
 
@@ -1442,19 +1222,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn sin(&self) -> Result<Number> {
+    pub fn sin(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberSin }
     }
 
     /**
         Return the arcsine in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(0.5, &env)?;
+
+        let num = Number::from_real(0.5, &env)?;
         let res = num.asin()?;
         let val = res.to_real::<f64>()?;
 
@@ -1462,19 +1242,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn asin(&self) -> Result<Number> {
+    pub fn asin(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberArcSin }
     }
 
     /**
         Return the hyperbolic sine in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(0.88137358702, &env)?;
+
+        let num = Number::from_real(0.88137358702, &env)?;
         let res = num.sinh()?;
         let val = res.to_real::<f64>()?;
 
@@ -1482,19 +1262,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn sinh(&self) -> Result<Number> {
+    pub fn sinh(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberHypSin }
     }
 
     /**
         Return the cosine in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(1.0471975512, &env)?;
+
+        let num = Number::from_real(1.0471975512, &env)?;
         let res = num.cos()?;
         let val = res.to_real::<f64>()?;
 
@@ -1502,19 +1282,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn cos(&self) -> Result<Number> {
+    pub fn cos(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberCos }
     }
 
     /**
         Return the arccosine in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(0.5, &env)?;
+
+        let num = Number::from_real(0.5, &env)?;
         let res = num.acos()?;
         let val = res.to_real::<f64>()?;
 
@@ -1522,19 +1302,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn acos(&self) -> Result<Number> {
+    pub fn acos(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberArcCos }
     }
 
     /**
         Return the hyperbolic cosine in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(0.96242365012, &env)?;
+
+        let num = Number::from_real(0.96242365012, &env)?;
         let res = num.cosh()?;
         let val = res.to_real::<f64>()?;
 
@@ -1542,19 +1322,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn cosh(&self) -> Result<Number> {
+    pub fn cosh(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberHypCos }
     }
 
     /**
         Return the tangent in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(0.785398163397, &env)?;
+
+        let num = Number::from_real(0.785398163397, &env)?;
         let res = num.tan()?;
         let val = res.to_real::<f64>()?;
 
@@ -1562,19 +1342,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn tan(&self) -> Result<Number> {
+    pub fn tan(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberTan }
     }
 
     /**
         Return the arctangent in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(1, &env);
+
+        let num = Number::from_int(1, &env)?;
         let res = num.atan()?;
         let val = res.to_real::<f64>()?;
 
@@ -1582,20 +1362,20 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn atan(&self) -> Result<Number> {
+    pub fn atan(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberArcTan }
     }
 
     /**
         Returns the four quadrant arctangent of `self` and `num` in radians
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let x = oracle::Number::from_int(4, &env);
-        let y = oracle::Number::from_int(-3, &env);
+
+        let x = Number::from_int(4, &env)?;
+        let y = Number::from_int(-3, &env)?;
         let res = x.atan2(&y)?;
         let val = res.to_real::<f64>()?;
 
@@ -1603,19 +1383,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn atan2(&self, num: &Number) -> Result<Number> {
+    pub fn atan2(&self, num: &Number) -> Result<Self> {
         impl_op!{ self, num => OCINumberArcTan2 }
     }
 
     /**
         Returns the hyperbolic tangent in radians of a number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(0.54930614434, &env)?;
+
+        let num = Number::from_real(0.54930614434, &env)?;
         let res = num.tanh()?;
         let val = res.to_real::<f64>()?;
 
@@ -1623,19 +1403,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn tanh(&self) -> Result<Number> {
+    pub fn tanh(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberHypTan }
     }
 
     /**
         Returns `e^(self)` - the exponential function
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(2.71828182845905, &env)?;
+
+        let num = Number::from_real(2.71828182845905, &env)?;
         let res = num.exp()?;
         let val = res.to_real::<f64>()?;
 
@@ -1643,19 +1423,19 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn exp(&self) -> Result<Number> {
+    pub fn exp(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberExp }
     }
 
     /**
-        Returns the natual logarithm of the number
+        Returns the natural logarithm of the number
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(2.71828182845905, &env)?;
+
+        let num = Number::from_real(2.71828182845905, &env)?;
         let res = num.ln()?;
         let val = res.to_real::<f64>()?;
 
@@ -1663,28 +1443,27 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn ln(&self) -> Result<Number> {
+    pub fn ln(&self) -> Result<Self> {
         impl_fn!{ self => OCINumberLn }
     }
 
     /**
         Returns the logarithm of the numer using with respect to an arbitrary base.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_int(65536, &env);
-        let base = oracle::Number::from_int(4, &env);
-        let res = num.log(&base)?;
-        let val = res.to_int::<i32>()?;
 
-        assert_eq!(8, val);
+        let num = Number::from_int(65536, &env)?;
+        let base = Number::from_int(4, &env)?;
+        let res = num.log(&base)?;
+
+        assert_eq!(res.to_int::<i32>()?, 8);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn log(&self, num: &Number) -> Result<Number> {
+    pub fn log(&self, num: &Number) -> Result<Self> {
         let env = self.env;
         let mut res = mem::MaybeUninit::<OCINumber>::uninit();
         catch!{env.err_ptr() =>
@@ -1698,81 +1477,11 @@ impl<'e> Number<'e> {
     }
 }
 
-impl ToSql for Number<'_> {
-    fn to_sql(&self) -> (u16, *const c_void, usize) {
-        ( SQLT_VNU, self.as_ptr() as *const c_void, std::mem::size_of::<OCINumber>() )
-    }
-}
-
-impl ToSqlOut for Number<'_> {
-    fn to_sql_output(&mut self, _col_size: usize) -> (u16, *mut c_void, usize) {
-        (SQLT_VNU, self.as_mut_ptr() as *mut c_void, std::mem::size_of::<OCINumber>())
-    }
-}
-
-impl ToSqlOut for Box<OCINumber> {
-    fn to_sql_output(&mut self, _col_size: usize) -> (u16, *mut c_void, usize) {
-        (SQLT_VNU, self.as_mut() as *mut OCINumber as *mut c_void, std::mem::size_of::<OCINumber>())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::*;
-    #[test]
-    fn num_from_to_int() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let env = env()?;
-
-        let num = Number::from_int(0, &env);
-        let val = num.to_int::<i32>()?;
-        assert_eq!(0, val);
-
-        let num = Number::from_int(42, &env);
-        let val = num.to_int::<i32>()?;
-        assert_eq!(42, val);
-
-        let num = Number::from_int(250_000_000_000i64, &env);
-        let val = num.to_int()?;
-        assert_eq!(250_000_000_000i64, val);
-
-        let num = Number::from_int(250_000_190_000i64, &env);
-        let val = num.to_int()?;
-        assert_eq!(250_000_190_000i64, val);
-
-        let num = Number::from_int(-150_000_000_000i64, &env);
-        let val = num.to_int()?;
-        assert_eq!(-150_000_000_000i64, val);
-
-        let num = Number::from_int(-31415926535897932384626433832795028842i128, &env);
-        let txt = num.to_string("TM")?;
-        assert_eq!("-31415926535897932384626433832795028842", txt);
-        let val = num.to_int()?;
-        assert_eq!(-31415926535897932384626433832795028842i128, val);
-
-        let num = Number::from_int(std::u128::MAX, &env);
-        let txt = num.to_string("TM")?;
-        assert_eq!("340282366920938463463374607431768211455", txt);
-        let val = num.to_int()?;
-        assert_eq!(std::u128::MAX, val);
-
-        let num = Number::pi(&env);
-        let val = num.to_int::<i32>()?;
-        assert_eq!(3, val);
-
-        let num = Number::pi(&env);
-        let num = num.shift(2)?;
-        let val = num.to_int::<i32>()?;
-        assert_eq!(314, val);
-        let neg = num.neg()?;
-        let val = neg.to_int::<i32>()?;
-        assert_eq!(-314, val);
-        let num = num.shift(5)?;
-        let val = num.to_int::<i32>()?;
-        assert_eq!(31415927, val);
-        let neg = num.neg()?;
-        let val = neg.to_int::<i32>()?;
-        assert_eq!(-31415927, val);
-
-        Ok(())
+impl std::fmt::Debug for Number<'_> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.to_string("TM") {
+            Ok(txt)  => fmt.write_fmt(format_args!("Number({})", txt)),
+            Err(err) => fmt.write_fmt(format_args!("Number({})", err))
+        }
     }
 }

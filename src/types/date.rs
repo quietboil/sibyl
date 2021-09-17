@@ -1,5 +1,7 @@
 //! The Oracle DATE which represents the year, month, day, hour, minute, and second of the date.
 
+mod tosql;
+
 use crate::*;
 use super::*;
 use libc::c_void;
@@ -100,6 +102,7 @@ extern "C" {
 }
 
 /// C mapping of the Oracle DATE type (SQLT_ODT)
+#[derive(Debug)]
 #[repr(C)]
 pub struct OCIDate {
     year: i16, // gregorian year: range is -4712 <= year <= 9999
@@ -110,9 +113,9 @@ pub struct OCIDate {
     sec:   u8  // seconds: range is 0 <= seconds <= 59
 }
 
+/// Returns unitinialized date to be used as a row's column buffer or an output variable
 pub(crate) fn new() -> OCIDate {
     let date = mem::MaybeUninit::<OCIDate>::uninit();
-    // Return unitinialized to be used as a row's column buffer
     unsafe { date.assume_init() }
 }
 
@@ -136,41 +139,113 @@ pub(crate) fn from_date<'a>(from: &OCIDate, env: &'a dyn UsrEnv) -> Result<Date<
     catch!{env.err_ptr() =>
         OCIDateAssign(env.err_ptr(), from as *const OCIDate, date.as_mut_ptr())
     }
-    Ok( Date { env, date: unsafe { date.assume_init() } } )
+    let date = unsafe { date.assume_init() };
+    Ok( Date { env, date } )
 }
 
+// fn check_date(date: &OCIDate, env: & dyn UsrEnv) -> Result<()> {
+//     let mut res = 0;
+//     catch!{env.err_ptr() =>
+//         OCIDateCheck(env.err_ptr(), date, &mut res)
+//     };
+//     if res == 0 {
+//         Ok(())
+//     } else {
+//         let mut msg = String::with_capacity(1024);
+//         if (res & 0x0001) != 0 { msg.push_str("Bad day");               res &= !0x0001; }
+//         if (res & 0x0002) != 0 { msg.push_str("Day below valid. ");     res &= !0x0002; }
+//         if (res & 0x0004) != 0 { msg.push_str("Bad month. ");           res &= !0x0004; }
+//         if (res & 0x0008) != 0 { msg.push_str("Month below valid. ");   res &= !0x0008; }
+//         if (res & 0x0010) != 0 { msg.push_str("Bad year. ");            res &= !0x0010; }
+//         if (res & 0x0020) != 0 { msg.push_str("Year below valid. ");    res &= !0x0020; }
+//         if (res & 0x0040) != 0 { msg.push_str("Bad hour. ");            res &= !0x0040; }
+//         if (res & 0x0080) != 0 { msg.push_str("Hour below valid. ");    res &= !0x0080; }
+//         if (res & 0x0100) != 0 { msg.push_str("Bad min. ");             res &= !0x0100; }
+//         if (res & 0x0200) != 0 { msg.push_str("Min below valid. ");     res &= !0x0200; }
+//         if (res & 0x0400) != 0 { msg.push_str("Bad sec. ");             res &= !0x0400; }
+//         if (res & 0x0800) != 0 { msg.push_str("Sec below valid. ");     res &= !0x0800; }
+//         if (res & 0x1000) != 0 { msg.push_str("1582 missing day. ");    res &= !0x1000; }
+//         if (res & 0x2000) != 0 { msg.push_str("Year zero. ");           res &= !0x2000; }
+//         if (res & 0x8000) != 0 { msg.push_str("Bad format. ");          res &= !0x8000; }
+//         if res != 0 { msg.push_str(&format!("And {:x}", res)); }
+//         Err(Error::new(&msg))
+//     }
+// }
 
 /// Represents Oracle DATE
 pub struct Date<'e> {
-    env: &'e dyn UsrEnv,
     date: OCIDate,
+    env: &'e dyn UsrEnv,
+}
+
+impl Date<'_> {
+    pub(crate) fn as_ptr(&self) -> *const OCIDate {
+        &self.date
+    }
+
+    pub(crate) fn as_mut_ptr(&mut self) -> *mut OCIDate {
+        &mut self.date
+    }
 }
 
 impl<'e> Date<'e> {
-    /// Constructs new date
-    pub fn new(year: i16, month: u8, day: u8, env: &'e dyn UsrEnv) -> Self {
-        Self { env, date: OCIDate { year, month, day, hour: 0, min: 0, sec: 0 } }
+
+    /// Returns unitinialized (and invalid) date to be used as an output variable
+    pub fn new(env: &'e dyn UsrEnv) -> Self {
+        Self { env, date: new() }
     }
 
-    /// Constructs new date with time
-    pub fn with_time(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, env: &'e dyn UsrEnv) -> Self {
-        Self { env, date: OCIDate { year, month, day, hour, min, sec } }
+    /**
+        Constructs a new date.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let date = Date::with_date(1969, 7, 16, &env)?;
+
+        assert_eq!(date.get_date(), (1969, 7, 16));
+        assert_eq!(date.get_time(), (0, 0, 0));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn with_date(year: i16, month: u8, day: u8, env: &'e dyn UsrEnv) -> Result<Self> {
+        let date = OCIDate { year, month, day, hour: 0, min: 0, sec: 0 };
+        from_date(&date, env)
+    }
+
+    /**
+        Constructs new date with time.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let date = Date::with_datetime(1969, 7, 24, 16, 50, 35, &env)?;
+
+        assert_eq!(date.get_date(), (1969, 7, 24));
+        assert_eq!(date.get_time(), (16, 50, 35));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn with_datetime(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, env: &'e dyn UsrEnv) -> Result<Self> {
+        let date = OCIDate { year, month, day, hour, min, sec };
+        from_date(&date, env)
     }
 
     /**
         Converts a character string to a date type according to the specified format.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Date };
         let env = oracle::env()?;
-        let date = oracle::Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
-        let (y, m, d) = date.get_date();
 
-        assert_eq!(1776, y);
-        assert_eq!(   7, m);
-        assert_eq!(   4, d);
+        let date = Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
+
+        assert_eq!(date.get_date(), (1776, 7, 4));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -185,21 +260,22 @@ impl<'e> Date<'e> {
                 date.as_mut_ptr()
             )
         }
-        Ok( Self { env, date: unsafe { date.assume_init() } } )
+        let date = unsafe { date.assume_init() };
+        Ok( Self { env, date } )
     }
 
     /**
         Constructs new date from the client's system clock.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Date };
         let env = oracle::env()?;
-        let date = oracle::Date::from_sysdate(&env)?;
-        let (y, _m, _d) = date.get_date();
 
-        assert!(2019 <= y);
+        let date = Date::from_sysdate(&env)?;
+        let (year, _month, _day) = date.get_date();
+
+        assert!(year >= 2021);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -208,58 +284,164 @@ impl<'e> Date<'e> {
         catch!{env.err_ptr() =>
             OCIDateSysDate(env.err_ptr(), date.as_mut_ptr())
         }
-        Ok( Self { env, date: unsafe { date.assume_init() } } )
+        let date = unsafe { date.assume_init() };
+        Ok( Self { env, date } )
     }
 
-    /// Performs a date assignment
-    pub fn from_date(from: &Date, env: &'e dyn UsrEnv) -> Result<Self> {
-        from_date(&from.date, env)
+    /**
+        Performs a date assignment
+
+        # Example
+        ```
+        use std::cmp::Ordering;
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let src = Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
+        let dst = Date::from_date(&src)?;
+
+        assert_eq!(dst.get_date(), (1776, 7, 4));
+        assert_eq!(dst.compare(&src)?, Ordering::Equal);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn from_date(from: &'e Date) -> Result<Self> {
+        from_date(&from.date, from.env)
     }
 
-    pub(crate) fn as_ptr(&self) -> *const OCIDate {
-        &self.date
-    }
+    /**
+        Gets the year, month, and day stored in an Oracle date.
 
-    pub(crate) fn as_mut_ptr(&mut self) -> *mut OCIDate {
-        &mut self.date
-    }
+        # Example
+        ```
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
 
-    /// Gets the year, month, and day stored in an Oracle date.
+        let date = Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
+        let (year, month, day) = date.get_date();
+
+        assert_eq!((year, month, day), (1776, 7, 4));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn get_date(&self) -> (i16, u8, u8) {
         (self.date.year, self.date.month, self.date.day)
     }
 
-    /// Changes the date.
-    pub fn set_date(&mut self, year: i16, month: u8, day: u8) {
-        self.date.year  = year;
-        self.date.month = month;
-        self.date.day   = day;
+    /**
+        Changes the date leaving the time intact.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let mut date = Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
+        assert_eq!(date.get_date(), (1776, 7, 4));
+
+        date.set_date(1787, 9, 17)?;
+        assert_eq!(date.get_date(), (1787, 9, 17));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn set_date(&mut self, year: i16, month: u8, day: u8) -> Result<()> {
+        let src = Self::with_datetime(year, month, day, self.date.hour, self.date.min, self.date.sec, self.env)?;
+        self.date = src.date;
+        Ok(())
     }
 
-    /// Gets the time stored in an Oracle date
+    /**
+        Gets the time stored in an Oracle date.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let date = Date::with_datetime(1969, 7, 24, 16, 50, 35, &env)?;
+        let (hour, min, sec) = date.get_time();
+
+        assert_eq!((hour, min, sec), (16, 50, 35));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn get_time(&self) -> (u8, u8, u8) {
         (self.date.hour, self.date.min, self.date.sec)
     }
 
-    /// Changes the time
-    pub fn set_time(&mut self, hour: u8, min: u8, sec: u8) {
-        self.date.hour = hour;
-        self.date.min  = min;
-        self.date.sec  = sec;
+    /**
+        Changes the time leaving the date intact.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let mut date = Date::with_date(1969, 7, 16, &env)?;
+        date.set_time(13, 32, 0)?;
+
+        assert_eq!(date.get_date(), (1969, 7, 16));
+        assert_eq!(date.get_time(), (13, 32, 0));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn set_time(&mut self, hour: u8, min: u8, sec: u8) -> Result<()>{
+        let src = Self::with_datetime(self.date.year, self.date.month, self.date.day, hour, min, sec, self.env)?;
+        self.date = src.date;
+        Ok(())
+    }
+
+    /**
+        Retrieves the year, month, day, hours, minutes and seconds from an Oracle date.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let date = Date::with_datetime(1969, 7, 24, 16, 50, 35, &env)?;
+
+        assert_eq!(date.get_date_and_time(), (1969, 7, 24, 16, 50, 35));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn get_date_and_time(&self) -> (i16, u8, u8, u8, u8, u8) {
+        (self.date.year, self.date.month, self.date.day, self.date.hour, self.date.min, self.date.sec)
+    }
+
+    /**
+        Changes the date and time.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let mut date = Date::with_datetime(1969, 7, 16, 13, 32,  0, &env)?;
+        date.set_date_and_time(1969, 7, 24, 16, 50, 35)?;
+
+        assert_eq!(date.get_date_and_time(), (1969, 7, 24, 16, 50, 35));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn set_date_and_time(&mut self, year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8) -> Result<()> {
+        let src = Self::with_datetime(year, month, day, hour, min, sec, self.env)?;
+        self.date = src.date;
+        Ok(())
     }
 
     /**
         Returns a string according to the specified format.
 
         Refer to Oracle [Format Models](https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/Format-Models.html)
-        for a description of format.
+        for the description of format.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Date };
         let env = oracle::env()?;
-        let date = oracle::Date::new(-1952, 2, 25, &env);
+
+        let date = Date::with_date(-1952, 2, 25, &env)?;
         let res = date.to_string("FMMonth DD, YYYY BC")?;
 
         assert_eq!("February 25, 1952 BC", res);
@@ -273,28 +455,26 @@ impl<'e> Date<'e> {
     /**
         Adds or subtracts days from this date
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Date };
         let env = oracle::env()?;
-        let start = oracle::Date::new(1969, 7, 16, &env);
-        let end = start.add_days(8)?;
-        let (y,m,d) = end.get_date();
 
-        assert_eq!(1969, y);
-        assert_eq!(   7, m);
-        assert_eq!(  24, d);
+        let start = Date::with_date(1969, 7, 16, &env)?;
+        let end = start.add_days(8)?;
+
+        assert_eq!(end.get_date(), (1969, 7, 24));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn add_days(&self, num: i32) -> Result<Date> {
+    pub fn add_days(&self, num: i32) -> Result<Self> {
         let env = self.env;
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
         catch!{env.err_ptr() =>
             OCIDateAddDays(env.err_ptr(), self.as_ptr(), num, date.as_mut_ptr())
         }
-        Ok( Self { env, date: unsafe { date.assume_init() } } )
+        let date = unsafe { date.assume_init() };
+        Ok( Self { env, date } )
     }
 
     /**
@@ -305,45 +485,58 @@ impl<'e> Date<'e> {
         For example, Feb. 28 + 1 month = March 31, and November 30 – 3 months = August 31.
         Otherwise the result date has the same day component as date.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Date };
         let env = oracle::env()?;
-        let date = oracle::Date::new(2019, 12, 31, &env);
-        let date = date.add_months(2)?;
-        let (y,m,d) = date.get_date();
 
-        assert_eq!(2020, y);
-        assert_eq!(   2, m);
-        assert_eq!(  29, d);
+        let date = Date::with_date(2019, 12, 31, &env)?;
 
         let date = date.add_months(2)?;
-        let (y,m,d) = date.get_date();
+        assert_eq!(date.get_date(), (2020, 2, 29));
 
-        assert_eq!(2020, y);
-        assert_eq!(   4, m);
-        assert_eq!(  30, d);
+        let date = date.add_months(2)?;
+        assert_eq!(date.get_date(), (2020, 4, 30));
+
+        let date = date.add_months(-1)?;
+        assert_eq!(date.get_date(), (2020, 3, 31));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn add_months(&self, num: i32) -> Result<Date> {
+    pub fn add_months(&self, num: i32) -> Result<Self> {
         let env = self.env;
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
         catch!{env.err_ptr() =>
             OCIDateAddMonths(env.err_ptr(), self.as_ptr(), num, date.as_mut_ptr())
         }
-        Ok( Self { env, date: unsafe { date.assume_init() } } )
+        let date = unsafe { date.assume_init() };
+        Ok( Self { env, date } )
     }
 
-    /// Compares this date with the `other` date.
+    /**
+        Compares this date with the `other` date.
+
+        # Example
+        ```
+        use std::cmp::Ordering;
+        use sibyl::{ self as oracle, Date };
+        let env = oracle::env()?;
+
+        let start = Date::with_datetime(1969, 7, 16, 13, 32, 0, &env)?;
+        let end = Date::with_datetime(1969, 7, 24, 16, 50, 35, &env)?;
+
+        assert_eq!(start.compare(&end)?, Ordering::Less);
+        assert_eq!(end.compare(&start)?, Ordering::Greater);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn compare(&self, other: &Date) -> Result<Ordering> {
         let mut res = mem::MaybeUninit::<i32>::uninit();
         catch!{self.env.err_ptr() =>
             OCIDateCompare(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), res.as_mut_ptr())
         }
         let res = unsafe { res.assume_init() };
-        let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
+        let ordering = if res == 0 { Ordering::Equal } else if res < 0 { Ordering::Less } else { Ordering::Greater };
         Ok( ordering )
     }
 
@@ -352,16 +545,16 @@ impl<'e> Date<'e> {
 
         When the number of days between date1 and date2 is computed, the time is ignored.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Date };
         let env = oracle::env()?;
-        let pearl_harbor = oracle::Date::new(1941, 12, 7, &env);
-        let normandy_landings = oracle::Date::new(1944, 6, 6, &env);
+
+        let pearl_harbor = Date::with_date(1941, 12, 7, &env)?;
+        let normandy_landings = Date::with_date(1944, 6, 6, &env)?;
         let days_between = normandy_landings.days_from(&pearl_harbor)?;
 
-        assert_eq!(912, days_between);
+        assert_eq!(days_between, 912);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -376,48 +569,45 @@ impl<'e> Date<'e> {
     /**
         Gets the date of the last day of the month in a specified date.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Date };
         let env = oracle::env()?;
-        let date = oracle::Date::new(2020, 2, 9, &env);
-        let date = date.month_last_day()?;
-        let (y,m,d) = date.get_date();
 
-        assert_eq!(2020, y);
-        assert_eq!(   2, m);
-        assert_eq!(  29, d);
+        let date = Date::with_date(2020, 2, 9, &env)?;
+        let last_day_of_the_month = date.month_last_day()?;
+
+        assert_eq!(last_day_of_the_month.get_date(), (2020, 2, 29));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn month_last_day(&self) -> Result<Date> {
+    pub fn month_last_day(&self) -> Result<Self> {
         let env = self.env;
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
         catch!{env.err_ptr() =>
             OCIDateLastDay(env.err_ptr(), self.as_ptr(), date.as_mut_ptr())
         }
-        Ok( Self { env, date: unsafe { date.assume_init() } } )
+        let date = unsafe { date.assume_init() };
+        Ok( Self { env, date } )
     }
 
     /**
         Gets the date of the next day of the week after a given date.
 
-        ## Example
+        # Example
         The following code example shows how to get the date of the next Monday after April 18, 1996 (a Thursday).
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Date };
         let env = oracle::env()?;
-        let mar28_1996 = oracle::Date::from_string("28-MAR-1996", "DD-MON-YYYY", &env)?;
-        let next_mon = mar28_1996.next_week_day("MONDAY")?;
-        let next_mon = next_mon.to_string("fmDD-Mon-YYYY")?;
 
-        assert_eq!("1-Apr-1996", next_mon);
+        let mar28_1996 = Date::from_string("28-MAR-1996", "DD-MON-YYYY", &env)?;
+        let next_monday = mar28_1996.next_week_day("MONDAY")?;
+
+        assert_eq!(next_monday.to_string("fmDD-Mon-YYYY")?, "1-Apr-1996");
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn next_week_day(&self, weekday: &str) -> Result<Date> {
+    pub fn next_week_day(&self, weekday: &str) -> Result<Self> {
         let env = self.env;
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
         catch!{env.err_ptr() =>
@@ -427,24 +617,13 @@ impl<'e> Date<'e> {
                 date.as_mut_ptr()
             )
         }
-        Ok( Self { env, date: unsafe { date.assume_init() } } )
+        let date = unsafe { date.assume_init() };
+        Ok( Self { env, date } )
     }
 }
 
-impl ToSql for Date<'_> {
-    fn to_sql(&self) -> (u16, *const c_void, usize) {
-        ( SQLT_ODT, self.as_ptr() as *const c_void, std::mem::size_of::<OCIDate>() )
-    }
-}
-
-impl ToSqlOut for Date<'_> {
-    fn to_sql_output(&mut self, _col_size: usize) -> (u16, *mut c_void, usize) {
-        (SQLT_ODT, self.as_mut_ptr() as *mut c_void, std::mem::size_of::<OCIDate>())
-    }
-}
-
-impl ToSqlOut for OCIDate {
-    fn to_sql_output(&mut self, _col_size: usize) -> (u16, *mut c_void, usize) {
-        (SQLT_ODT, self as *mut OCIDate as *mut c_void, std::mem::size_of::<OCIDate>())
+impl<'e> std::fmt::Debug for Date<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.date.fmt(f)
     }
 }

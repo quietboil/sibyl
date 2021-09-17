@@ -1,5 +1,7 @@
 //! The Oracle time interval data types: INTERVAL YEAR TO MONTH and INTERVAL DAY TO SECOND
 
+mod tosql;
+
 use crate::*;
 use crate::desc::{ Descriptor, DescriptorType };
 use super::*;
@@ -193,7 +195,6 @@ pub(crate) fn from_interval<'a,T>(int: &Descriptor<T>, usrenv: &'a dyn UsrEnv) -
     Ok( Interval { usrenv, interval } )
 }
 
-
 pub struct Interval<'e, T: DescriptorType<OCIType=OCIInterval>> {
     interval: Descriptor<T>,
     usrenv: &'e dyn UsrEnv,
@@ -211,15 +212,14 @@ impl<'e, T> Interval<'e, T>
     /**
         When given an interval string, returns the interval represented by the string.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS };
         let env = oracle::env()?;
-        let int = oracle::IntervalDS::from_string("3 11:45:28.150000000", &env)?;
-        let (d,h,m,s,n) = int.get_duration()?;
 
-        assert_eq!((3,11,45,28,150000000), (d,h,m,s,n));
+        let int = IntervalDS::from_string("3 11:45:28.150000000", &env)?;
+
+        assert_eq!(int.get_duration()?, (3,11,45,28,150000000));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -240,28 +240,27 @@ impl<'e, T> Interval<'e, T>
 
         `num` is in years for YEAR TO MONTH intervals and in days for DAY TO SECOND intervals
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(5.5, &env)?;
-        let int = oracle::IntervalDS::from_number(&num, &env)?;
-        let (d,h,m,s,n) = int.get_duration()?;
 
-        assert_eq!((5,12,0,0,0), (d,h,m,s,n));
+        let num = Number::from_real(5.5, &env)?;
+        let int = IntervalDS::from_number(&num)?;
+
+        assert_eq!(int.get_duration()?, (5,12,0,0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_number(num: &Number, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+    pub fn from_number(num: &'e Number) -> Result<Self> {
+        let interval = Descriptor::new(num.env.env_ptr())?;
+        catch!{num.env.err_ptr() =>
             OCIIntervalFromNumber(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                num.env.as_ptr(), num.env.err_ptr(),
                 interval.get(), num.as_ptr()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { usrenv: num.env, interval } )
     }
 
     /// Changes an interval context.
@@ -280,21 +279,20 @@ impl<'e, T> Interval<'e, T>
     /**
         Copies one interval to another.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS };
         let env = oracle::env()?;
-        let int = oracle::IntervalDS::from_string("3 11:45:28.150000000", &env)?;
-        let cpy = oracle::IntervalDS::from_interval(&int, &env)?;
-        let (d,h,m,s,n) = cpy.get_duration()?;
 
-        assert_eq!((3,11,45,28,150000000), (d,h,m,s,n));
+        let int = IntervalDS::from_string("3 11:45:28.150000000", &env)?;
+        let cpy = IntervalDS::from_interval(&int)?;
+
+        assert_eq!(cpy.get_duration()?, (3,11,45,28,150000000));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_interval(other: &Self, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        from_interval(&other.interval, usrenv)
+    pub fn from_interval(other: &Self) -> Result<Self> {
+        from_interval(&other.interval, other.usrenv)
     }
 
     /**
@@ -303,24 +301,23 @@ impl<'e, T> Interval<'e, T>
         Fractional portions of the interval are included in the Oracle NUMBER produced.
         Excess precision is truncated.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS };
         let env = oracle::env()?;
-        let int = oracle::IntervalDS::from_string("3 12:00:00.000000000", &env)?;
-        let num = int.to_number(&env)?;
-        let val = num.to_real::<f64>()?;
 
-        assert_eq!(3.5, val);
+        let int = IntervalDS::from_string("3 12:00:00.000000000", &env)?;
+        let num = int.to_number()?;
+
+        assert_eq!(num.to_real::<f64>()?, 3.5);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn to_number(&self, usrenv: &'e dyn UsrEnv) -> Result<Number> {
-        let mut num = Number::new(usrenv);
-        catch!{usrenv.err_ptr() =>
+    pub fn to_number(&self) -> Result<Number> {
+        let mut num = Number::new(self.usrenv);
+        catch!{self.usrenv.err_ptr() =>
             OCIIntervalToNumber(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                self.usrenv.as_ptr(), self.usrenv.err_ptr(),
                 self.as_ptr(), num.as_mut_ptr()
             )
         }
@@ -337,16 +334,15 @@ impl<'e, T> Interval<'e, T>
         and as 'seconds' or 'minutes[:seconds]' or 'hours[:minutes[:seconds]]' or 'days[ hours[:minutes[:seconds]]]'
         for INTERVAL DAY TO SECOND intervals (where optional fields are surrounded by brackets)
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS, Number };
         let env = oracle::env()?;
-        let num = oracle::Number::from_real(3.1415927, &env)?;
-        let int = oracle::IntervalDS::from_number(&num, &env)?;
-        let txt = int.to_string(1, 3)?;
 
-        assert_eq!("+3 03:23:53.609", txt);
+        let num = Number::from_real(3.1415927, &env)?;
+        let int = IntervalDS::from_number(&num)?;
+
+        assert_eq!(int.to_string(1, 3)?, "+3 03:23:53.609");
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -357,25 +353,20 @@ impl<'e, T> Interval<'e, T>
     /**
         Compares two intervals.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS };
+        use std::cmp::Ordering;
         let env = oracle::env()?;
-        let i1 = oracle::IntervalDS::from_string("3 12:00:00.000000001", &env)?;
-        let i2 = oracle::IntervalDS::from_string("3 12:00:00.000000002", &env)?;
-        let cmp = i1.compare(&i2)?;
 
-        assert_eq!(std::cmp::Ordering::Less, cmp);
+        let i1 = IntervalDS::from_string("3 12:00:00.000000001", &env)?;
+        let i2 = IntervalDS::from_string("3 12:00:00.000000002", &env)?;
 
-        let cmp = i2.compare(&i1)?;
+        assert_eq!(i1.compare(&i2)?, Ordering::Less);
+        assert_eq!(i2.compare(&i1)?, Ordering::Greater);
 
-        assert_eq!(std::cmp::Ordering::Greater, cmp);
-
-        let i3 = oracle::IntervalDS::from_interval(&i2, &env)?;
-        let cmp = i2.compare(&i3)?;
-
-        assert_eq!(std::cmp::Ordering::Equal, cmp);
+        let i3 = IntervalDS::from_interval(&i2)?;
+        assert_eq!(i2.compare(&i3)?, Ordering::Equal);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -395,29 +386,27 @@ impl<'e, T> Interval<'e, T>
     /**
         Adds two intervals to produce a resulting interval.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS };
         let env = oracle::env()?;
-        let i1 = oracle::IntervalDS::from_string("+0 02:13:40.000000000", &env)?;
-        let i2 = oracle::IntervalDS::from_string("+0 00:46:20.000000000", &env)?;
-        let res = i1.add(&i2)?;
-        let (d,h,m,s,n) = res.get_duration()?;
 
-        assert_eq!((0,3,0,0,0), (d,h,m,s,n));
+        let i1 = IntervalDS::from_string("+0 02:13:40.000000000", &env)?;
+        let i2 = IntervalDS::from_string("+0 00:46:20.000000000", &env)?;
+        let res = i1.add(&i2)?;
+
+        assert_eq!(res.get_duration()?, (0,3,0,0,0));
 
         let i3 = oracle::IntervalDS::from_string("-0 00:13:40.000000000", &env)?;
         let res = i1.add(&i3)?;
-        let (d,h,m,s,n) = res.get_duration()?;
 
-        assert_eq!((0,2,0,0,0), (d,h,m,s,n));
+        assert_eq!(res.get_duration()?, (0,2,0,0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
     pub fn add(&self, other: &Self) -> Result<Self> {
         let usrenv = self.usrenv;
-        let interval = Descriptor::new(self.usrenv.env_ptr())?;
+        let interval = Descriptor::new(usrenv.env_ptr())?;
         catch!{usrenv.err_ptr() =>
             OCIIntervalAdd(
                 usrenv.as_ptr(), usrenv.err_ptr(),
@@ -431,23 +420,19 @@ impl<'e, T> Interval<'e, T>
     /**
         Subtracts an interval from this interval and returns the difference as a new interval.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS };
         let env = oracle::env()?;
-        let i1 = oracle::IntervalDS::from_string("+0 02:13:40.000000000", &env)?;
-        let i2 = oracle::IntervalDS::from_string("+0 01:13:40.000000000", &env)?;
+
+        let i1 = IntervalDS::from_string("+0 02:13:40.000000000", &env)?;
+        let i2 = IntervalDS::from_string("+0 01:13:40.000000000", &env)?;
         let res = i1.sub(&i2)?;
-        let (d,h,m,s,n) = res.get_duration()?;
+        assert_eq!(res.get_duration()?, (0,1,0,0,0));
 
-        assert_eq!((0,1,0,0,0), (d,h,m,s,n));
-
-        let i3 = oracle::IntervalDS::from_string("-0 01:46:20.000000000", &env)?;
+        let i3 = IntervalDS::from_string("-0 01:46:20.000000000", &env)?;
         let res = i1.sub(&i3)?;
-        let (d,h,m,s,n) = res.get_duration()?;
-
-        assert_eq!((0,4,0,0,0), (d,h,m,s,n));
+        assert_eq!(res.get_duration()?, (0,4,0,0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -467,17 +452,16 @@ impl<'e, T> Interval<'e, T>
     /**
         Multiplies an interval by an Oracle NUMBER to produce an interval.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS, Number };
         let env = oracle::env()?;
-        let int = oracle::IntervalDS::from_string("+0 00:10:15.000000000", &env)?;
-        let num = oracle::Number::from_int(4, &env);
-        let res = int.mul(&num)?;
-        let (d,h,m,s,n) = res.get_duration()?;
 
-        assert_eq!((0,0,41,0,0), (d,h,m,s,n));
+        let int = IntervalDS::from_string("+0 00:10:15.000000000", &env)?;
+        let num = Number::from_int(4, &env)?;
+        let res = int.mul(&num)?;
+
+        assert_eq!(res.get_duration()?, (0,0,41,0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -497,17 +481,16 @@ impl<'e, T> Interval<'e, T>
     /**
         Divides an interval by an Oracle NUMBER to produce an interval.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS, Number };
         let env = oracle::env()?;
-        let int = oracle::IntervalDS::from_string("+0 00:50:15.000000000", &env)?;
-        let num = oracle::Number::from_int(5, &env);
-        let res = int.div(&num)?;
-        let (d,h,m,s,n) = res.get_duration()?;
 
-        assert_eq!((0,0,10,3,0), (d,h,m,s,n));
+        let int = IntervalDS::from_string("+0 00:50:15.000000000", &env)?;
+        let num = Number::from_int(5, &env)?;
+        let res = int.div(&num)?;
+
+        assert_eq!(res.get_duration()?, (0,0,10,3,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -533,15 +516,14 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
 
         The input string must be of the form [+/-]TZH:TZM or 'TZR [TZD]'
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, IntervalDS };
         let env = oracle::env()?;
-        let int = oracle::IntervalDS::from_tz("EST", &env)?;
-        let txt = int.to_string(1, 1)?;
 
-        assert_eq!("-0 05:00:00.0", txt);
+        let int = IntervalDS::from_tz("EST", &env)?;
+
+        assert_eq!(int.to_string(1, 1)?, "-0 05:00:00.0");
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -557,8 +539,22 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
         Ok( Self { usrenv, interval } )
     }
 
-    /// Returns new interval with a preset duration
-    pub fn from_duration(dd: i32, hh: i32, mi: i32, ss: i32, ns: i32, usrenv: &'e dyn UsrEnv) -> Result<Self> {
+    /**
+        Returns new interval with a preset duration.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, IntervalDS };
+        let env = oracle::env()?;
+
+        // 3 days, 14 hours, 15 minutes, 26 seconds, 535897932 nanoseconds
+        let int = IntervalDS::with_duration(3, 14, 15, 26, 535_897_932, &env)?;
+
+        assert_eq!(int.get_duration()?, (3, 14, 15, 26, 535897932));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn with_duration(dd: i32, hh: i32, mi: i32, ss: i32, ns: i32, usrenv: &'e dyn UsrEnv) -> Result<Self> {
         let interval = Descriptor::new(usrenv.env_ptr())?;
         catch!{usrenv.err_ptr() =>
             OCIIntervalSetDaySecond(
@@ -570,7 +566,20 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
         Ok( Self { usrenv, interval } )
     }
 
-    /// Gets values of day, hour, minute, second, and nano seconds from an interval.
+    /**
+        Gets values of day, hour, minute, second, and nanoseconds from an interval.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, IntervalDS };
+        let env = oracle::env()?;
+
+        let int = IntervalDS::from_tz("EST", &env)?;
+
+        assert_eq!(int.get_duration()?, (0, -5, 0, 0, 0));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn get_duration(&self) -> Result<(i32,i32,i32,i32,i32)> {
         let mut day  = mem::MaybeUninit::<i32>::uninit();
         let mut hour = mem::MaybeUninit::<i32>::uninit();
@@ -587,7 +596,22 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
         Ok( unsafe { (day.assume_init(), hour.assume_init(), min.assume_init(), sec.assume_init(), fsec.assume_init()) } )
     }
 
-    /// Sets day, hour, minute, second, and nanosecond in an interval.
+    /**
+        Sets day, hour, minute, second, and nanosecond in an interval.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, IntervalDS };
+        let env = oracle::env()?;
+
+        let mut int = IntervalDS::with_duration(3, 14, 15, 26, 535_897_932, &env)?;
+        assert_eq!(int.get_duration()?, (3, 14, 15, 26, 535897932));
+
+        int.set_duration(0, -5, 0, 0, 0)?;
+        assert_eq!(int.get_duration()?, (0, -5, 0, 0, 0));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn set_duration(&mut self, dd: i32, hh: i32, mi: i32, ss: i32, ns: i32) -> Result<()> {
         catch!{self.usrenv.err_ptr() =>
             OCIIntervalSetDaySecond(
@@ -601,8 +625,22 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
 }
 
 impl<'e> Interval<'e, OCIIntervalYearToMonth> {
-    /// Returns new interval with a preset duration
-    pub fn from_duration(year: i32, month: i32, usrenv: &'e dyn UsrEnv) -> Result<Self> {
+    /**
+        Returns new interval with a preset duration.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, IntervalYM };
+        let env = oracle::env()?;
+
+        // 3 years, 1 month
+        let int = IntervalYM::with_duration(3, 1, &env)?;
+
+        assert_eq!(int.get_duration()?, (3, 1));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn with_duration(year: i32, month: i32, usrenv: &'e dyn UsrEnv) -> Result<Self> {
         let interval = Descriptor::new(usrenv.env_ptr())?;
         catch!{usrenv.err_ptr() =>
             OCIIntervalSetYearMonth(
@@ -614,7 +652,21 @@ impl<'e> Interval<'e, OCIIntervalYearToMonth> {
         Ok( Self { usrenv, interval } )
     }
 
-    /// Gets values of day, hour, minute, second, and nano seconds from an interval.
+    /**
+        Gets values of year and month from an interval.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, IntervalYM };
+        let env = oracle::env()?;
+
+        let int = IntervalYM::with_duration(3, 1, &env)?;
+        let (year, month) = int.get_duration()?;
+
+        assert_eq!((year, month), (3, 1));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn get_duration(&self) -> Result<(i32,i32)> {
         let mut year  = mem::MaybeUninit::<i32>::uninit();
         let mut month = mem::MaybeUninit::<i32>::uninit();
@@ -628,7 +680,22 @@ impl<'e> Interval<'e, OCIIntervalYearToMonth> {
         Ok( unsafe { (year.assume_init(), month.assume_init()) } )
     }
 
-    /// Sets year and month in an interval.
+    /** 
+        Sets year and month in an interval.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, IntervalYM };
+        let env = oracle::env()?;
+
+        let mut int = IntervalYM::with_duration(3, 1, &env)?;
+        assert_eq!(int.get_duration()?, (3, 1));
+
+        int.set_duration(0, 17)?;
+        assert_eq!(int.get_duration()?, (0, 17));
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
     pub fn set_duration(&mut self, year: i32, month: i32) -> Result<()> {
         catch!{self.usrenv.err_ptr() =>
             OCIIntervalSetYearMonth(
@@ -641,33 +708,20 @@ impl<'e> Interval<'e, OCIIntervalYearToMonth> {
     }
 }
 
-macro_rules! impl_int_to_sql {
-    ($ts:ty => $sqlt:ident) => {
-        impl ToSql for Interval<'_, $ts> {
-            fn to_sql(&self) -> (u16, *const c_void, usize) {
-                ( $sqlt, self.interval.as_ptr() as *const c_void, std::mem::size_of::<*mut OCIInterval>() )
-            }
+impl std::fmt::Debug for Interval<'_, OCIIntervalDayToSecond> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.get_duration() {
+            Ok(duration) => fmt.write_fmt(format_args!("IntervalDS {:?}", duration)),
+            Err(err)     => fmt.write_fmt(format_args!("IntervalDS {:?}", err)),
         }
-    };
+    }
 }
 
-impl_int_to_sql!{ OCIIntervalYearToMonth => SQLT_INTERVAL_YM }
-impl_int_to_sql!{ OCIIntervalDayToSecond => SQLT_INTERVAL_DS }
-
-macro_rules! impl_int_to_sql_output {
-    ($ts:ty => $sqlt:ident) => {
-        impl ToSqlOut for Descriptor<$ts> {
-            fn to_sql_output(&mut self, _col_size: usize) -> (u16, *mut c_void, usize) {
-                ($sqlt, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCIInterval>())
-            }
+impl std::fmt::Debug for Interval<'_, OCIIntervalYearToMonth> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.get_duration() {
+            Ok(duration) => fmt.write_fmt(format_args!("IntervalDS {:?}", duration)),
+            Err(err)     => fmt.write_fmt(format_args!("IntervalDS {:?}", err)),
         }
-        impl ToSqlOut for Interval<'_, $ts> {
-            fn to_sql_output(&mut self, col_size: usize) -> (u16, *mut c_void, usize) {
-                self.interval.to_sql_output(col_size)
-            }
-        }
-    };
+    }
 }
-
-impl_int_to_sql_output!{ OCIIntervalYearToMonth => SQLT_INTERVAL_YM }
-impl_int_to_sql_output!{ OCIIntervalDayToSecond => SQLT_INTERVAL_DS }

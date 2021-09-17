@@ -1,5 +1,7 @@
 //! OCI Raw functions to manipulate variable-length RAW
 
+mod tosql;
+
 use crate::*;
 use super::*;
 use libc::c_void;
@@ -14,6 +16,13 @@ pub(crate) fn new(size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<*
         OCIRawResize(env, err, size as u32, &mut bin)
     }
     Ok( bin )
+}
+
+pub(crate) fn resize(bin: &mut *mut OCIRaw, size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<()> {
+    catch!{err =>
+        OCIRawResize(env, err, size as u32, bin)
+    }
+    Ok(())
 }
 
 pub(crate) fn free(raw: &mut *mut OCIRaw, env: *mut OCIEnv, err: *mut OCIError) {
@@ -34,9 +43,9 @@ pub(crate) fn len(raw: *const OCIRaw, env: *mut OCIEnv) -> usize {
     }
 }
 
-pub(crate) fn as_bytes(raw: *const OCIRaw, usrenv: &dyn UsrEnv) -> &[u8] {
-    let ptr = as_raw_ptr(raw, usrenv.env_ptr());
-    let len = len(raw, usrenv.env_ptr());
+pub(crate) fn as_bytes<'a>(raw: *const OCIRaw, env: *mut OCIEnv) -> &'a [u8] {
+    let ptr = as_raw_ptr(raw, env);
+    let len = len(raw, env);
     unsafe {
         std::slice::from_raw_parts(ptr, len)
     }
@@ -79,7 +88,7 @@ extern "C" {
         env:        *mut OCIEnv,
         err:        *mut OCIError,
         size:       u32,
-        raw:        &*mut OCIRaw
+        raw:        &mut *mut OCIRaw
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-D74E75FA-5985-4DDC-BC25-430B415B8837
@@ -89,7 +98,13 @@ extern "C" {
     ) -> u32;
 }
 
-/// Represents RAW and LONG RAW data types.
+/**
+    Represents RAW and LONG RAW data types.
+
+    The RAW datatype is used for binary data or byte strings that are not to be interpreted by Oracle.
+    The maximum length of a RAW column is 2000 bytes.
+    The LONG RAW datatype is similar to the RAW datatype, except that it stores raw data with a length up to two gigabytes.
+*/
 pub struct Raw<'e> {
     raw: *mut OCIRaw,
     env: &'e dyn Env,
@@ -105,25 +120,16 @@ impl<'e> Raw<'e> {
     /**
         Returns a new Raw constructed with the copy of the `data`
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Raw };
         let env = oracle::env()?;
-        let data: [u8;5] = [1,2,3,4,5];
-        let raw = oracle::Raw::from_bytes(&data, &env)?;
 
-        let size = raw.capacity()?;
-        assert!(5 <= size);
+        let raw = Raw::from_bytes(&[1u8,2,3,4,5], &env)?;
 
-        let len = raw.len();
-        assert_eq!(5, len);
-
-        let raw_data_ptr = raw.as_raw_ptr();
-        assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
-
-        let raw_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
-        assert_eq!(data, raw_data);
+        assert!(raw.capacity()? >= 5);
+        assert_eq!(raw.len(), 5);
+        assert_eq!(raw.as_bytes(), &[1u8,2,3,4,5]);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -138,30 +144,16 @@ impl<'e> Raw<'e> {
     /**
         Returns a new Raw constructed with the copy of the date from the `other` Raw.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Raw };
         let env = oracle::env()?;
-        let data: [u8;5] = [1,2,3,4,5];
-        let src = oracle::Raw::from_bytes(&data, &env)?;
-        let dst = oracle::Raw::from_raw(&src)?;
 
-        let raw_data_ptr = src.as_raw_ptr();
-        assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
+        let src = Raw::from_bytes(&[1u8,2,3,4,5], &env)?;
+        let dst = Raw::from_raw(&src)?;
 
-        let len = src.len();
-        assert_eq!(5, len);
-
-        let src_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
-        let raw_data_ptr = dst.as_raw_ptr();
-        assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
-
-        let len = dst.len();
-        assert_eq!(5, len);
-
-        let dst_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, len as usize) };
-        assert_eq!(dst_data, src_data);
+        assert_eq!(dst.len(), 5);
+        assert_eq!(dst.as_bytes(), &[1u8,2,3,4,5]);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -177,18 +169,15 @@ impl<'e> Raw<'e> {
     /**
         Returns a new Raw with the memory allocated for the raw data.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Raw };
         let env = oracle::env()?;
-        let raw = oracle::Raw::with_capacity(19, &env)?;
 
-        let size = raw.capacity()?;
-        assert!(19 <= size);
+        let raw = Raw::with_capacity(19, &env)?;
 
-        let len = raw.len();
-        assert_eq!(0, len);
+        assert!(raw.capacity()? >= 19);
+        assert_eq!(raw.len(), 0);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -197,46 +186,17 @@ impl<'e> Raw<'e> {
         Ok( Self { env, raw } )
     }
 
-    pub(crate) fn as_ptr(&self) -> *const OCIRaw {
-        self.raw
-    }
-
-    pub(crate) fn as_mut_ptr(&self) -> *mut OCIRaw {
-        self.raw
-    }
-
-    /**
-        Returns the size of the raw data in bytes.
-
-        ## Example
-        ```
-        use sibyl as oracle;
-
-        let env = oracle::env()?;
-        let data: [u8;5] = [1,2,3,4,5];
-        let raw = oracle::Raw::from_bytes(&data, &env)?;
-        let len = raw.len();
-
-        assert_eq!(5, len);
-        # Ok::<(),oracle::Error>(())
-        ```
-    */
-    pub fn len(&self) -> usize {
-        len(self.as_ptr(), self.env.env_ptr())
-    }
-
     /**
         Returns the allocated size of raw memory in bytes
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Raw };
         let env = oracle::env()?;
-        let raw = oracle::Raw::with_capacity(19, &env)?;
-        let size = raw.capacity()?;
 
-        assert!(19 <= size);
+        let raw = Raw::with_capacity(19, &env)?;
+
+        assert!(raw.capacity()? >= 19);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -252,26 +212,22 @@ impl<'e> Raw<'e> {
         Changes the size of the memory of this raw binary in the object cache.
         Previous content is not preserved.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Raw };
         let env = oracle::env()?;
-        let mut bin = oracle::Raw::with_capacity(10, &env)?;
-        let cap = bin.capacity()?;
-        assert!(cap >= 10);
+
+        let mut bin = Raw::with_capacity(10, &env)?;
+        assert!(bin.capacity()? >= 10);
 
         bin.resize(20);
-        let cap = bin.capacity()?;
-        assert!(cap >= 20);
+        assert!(bin.capacity()? >= 20);
 
         bin.resize(0);
-        let cap = bin.capacity()?;
-        assert_eq!(0, cap);
+        assert_eq!(bin.capacity()?, 0);
 
         bin.resize(16);
-        let cap = bin.capacity()?;
-        assert!(cap >= 16);
+        assert!(bin.capacity()? >= 16);
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -282,44 +238,59 @@ impl<'e> Raw<'e> {
         Ok(())
     }
 
+    pub(crate) fn as_ptr(&self) -> *const OCIRaw {
+        self.raw
+    }
+
+    pub(crate) fn as_mut_ptr(&self) -> *mut OCIRaw {
+        self.raw
+    }
+
     /**
-        Returns unsafe pointer to the RAW data
+        Returns the size of the raw data in bytes.
 
-        ## Example
+        # Example
         ```
-        use sibyl as oracle;
-
+        use sibyl::{ self as oracle, Raw };
         let env = oracle::env()?;
-        let data: [u8;5] = [1,2,3,4,5];
-        let raw = oracle::Raw::from_bytes(&data, &env)?;
 
-        let raw_data_ptr = raw.as_raw_ptr();
-        assert!(raw_data_ptr != std::ptr::null_mut::<u8>());
+        let raw = Raw::from_bytes(&[1u8,2,3,4,5], &env)?;
 
-        let raw_data: &[u8] = unsafe { std::slice::from_raw_parts(raw_data_ptr, raw.len() as usize) };
-        assert_eq!(data, raw_data);
+        assert_eq!(raw.len(), 5);
         # Ok::<(),oracle::Error>(())
         ```
     */
-   pub fn as_raw_ptr(&self) -> *mut u8 {
-       as_raw_ptr(self.as_ptr(), self.env.env_ptr())
+    pub fn len(&self) -> usize {
+        len(self.as_ptr(), self.env.env_ptr())
+    }
+
+    /**
+        Returns a byte slice of this Raw’s contents.
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Raw };
+        let env = oracle::env()?;
+
+        let raw = Raw::from_bytes(&[1u8,2,3,4,5], &env)?;
+
+        assert_eq!(raw.as_bytes(), &[1u8,2,3,4,5]);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn as_bytes(&self) -> &[u8] {
+        as_bytes(self.as_ptr(), self.env.env_ptr())
     }
 }
 
-impl ToSql for Raw<'_> {
-    fn to_sql(&self) -> (u16, *const c_void, usize) {
-        ( SQLT_LVB, self.as_ptr() as *const c_void, self.len() + std::mem::size_of::<u32>() )
-    }
-}
-
-impl ToSqlOut for Raw<'_> {
-    fn to_sql_output(&mut self, _col_size: usize) -> (u16, *mut c_void, usize) {
-        (SQLT_LVB, self.as_mut_ptr() as *mut c_void, self.capacity().ok().unwrap_or_default() + std::mem::size_of::<u32>())
-    }
-}
-
-impl ToSqlOut for *mut OCIRaw {
-    fn to_sql_output(&mut self, col_size: usize) -> (u16, *mut c_void, usize) {
-        (SQLT_LVB, *self as *mut c_void, col_size + std::mem::size_of::<u32>())
+impl std::fmt::Debug for Raw<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        const MAX_LEN : usize = 50;
+        let data = self.as_bytes();
+        if data.len() > MAX_LEN {
+            f.write_fmt(format_args!("RAW {:?}...", &data[..MAX_LEN]))
+        } else {
+            f.write_fmt(format_args!("RAW {:?}...", data))
+        }
     }
 }

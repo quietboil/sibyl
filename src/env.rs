@@ -56,9 +56,7 @@ pub struct Environment {
 /**
     A trait for types that provide access to `Environment` handles.
 
-    See: [Encapsulating Lifetime of the Field][1]
-
-    [1]: https://matklad.github.io/2018/05/04/encapsulating-lifetime-of-the-field.html
+    See: [Encapsulating Lifetime of the Field](https://matklad.github.io/2018/05/04/encapsulating-lifetime-of-the-field.html)
 */
 pub trait Env {
     fn env_ptr(&self) -> *mut OCIEnv;
@@ -81,7 +79,7 @@ impl Environment {
         Returns the maximum size (high watermark) for the client-side object cache
         as a percentage of the optimal size.
 
-        ## Example
+        # Example
         ```
         use sibyl as oracle;
 
@@ -110,10 +108,10 @@ impl Environment {
 
         The maximum object cache size (in bytes) is computed by incrementing `optimal_size` by the
         `max_size_percentage`, using the following algorithm:
-        ```rust,ignore
+        ```ignore
         maximum_cache_size = optimal_size + optimal_size * max_size_percentage / 100
         ```
-        ## Example
+        # Example
         ```
         use sibyl as oracle;
 
@@ -132,7 +130,7 @@ impl Environment {
     /**
         Returns the optimal size for the client-side object cache in bytes.
 
-        ## Example
+        # Example
         ```
         use sibyl as oracle;
 
@@ -151,7 +149,7 @@ impl Environment {
         Sets the optimal size for the client-side object cache in bytes. The default value is 8 megabytes (MB).
         Setting this attribute to 0 results in a value of 8 MB being used.
 
-        ## Example
+        # Example
         ```
         use sibyl as oracle;
 
@@ -174,7 +172,7 @@ impl Environment {
 
         [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/nlspg/appendix-A-locale-data.html#GUID-D2FCFD55-EDC3-473F-9832-AAB564457830
 
-        ## Example
+        # Example
         ```
         use sibyl as oracle;
 
@@ -193,7 +191,7 @@ impl Environment {
 
     /**
         Sets the language used for the database sessions created in the current environment.
-        ## Example
+        # Example
         ```
         use sibyl as oracle;
 
@@ -215,7 +213,7 @@ impl Environment {
 
         [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/nlspg/appendix-A-locale-data.html#GUID-550D6A25-DB53-4911-9419-8065A73FFB06
 
-        ## Example
+        # Example
         ```
         use sibyl as oracle;
 
@@ -235,7 +233,7 @@ impl Environment {
     /**
         Sets the name of the territory used for the database sessions created in the current environment.
 
-        ## Example
+        # Example
         ```
         use sibyl as oracle;
 
@@ -276,7 +274,7 @@ impl Environment {
         let row = rows.next()?;
         assert!(row.is_some());
         let row = row.unwrap();
-        let client_driver = row.get::<&str>(0)?;
+        let client_driver : Option<&str> = row.get(0)?;
         assert!(client_driver.is_some());
         let client_driver = client_driver.unwrap();
         assert_eq!(client_driver, "sibyl");

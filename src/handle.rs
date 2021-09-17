@@ -111,9 +111,9 @@ impl<T: HandleType> Handle<T> {
         Ok( Self::from(old_handle) )
     }
 
-    pub(crate) fn replace(&self, ptr: *mut T) {
-        self.ptr.replace(ptr);
-    }
+    // pub(crate) fn replace(&self, ptr: *mut T) {
+    //     self.ptr.replace(ptr);
+    // }
 
     pub(crate) fn get_attr<V: attr::AttrGet>(&self, attr_type: u32, err: *mut OCIError) -> Result<V> {
         let ptr = self.ptr.get();
