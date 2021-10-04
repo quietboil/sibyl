@@ -1,7 +1,8 @@
+use super::{Stmt, cols::Columns};
 use crate::*;
-use crate::stmt::Stmt;
+use crate::types::Ctx;
 use libc::c_void;
-use std::cell::Cell;
+use std::cell::RefCell;
 
 const OCI_ATTR_ROWID : u32 = 19;
 
@@ -19,15 +20,23 @@ extern "C" {
     ) -> i32;
 }
 
-/// Result set of a query
-pub struct Rows<'s> {
-    stmt: &'s dyn Stmt,
-    last_result: Cell<i32>,
+/// Methods that the provider of the returned results (`Statement` or `Cursor`) must implement.
+pub trait ResultSetProvider : Stmt {
+    fn get_cols(&self) -> &RefCell<Columns>;
+    fn get_ctx(&self) -> &dyn Ctx;
+    fn get_env(&self) -> &dyn Env;
+    fn conn(&self) -> &Connection;
 }
 
-impl<'s> Rows<'s> {
-    pub(crate) fn new(res: i32, stmt: &'s dyn Stmt) -> Self {
-        Self { stmt, last_result: Cell::new(res) }
+/// Result set of a query
+pub struct Rows<'a> {
+    rset: &'a dyn ResultSetProvider,
+    last_result: i32,
+}
+
+impl<'a> Rows<'a> {
+    pub(crate) fn new(res: i32, rset: &'a dyn ResultSetProvider) -> Self {
+        Self { rset, last_result: res }
     }
 
     /**
@@ -45,7 +54,7 @@ impl<'s> Rows<'s> {
              WHERE country_id = :id
           ORDER BY location_id
         ")?;
-        let rows = stmt.query(&[ &"CA" ])?;
+        let mut rows = stmt.query(&[&(":ID", "CA")])?;
         let mut res = Vec::new();
         while let Some( row ) = rows.next()? {
             // &str does not live long enough to be useful for
@@ -61,26 +70,23 @@ impl<'s> Rows<'s> {
             );
             res.push((street_address.unwrap_or_default(), city_address));
         }
-
-        assert_eq!(2, res.len());
-        assert_eq!("Toronto Ontario M5V 2L7",  res[0].1);
-        assert_eq!("Whitehorse Yukon YSW 9T2", res[1].1);
+        assert_eq!(res.len(), 2);
+        assert_eq!(res[0].1, "Toronto Ontario M5V 2L7");
+        assert_eq!(res[1].1, "Whitehorse Yukon YSW 9T2");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn next(&self) -> Result<Option<Row>> {
-        let res = self.last_result.get();
-        if res == OCI_NO_DATA {
+    pub fn next(&mut self) -> Result<Option<Row<'a>>> {
+        if self.last_result == OCI_NO_DATA {
             Ok( None )
         } else {
-            let res = unsafe {
-                OCIStmtFetch2(self.stmt.stmt_ptr(), self.stmt.err_ptr(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
+            self.last_result = unsafe {
+                OCIStmtFetch2(self.rset.stmt_ptr(), self.rset.err_ptr(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
             };
-            self.last_result.set(res);
-            match res {
+            match self.last_result {
                 OCI_NO_DATA => Ok( None ),
-                OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::new(self.stmt)) ),
-                _ => Err( Error::oci(self.stmt.err_ptr(), res) )
+                OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::new(self.rset)) ),
+                _ => Err( Error::oci(self.rset.err_ptr(), self.last_result) )
             }
         }
     }
@@ -88,12 +94,12 @@ impl<'s> Rows<'s> {
 
 /// A row in the returned result set
 pub struct Row<'a> {
-    stmt: &'a dyn Stmt,
+    rset: &'a dyn ResultSetProvider,
 }
 
 impl<'a> Row<'a> {
-    fn new(stmt: &'a dyn Stmt) -> Self {
-        Self { stmt }
+    fn new(rset: &'a dyn ResultSetProvider) -> Self {
+        Self { rset }
     }
 
     /**
@@ -112,14 +118,9 @@ impl<'a> Row<'a> {
               FROM hr.employees
              WHERE manager_id = :id
         ")?;
-        let rows = stmt.query(&[ &120 ])?;
-        let cur_row = rows.next()?;
-
-        assert!(cur_row.is_some());
-
-        let row = cur_row.unwrap();
+        let mut rows = stmt.query(&[ &120 ])?;
+        let row = rows.next()?.unwrap();
         let commission_exists = !row.is_null(0);
-
         assert!(!commission_exists);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
@@ -130,13 +131,9 @@ impl<'a> Row<'a> {
         "columns" to be NULL.
     */
     pub fn is_null(&self, pos: impl Position) -> bool {
-        let index = pos.name().and_then(|name| self.stmt.col_index(name)).or(pos.index());
-        if let Some(index) = index {
-            if let Some(col) = self.stmt.get_cols().borrow().get(index) {
-                return col.is_null();
-            }
-        }
-        true
+        let cols = self.rset.get_cols().borrow();
+        pos.name().and_then(|name| cols.col_index(name)).or(pos.index())
+            .map_or(true, |ix| cols.is_null(ix))
     }
 
     /**
@@ -155,31 +152,32 @@ impl<'a> Row<'a> {
               FROM hr.employees
              WHERE employee_id = :id
         ")?;
-        let rows = stmt.query(&[ &107 ])?;
-        let cur_row = rows.next()?;
+        let mut rows = stmt.query(&[ &107 ])?;
+        let row = rows.next()?.expect("first (and only) row");
 
-        assert!(cur_row.is_some());
+        // Either a 0-based column position...
+        let manager_id: Option<u32> = row.get(0)?;
+        assert!(manager_id.is_some());
+        assert_eq!(manager_id.unwrap(), 102);
 
-        let row = cur_row.unwrap();
-        let manager_id: u32 = row.get(0)?.unwrap_or_default();
-
-        assert_eq!(manager_id, 102);
+        // Or a column name can be used to get the data
+        let manager_id: Option<u32> = row.get("MANAGER_ID")?;
+        assert!(manager_id.is_some());
+        assert_eq!(manager_id.unwrap(), 102);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
     pub fn get<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<Option<T>> {
-        let index = pos.name().and_then(|name| self.stmt.col_index(name)).or(pos.index());
-        if let Some(index) = index {
-            if let Some(col) = self.stmt.get_cols().borrow().get(index) {
-                if col.is_null() {
-                    return Ok(None);
-                } else {
-                    let value = FromSql::value(col.get_column_buffer(), self.stmt)?;
-                    return Ok(Some(value));
-                }
+        let cols = self.rset.get_cols().borrow();
+        if let Some(pos) = pos.name().and_then(|name| cols.col_index(name)).or(pos.index()) {
+            if cols.is_null(pos) {
+                Ok(None)
+            } else {
+                cols.get(self.rset, pos)
             }
+        } else {
+            Err(Error::new("no such column"))
         }
-        Err( Error::new("column position is out of bounds") )
     }
 
     /**
@@ -203,26 +201,21 @@ impl<'a> Row<'a> {
              WHERE employee_id = :id
                FOR UPDATE
         ")?;
-        let rows = stmt.query(&[ &107 ])?;
-        let cur_row = rows.next()?;
-
-        assert!(cur_row.is_some());
-
-        let row = cur_row.unwrap();
-        let manager_id: u32 = row.get(0)?.unwrap_or_default();
-
+        let mut rows = stmt.query(&[ &107 ])?;
+        let row = rows.next()?.expect("first (and only) row");
+        let manager_id: u32 = row.get(0)?.unwrap();
         assert_eq!(manager_id, 102);
 
         let rowid = row.get_rowid()?;
 
         let stmt = conn.prepare("
             UPDATE hr.employees
-               SET manager_id = :mid
-             WHERE rowid = :rid
+               SET manager_id = :mgr_id
+             WHERE rowid = :row_id
         ")?;
         let num_updated = stmt.execute(&[
-            &( ":mid", 102 ),
-            &( ":rid", &rowid )
+            &( ":MGR_ID", 102 ),
+            &( ":ROW_ID", &rowid )
         ])?;
         assert_eq!(num_updated, 1);
         # conn.rollback()?;
@@ -230,8 +223,8 @@ impl<'a> Row<'a> {
         ```
     */
     pub fn get_rowid(&self) -> Result<RowID> {
-        let mut rowid = RowID::new(self.stmt.env_ptr())?;
-        attr::get_into(OCI_ATTR_ROWID, &mut rowid, OCI_HTYPE_STMT, self.stmt.stmt_ptr() as *const c_void, self.stmt.err_ptr())?;
+        let mut rowid = RowID::new(self.rset.env_ptr())?;
+        attr::get_into(OCI_ATTR_ROWID, &mut rowid, OCI_HTYPE_STMT, self.rset.stmt_ptr() as *const c_void, self.rset.err_ptr())?;
         Ok( rowid )
     }
 }

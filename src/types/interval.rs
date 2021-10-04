@@ -2,10 +2,10 @@
 
 mod tosql;
 
+use super::Ctx;
+use super::number::OCINumber;
 use crate::*;
 use crate::desc::{ Descriptor, DescriptorType };
-use super::*;
-use super::number::OCINumber;
 use libc::{ c_void, size_t };
 use std::{ mem, cmp::Ordering };
 
@@ -160,12 +160,12 @@ extern "C" {
     ) -> i32;
 }
 
-pub(crate) fn to_string(lfprec: u8, fsprec: u8, int: *const OCIInterval, usrenv: &dyn UsrEnv) -> Result<String> {
+pub(crate) fn to_string(lfprec: u8, fsprec: u8, int: *const OCIInterval, ctx: &dyn Ctx) -> Result<String> {
     let mut name: [u8;32] = unsafe { mem::MaybeUninit::uninit().assume_init() };
     let mut size = mem::MaybeUninit::<size_t>::uninit();
-    catch!{usrenv.err_ptr() =>
+    catch!{ctx.err_ptr() =>
         OCIIntervalToText(
-            usrenv.as_ptr(), usrenv.err_ptr(),
+            ctx.as_ptr(), ctx.err_ptr(),
             int, lfprec, fsprec,
             name.as_mut_ptr(), name.len(), size.as_mut_ptr()
         )
@@ -174,39 +174,39 @@ pub(crate) fn to_string(lfprec: u8, fsprec: u8, int: *const OCIInterval, usrenv:
     Ok( String::from_utf8_lossy(txt).to_string() )
 }
 
-pub(crate) fn to_number(int: *const OCIInterval, usrenv: &dyn UsrEnv) -> Result<OCINumber> {
+pub(crate) fn to_number(int: *const OCIInterval, ctx: &dyn Ctx) -> Result<OCINumber> {
     let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-    catch!{usrenv.err_ptr() =>
-        OCIIntervalToNumber(usrenv.as_ptr(), usrenv.err_ptr(), int, num.as_mut_ptr())
+    catch!{ctx.err_ptr() =>
+        OCIIntervalToNumber(ctx.as_ptr(), ctx.err_ptr(), int, num.as_mut_ptr())
     }
     Ok( unsafe { num.assume_init() } )
 }
 
-pub(crate) fn from_interval<'a,T>(int: &Descriptor<T>, usrenv: &'a dyn UsrEnv) -> Result<Interval<'a,T>>
+pub(crate) fn from_interval<'a,T>(int: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<Interval<'a,T>>
     where T: DescriptorType<OCIType=OCIInterval>
 {
-    let interval = Descriptor::new(usrenv.env_ptr())?;
-    catch!{usrenv.err_ptr() =>
+    let interval = Descriptor::new(ctx.env_ptr())?;
+    catch!{ctx.err_ptr() =>
         OCIIntervalAssign(
-            usrenv.as_ptr(), usrenv.err_ptr(),
+            ctx.as_ptr(), ctx.err_ptr(),
             int.get(), interval.get()
         )
     }
-    Ok( Interval { usrenv, interval } )
+    Ok( Interval { ctx, interval } )
 }
 
-pub struct Interval<'e, T: DescriptorType<OCIType=OCIInterval>> {
+pub struct Interval<'a, T: DescriptorType<OCIType=OCIInterval>> {
     interval: Descriptor<T>,
-    usrenv: &'e dyn UsrEnv,
+    ctx: &'a dyn Ctx,
 }
 
-impl<'e, T> Interval<'e, T>
+impl<'a, T> Interval<'a, T>
     where T: DescriptorType<OCIType=OCIInterval>
 {
     /// Returns new uninitialized interval.
-    pub fn new(usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        Ok( Self { usrenv, interval } )
+    pub fn new(ctx: &'a dyn Ctx) -> Result<Self> {
+        let interval = Descriptor::new(ctx.env_ptr())?;
+        Ok( Self { ctx, interval } )
     }
 
     /**
@@ -223,16 +223,16 @@ impl<'e, T> Interval<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_string(txt: &str, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+    pub fn from_string(txt: &str, ctx: &'a dyn Ctx) -> Result<Self> {
+        let interval = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIIntervalFromText(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 txt.as_ptr(), txt.len(),
                 interval.get()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { ctx, interval } )
     }
 
     /**
@@ -252,20 +252,20 @@ impl<'e, T> Interval<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_number(num: &'e Number) -> Result<Self> {
-        let interval = Descriptor::new(num.env.env_ptr())?;
-        catch!{num.env.err_ptr() =>
+    pub fn from_number(num: &'a Number) -> Result<Self> {
+        let interval = Descriptor::new(num.ctx.env_ptr())?;
+        catch!{num.ctx.err_ptr() =>
             OCIIntervalFromNumber(
-                num.env.as_ptr(), num.env.err_ptr(),
+                num.ctx.as_ptr(), num.ctx.err_ptr(),
                 interval.get(), num.as_ptr()
             )
         }
-        Ok( Self { usrenv: num.env, interval } )
+        Ok( Self { ctx: num.ctx, interval } )
     }
 
     /// Changes an interval context.
-    pub fn move_to(&mut self, usrenv: &'e dyn UsrEnv) {
-        self.usrenv = usrenv;
+    pub fn move_to(&mut self, ctx: &'a dyn Ctx) {
+        self.ctx = ctx;
     }
 
     pub(crate) fn as_ptr(&self) -> *const OCIInterval {
@@ -292,7 +292,7 @@ impl<'e, T> Interval<'e, T>
         ```
     */
     pub fn from_interval(other: &Self) -> Result<Self> {
-        from_interval(&other.interval, other.usrenv)
+        from_interval(&other.interval, other.ctx)
     }
 
     /**
@@ -314,10 +314,10 @@ impl<'e, T> Interval<'e, T>
         ```
     */
     pub fn to_number(&self) -> Result<Number> {
-        let mut num = Number::new(self.usrenv);
-        catch!{self.usrenv.err_ptr() =>
+        let mut num = Number::new(self.ctx);
+        catch!{self.ctx.err_ptr() =>
             OCIIntervalToNumber(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(),
                 self.as_ptr(), num.as_mut_ptr()
             )
         }
@@ -347,7 +347,7 @@ impl<'e, T> Interval<'e, T>
         ```
     */
     pub fn to_string(&self, lfprec: u8, fsprec: u8) -> Result<String> {
-        to_string(lfprec, fsprec, self.as_ptr(), self.usrenv)
+        to_string(lfprec, fsprec, self.as_ptr(), self.ctx)
     }
 
     /**
@@ -372,9 +372,9 @@ impl<'e, T> Interval<'e, T>
     */
     pub fn compare(&self, other: &Self) -> Result<Ordering> {
         let mut res = mem::MaybeUninit::<i32>::uninit();
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIIntervalCompare(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(),
                 self.as_ptr(), other.as_ptr(), res.as_mut_ptr()
             )
         }
@@ -405,16 +405,16 @@ impl<'e, T> Interval<'e, T>
         ```
     */
     pub fn add(&self, other: &Self) -> Result<Self> {
-        let usrenv = self.usrenv;
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+        let ctx = self.ctx;
+        let interval = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIIntervalAdd(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 self.as_ptr(), other.as_ptr(),
                 interval.get()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { ctx, interval } )
     }
 
     /**
@@ -437,16 +437,16 @@ impl<'e, T> Interval<'e, T>
         ```
     */
     pub fn sub(&self, other: &Self) -> Result<Self> {
-        let usrenv = self.usrenv;
-        let interval = Descriptor::new(self.usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+        let ctx = self.ctx;
+        let interval = Descriptor::new(self.ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIIntervalSubtract(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 self.as_ptr(), other.as_ptr(),
                 interval.get()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { ctx, interval } )
     }
 
     /**
@@ -466,16 +466,16 @@ impl<'e, T> Interval<'e, T>
         ```
     */
     pub fn mul(&self, num: &Number) -> Result<Self> {
-        let usrenv = self.usrenv;
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+        let ctx = self.ctx;
+        let interval = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIIntervalMultiply(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 self.as_ptr(), num.as_ptr(),
                 interval.get()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { ctx, interval } )
     }
 
     /**
@@ -495,20 +495,20 @@ impl<'e, T> Interval<'e, T>
         ```
     */
     pub fn div(&self, num: &Number) -> Result<Self> {
-        let usrenv = self.usrenv;
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+        let ctx = self.ctx;
+        let interval = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIIntervalDivide(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 self.as_ptr(), num.as_ptr(),
                 interval.get()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { ctx, interval } )
     }
 }
 
-impl<'e> Interval<'e, OCIIntervalDayToSecond> {
+impl<'a> Interval<'a, OCIIntervalDayToSecond> {
     /**
         Returns interval with the region ID set (if the region is specified
         in the input string) and the current absolute offset, or an absolute
@@ -527,16 +527,16 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_tz(txt: &str, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+    pub fn from_tz(txt: &str, ctx: &'a dyn Ctx) -> Result<Self> {
+        let interval = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIIntervalFromTZ(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 txt.as_ptr(), txt.len(),
                 interval.get()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { ctx, interval } )
     }
 
     /**
@@ -554,16 +554,16 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_duration(dd: i32, hh: i32, mi: i32, ss: i32, ns: i32, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+    pub fn with_duration(dd: i32, hh: i32, mi: i32, ss: i32, ns: i32, ctx: &'a dyn Ctx) -> Result<Self> {
+        let interval = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIIntervalSetDaySecond(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 dd, hh, mi, ss, ns,
                 interval.get()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { ctx, interval } )
     }
 
     /**
@@ -586,9 +586,9 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
         let mut min  = mem::MaybeUninit::<i32>::uninit();
         let mut sec  = mem::MaybeUninit::<i32>::uninit();
         let mut fsec = mem::MaybeUninit::<i32>::uninit();
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIIntervalGetDaySecond(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(),
                 day.as_mut_ptr(), hour.as_mut_ptr(), min.as_mut_ptr(), sec.as_mut_ptr(), fsec.as_mut_ptr(),
                 self.as_ptr()
             )
@@ -613,9 +613,9 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
         ```
     */
     pub fn set_duration(&mut self, dd: i32, hh: i32, mi: i32, ss: i32, ns: i32) -> Result<()> {
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIIntervalSetDaySecond(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(),
                 dd, hh, mi, ss, ns,
                 self.as_mut_ptr()
             )
@@ -624,7 +624,7 @@ impl<'e> Interval<'e, OCIIntervalDayToSecond> {
     }
 }
 
-impl<'e> Interval<'e, OCIIntervalYearToMonth> {
+impl<'a> Interval<'a, OCIIntervalYearToMonth> {
     /**
         Returns new interval with a preset duration.
 
@@ -640,16 +640,16 @@ impl<'e> Interval<'e, OCIIntervalYearToMonth> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_duration(year: i32, month: i32, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let interval = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+    pub fn with_duration(year: i32, month: i32, ctx: &'a dyn Ctx) -> Result<Self> {
+        let interval = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIIntervalSetYearMonth(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 year, month,
                 interval.get()
             )
         }
-        Ok( Self { usrenv, interval } )
+        Ok( Self { ctx, interval } )
     }
 
     /**
@@ -670,9 +670,9 @@ impl<'e> Interval<'e, OCIIntervalYearToMonth> {
     pub fn get_duration(&self) -> Result<(i32,i32)> {
         let mut year  = mem::MaybeUninit::<i32>::uninit();
         let mut month = mem::MaybeUninit::<i32>::uninit();
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIIntervalGetYearMonth(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(),
                 year.as_mut_ptr(), month.as_mut_ptr(),
                 self.as_ptr()
             )
@@ -680,7 +680,7 @@ impl<'e> Interval<'e, OCIIntervalYearToMonth> {
         Ok( unsafe { (year.assume_init(), month.assume_init()) } )
     }
 
-    /** 
+    /**
         Sets year and month in an interval.
 
         # Example
@@ -697,9 +697,9 @@ impl<'e> Interval<'e, OCIIntervalYearToMonth> {
         ```
     */
     pub fn set_duration(&mut self, year: i32, month: i32) -> Result<()> {
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIIntervalSetYearMonth(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(),
                 year, month,
                 self.as_mut_ptr()
             )

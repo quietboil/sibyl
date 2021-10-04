@@ -1,18 +1,9 @@
 //! OCI environment
 
 use crate::*;
+use crate::types::Ctx;
 use libc::{ c_void, size_t };
 use std::{ mem, ptr };
-
-// Initialization Modes
-const OCI_THREADED : u32 = 1;
-const OCI_OBJECT   : u32 = 2;
-
-// Attributes
-const OCI_ATTR_CACHE_OPT_SIZE       : u32 = 34;
-const OCI_ATTR_CACHE_MAX_SIZE       : u32 = 35;
-const OCI_ATTR_ENV_NLS_LANGUAGE     : u32 = 424;
-const OCI_ATTR_ENV_NLS_TERRITORY    : u32 = 425;
 
 extern "C" {
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-16BDA1F1-7DAF-41CA-9EE1-C9A4CB467244
@@ -29,6 +20,15 @@ extern "C" {
         ncharset:   u16
     ) -> i32;
 }
+
+// Initialization Modes
+const OCI_THREADED : u32 = 1;
+const OCI_OBJECT   : u32 = 2;
+
+const OCI_ATTR_CACHE_OPT_SIZE    : u32 = 34;
+const OCI_ATTR_CACHE_MAX_SIZE    : u32 = 35;
+const OCI_ATTR_ENV_NLS_LANGUAGE  : u32 = 424;
+const OCI_ATTR_ENV_NLS_TERRITORY : u32 = 425;
 
 fn create_environment() -> Result<Handle<OCIEnv>> {
     let mut env = mem::MaybeUninit::<*mut OCIEnv>::uninit();
@@ -53,40 +53,25 @@ pub struct Environment {
     env: Handle<OCIEnv>
 }
 
-/**
-    A trait for types that provide access to `Environment` handles.
-
-    See: [Encapsulating Lifetime of the Field](https://matklad.github.io/2018/05/04/encapsulating-lifetime-of-the-field.html)
-*/
-pub trait Env {
-    fn env_ptr(&self) -> *mut OCIEnv;
-    fn err_ptr(&self) -> *mut OCIError;
-}
-
-impl Env for Environment {
-    fn env_ptr(&self) -> *mut OCIEnv    { self.env.get() }
-    fn err_ptr(&self) -> *mut OCIError  { self.err.get() }
-}
-
 impl Environment {
     pub(crate) fn new() -> Result<Self> {
         let env = create_environment()?;
         let err: Handle<OCIError> = Handle::new(env.get())?;
         Ok( Environment { env, err } )
     }
+}
 
+impl Environment {
     /**
         Returns the maximum size (high watermark) for the client-side object cache
         as a percentage of the optimal size.
 
         # Example
         ```
-        use sibyl as oracle;
-
-        let oracle = oracle::env()?;
+        let oracle = sibyl::env()?;
         let max_size_percentage = oracle.get_cache_max_size()?;
 
-        assert_eq!(10, max_size_percentage);
+        assert_eq!(max_size_percentage, 10);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -113,13 +98,11 @@ impl Environment {
         ```
         # Example
         ```
-        use sibyl as oracle;
-
-        let oracle = oracle::env()?;
+        let oracle = sibyl::env()?;
         oracle.set_cache_max_size(30)?;
         let max_size_percentage = oracle.get_cache_max_size()?;
 
-        assert_eq!(30, max_size_percentage);
+        assert_eq!(max_size_percentage, 30);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -132,12 +115,10 @@ impl Environment {
 
         # Example
         ```
-        use sibyl as oracle;
-
-        let oracle = oracle::env()?;
+        let oracle = sibyl::env()?;
         let optimal_size = oracle.get_cache_opt_size()?;
 
-        assert_eq!(8*1024*1024, optimal_size);
+        assert_eq!(optimal_size, 8*1024*1024);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -151,13 +132,11 @@ impl Environment {
 
         # Example
         ```
-        use sibyl as oracle;
-
-        let oracle = oracle::env()?;
+        let oracle = sibyl::env()?;
         oracle.set_cache_opt_size(64*1024*1024)?;
         let optimal_size = oracle.get_cache_opt_size()?;
 
-        assert_eq!(64*1024*1024, optimal_size);
+        assert_eq!(optimal_size, 64*1024*1024);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -174,12 +153,10 @@ impl Environment {
 
         # Example
         ```
-        use sibyl as oracle;
-
-        let oracle = oracle::env()?;
+        let oracle = sibyl::env()?;
         let lang = oracle.get_nls_language()?;
 
-        assert_eq!("AMERICAN", lang);
+        assert_eq!(lang, "AMERICAN");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -193,13 +170,11 @@ impl Environment {
         Sets the language used for the database sessions created in the current environment.
         # Example
         ```
-        use sibyl as oracle;
-
-        let oracle = oracle::env()?;
+        let oracle = sibyl::env()?;
         oracle.set_nls_language("ENGLISH")?;
         let lang = oracle.get_nls_language()?;
 
-        assert_eq!("ENGLISH", lang);
+        assert_eq!(lang, "ENGLISH");
         # Ok::<(),Box<dyn std::error::Error>>(())
     */
     pub fn set_nls_language(&self, lang: &str) -> Result<()> {
@@ -215,12 +190,10 @@ impl Environment {
 
         # Example
         ```
-        use sibyl as oracle;
+        let oracle = sibyl::env()?;
+        let territory = oracle.get_nls_territory()?;
 
-        let oracle = oracle::env()?;
-        let lang = oracle.get_nls_territory()?;
-
-        assert_eq!("AMERICA", lang);
+        assert_eq!(territory, "AMERICA");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -235,13 +208,11 @@ impl Environment {
 
         # Example
         ```
-        use sibyl as oracle;
-
-        let oracle = oracle::env()?;
+        let oracle = sibyl::env()?;
         oracle.set_nls_territory("CANADA")?;
-        let lang = oracle.get_nls_territory()?;
+        let territory = oracle.get_nls_territory()?;
 
-        assert_eq!("CANADA", lang);
+        assert_eq!(territory, "CANADA");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -253,9 +224,7 @@ impl Environment {
         Creates and begins a user session for a given server.
         # Example
         ```
-        use sibyl as oracle;
-
-        let oracle = oracle::env()?;
+        let oracle = sibyl::env()?;
         let dbname = std::env::var("DBNAME")?;
         let dbuser = std::env::var("DBUSER")?;
         let dbpass = std::env::var("DBPASS")?;
@@ -270,21 +239,38 @@ impl Environment {
               FROM v$session_connect_info
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
-        let client_driver : Option<&str> = row.get(0)?;
-        assert!(client_driver.is_some());
-        let client_driver = client_driver.unwrap();
+        let mut rows = stmt.query(&[])?;
+        let row = rows.next()?.unwrap();
+        let client_driver : &str = row.get(0)?.unwrap();
         assert_eq!(client_driver, "sibyl");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
     pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Connection> {
-        let mut conn = Connection::new(self as &dyn Env)?;
+        let conn = Connection::new(self)?;
         conn.attach(dbname)?;
         conn.login(username, password)?;
         Ok(conn)
+    }
+}
+
+pub trait Env {
+    fn env_ptr(&self) -> *mut OCIEnv;
+    fn err_ptr(&self) -> *mut OCIError;
+}
+
+impl Env for Environment {
+    fn env_ptr(&self) -> *mut OCIEnv {
+        self.env.get()
+    }
+
+    fn err_ptr(&self) -> *mut OCIError {
+        self.err.get()
+    }
+}
+
+impl Ctx for Environment {
+    fn as_ptr(&self) -> *mut c_void {
+        self.env_ptr() as *mut c_void
     }
 }

@@ -1,4 +1,4 @@
-use std::{borrow::Borrow, cmp::Ordering::Equal};
+use std::cmp::Ordering::Equal;
 use sibyl::*;
 
 #[test]
@@ -87,7 +87,7 @@ fn character_datatypes() -> Result<()> {
 
     let stmt = conn.prepare("SELECT text, ntext FROM test_character_data WHERE id = :ID")?;
 
-    let rows = stmt.query(&[ &(":ID", ids[0]) ])?;
+    let mut rows = stmt.query(&[ &(":ID", ids[0]) ])?;
     let row  = rows.next()?.unwrap();
     let text : &str = row.get("TEXT")?.unwrap();
     assert_eq!(text, "Two roads diverged in a yellow wood,");
@@ -95,7 +95,7 @@ fn character_datatypes() -> Result<()> {
     assert_eq!(text, "> Two roads diverged in a yellow wood,");
     assert!(rows.next()?.is_none());
 
-    let rows = stmt.query(&[ &(":ID", ids[1]) ])?;
+    let mut rows = stmt.query(&[ &(":ID", ids[1]) ])?;
     let row  = rows.next()?.unwrap();
     let text : String = row.get(0)?.unwrap();
     assert_eq!(text.as_str(), "And sorry I could not travel both");
@@ -103,7 +103,7 @@ fn character_datatypes() -> Result<()> {
     assert_eq!(text.as_str(), "> And sorry I could not travel both");
     assert!(rows.next()?.is_none());
 
-    let rows = stmt.query(&[ &(":ID", ids[2]) ])?;
+    let mut rows = stmt.query(&[ &(":ID", ids[2]) ])?;
     let row  = rows.next()?.unwrap();
     let text : Varchar = row.get("TEXT")?.unwrap();
     assert_eq!(text.as_str(), "And be one traveler, long I stood");
@@ -231,7 +231,7 @@ fn datetime_datatypes() -> Result<()> {
 
 
     let stmt = conn.prepare("SELECT dt, ts, tsz, tsl, iym, ids FROM test_datetime_data WHERE id = :ID")?;
-    let rows = stmt.query(&[ &(":ID", id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", id) ])?;
     let row  = rows.next()?.unwrap();
     let val : Date = row.get("DT")?.unwrap();
     assert_eq!(val.compare(&dt2)?, Equal);
@@ -302,7 +302,7 @@ fn large_object_datatypes() -> Result<()> {
 
     // Can only read BFILEs
     let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID")?;
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.expect("a row from the result set");
     let lob : BFile = row.get("FBIN")?.expect("BFILE locator");
 
@@ -322,7 +322,7 @@ fn large_object_datatypes() -> Result<()> {
     // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
 
     let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.expect("a row from the result set");
     let lob : BLOB = row.get(0)?.expect("BLOB locator");
 
@@ -334,7 +334,7 @@ fn large_object_datatypes() -> Result<()> {
     // Read it (in another transaction)
 
     let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.expect("a row from the result set");
     let lob : BLOB = row.get(0)?.expect("BLOB locator");
     let mut lob_data = Vec::new();
@@ -343,7 +343,7 @@ fn large_object_datatypes() -> Result<()> {
 
 
     let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.expect("a row from the result set");
     let lob : CLOB = row.get(0)?.expect("BLOB locator");
     assert!(!lob.is_nclob()?);
@@ -357,7 +357,7 @@ fn large_object_datatypes() -> Result<()> {
     lob.close()?;
 
     let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.expect("a row from the result set");
     let lob : CLOB = row.get(0)?.expect("CLOB locator");
     assert!(!lob.is_nclob()?);
@@ -367,7 +367,7 @@ fn large_object_datatypes() -> Result<()> {
 
 
     let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.expect("a row from the result set");
     let lob : CLOB = row.get(0)?.expect("CLOB locator");
     assert!(lob.is_nclob()?);
@@ -379,7 +379,7 @@ fn large_object_datatypes() -> Result<()> {
     lob.close()?;
 
     let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID")?;
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.expect("a row from the result set");
     let lob : CLOB = row.get(0)?.expect("CLOB locator");
     assert!(lob.is_nclob()?);
@@ -429,7 +429,7 @@ fn long_and_raw_datatypes() -> Result<()> {
     let count = stmt.execute_into(
         &[
             &(":BIN", &data[..]),
-            &(":TEXT", text.borrow())
+            &(":TEXT", text)
         ], &mut [
             &mut (":ID", &mut id),
             &mut (":OBIN", &mut data_out)
@@ -441,7 +441,7 @@ fn long_and_raw_datatypes() -> Result<()> {
 
     let stmt = conn.prepare("SELECT bin, text FROM test_long_and_raw_data WHERE id = :ID")?;
     // without explicit resizing via `stmt.set_column_size` (before `stmt.query`) TEXT output is limited to 32768
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.unwrap();
     let bin : &[u8] = row.get("BIN")?.unwrap();
     let txt : &str = row.get("TEXT")?.unwrap();
@@ -495,7 +495,7 @@ fn long_raw_datatype() -> Result<()> {
 
     let stmt = conn.prepare("SELECT bin FROM test_long_raw_data WHERE id = :ID")?;
     // without explicit resizing via `stmt.set_column_size` (before `stmt.query`) BIN output is limited to 32768
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.unwrap();
     let bin : &[u8] = row.get(0)?.unwrap();
     assert_eq!(bin, &data[..]);
@@ -557,11 +557,11 @@ fn numeric_datatypes() -> Result<()> {
     assert!(3.1415926 < flt && flt < 3.1415929);
 
     let stmt = conn.prepare("SELECT num, flt, dbl FROM test_numeric_data WHERE id = :ID")?;
-    let rows = stmt.query(&[ &(":ID", &id) ])?;
+    let mut rows = stmt.query(&[ &(":ID", &id) ])?;
     let row  = rows.next()?.unwrap();
-    let num : Number = row.get("NUM")?.unwrap();
-    let flt : f32 = row.get("FLT")?.unwrap();
-    let dbl : f64 = row.get("DBL")?.unwrap();
+    let num : Number = row.get("NUM")?.expect("test_numeric_data.num");
+    let flt : f32 = row.get("FLT")?.expect("test_numeric_data.flt");
+    let dbl : f64 = row.get("DBL")?.expect("test_numeric_data.dbl");
     assert_eq!(num.compare(&src_num)?, Equal);
     assert!(3.141592653589792 < dbl && dbl < 3.141592653589794);
     assert!(3.1415926 < flt && flt < 3.1415929);
@@ -583,7 +583,7 @@ fn rowid_datatype() -> Result<()> {
          WHERE employee_id = :ID
            FOR UPDATE
     ")?;
-    let rows = stmt.query(&[ &(":ID", 107) ])?;
+    let mut rows = stmt.query(&[ &(":ID", 107) ])?;
     let row = rows.next()?.expect("selected row");
     let implicit_rowid = row.get_rowid()?;
     let str_rowid : String = row.get(0)?.expect("ROWID as text");
@@ -653,7 +653,7 @@ fn ref_cursor() -> Result<()> {
     let expected_lowest_salary = Number::from_int(2100, &conn)?;
     let expected_median_salary = Number::from_int(6200, &conn)?;
 
-    let rows = lowest_payed_employee.rows()?;
+    let mut rows = lowest_payed_employee.rows()?;
     let row = rows.next()?.unwrap();
 
     let department_name : &str = row.get(0)?.unwrap();
@@ -669,7 +669,7 @@ fn ref_cursor() -> Result<()> {
     let row = rows.next()?;
     assert!(row.is_none());
 
-    let rows = median_salary_employees.rows()?;
+    let mut rows = median_salary_employees.rows()?;
 
     let row = rows.next()?.unwrap();
     let department_name : &str = row.get(0)?.unwrap();
@@ -747,7 +747,7 @@ fn ref_cursor_result() -> Result<()> {
 
     let lowest_payed_employee = stmt.next_result()?.unwrap();
 
-    let rows = lowest_payed_employee.rows()?;
+    let mut rows = lowest_payed_employee.rows()?;
     let row = rows.next()?.unwrap();
 
     let department_name : &str = row.get(0)?.unwrap();
@@ -765,7 +765,7 @@ fn ref_cursor_result() -> Result<()> {
 
     let median_salary_employees = stmt.next_result()?.unwrap();
 
-    let rows = median_salary_employees.rows()?;
+    let mut rows = median_salary_employees.rows()?;
 
     let row = rows.next()?.unwrap();
     let department_name : &str = row.get(0)?.unwrap();
@@ -823,14 +823,14 @@ fn ref_cursor_column() -> Result<()> {
                  WHERE last_name = :last_name
                ) e
     ")?;
-    let rows = stmt.query(&[ &"King" ])?;
+    let mut rows = stmt.query(&[ &"King" ])?;
 
     let row = rows.next()?.unwrap();
     let last_name : &str = row.get(0)?.unwrap();
     assert_eq!(last_name, "King");
 
     let departments : Cursor = row.get(1)?.unwrap();
-    let dept_rows = departments.rows()?;
+    let mut dept_rows = departments.rows()?;
     let dept_row = dept_rows.next()?.unwrap();
 
     let department_name : &str = dept_row.get(0)?.unwrap();

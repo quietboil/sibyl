@@ -113,6 +113,13 @@ macro_rules! impl_oci_handle_attr {
 
 impl_oci_handle_attr!{ OCIServer, OCISession }
 
+impl AttrGet for *mut c_void {
+    type ValueType = Self;
+    fn new(ptr: Self, _len: usize) -> Self {
+        ptr
+    }
+}
+
 impl AttrGet for &str {
     type ValueType = *const u8;
     fn new(ptr: *const u8, len: usize) -> Self {

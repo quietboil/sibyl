@@ -1,6 +1,7 @@
 /// Implementation of traits that allow Varchars to be used as SQL parameters
 
 use super::*;
+use libc::c_void;
 
 impl ToSql for Varchar<'_> {
     fn to_sql(&self) -> (u16, *const c_void, usize) {

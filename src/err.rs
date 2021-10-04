@@ -30,7 +30,7 @@ fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
     };
     let msg = if res == OCI_SUCCESS {
         let msg = unsafe { CStr::from_ptr(errmsg_ptr as *const i8) };
-        msg.to_string_lossy().trim_end().to_owned()
+        msg.to_string_lossy().trim_end().to_string()
     } else {
         match errcode {
             OCI_NO_DATA   => String::from("No Data"),
@@ -72,12 +72,9 @@ impl error::Error for Error {}
 impl cmp::PartialEq for Error {
     fn eq(&self, other: &Error) -> bool {
         match (self, other) {
-            (Error::Oracle(this_code, _), Error::Oracle(other_code, _)) =>
-                this_code == other_code,
-            (Error::Interface(this_msg), Error::Interface(other_msg)) =>
-                this_msg == other_msg,
-            _ =>
-                false,
+            (Error::Oracle(this_code, _), Error::Oracle(other_code, _)) => this_code == other_code,
+            (Error::Interface(this_msg),  Error::Interface(other_msg))  => this_msg  == other_msg,
+            _ => false,
         }
     }
 }

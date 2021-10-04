@@ -1,8 +1,6 @@
 //! Functions for performing operations on large objects (LOBs).
 
-use crate::*;
-use crate::desc::{ Descriptor, DescriptorType };
-use crate::conn::Conn;
+use crate::{*, desc::{ Descriptor, DescriptorType }};
 use libc::c_void;
 use std::{ cmp, mem, ptr, cell::Cell };
 
@@ -342,7 +340,7 @@ pub struct LOB<'a,T>
     where T: DescriptorType<OCIType=OCILobLocator>
 {
     locator: Descriptor<T>,
-    conn: &'a dyn Conn,
+    conn: &'a Connection<'a>,
     chunk_size: Cell<u32>,
 }
 
@@ -382,12 +380,12 @@ impl<'a,T> LOB<'a,T>
         self.locator.get()
     }
 
-    pub(crate) fn make(locator: Descriptor<T>, conn: &'a dyn Conn) -> Self {
+    pub(crate) fn make(locator: Descriptor<T>, conn: &'a Connection) -> Self {
         Self { locator, conn, chunk_size: Cell::new(0) }
     }
 
     /// Creates a new uninitialized LOB.
-    pub fn new(conn: &'a dyn Conn) -> Result<Self> {
+    pub fn new(conn: &'a Connection) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
         Ok( Self { locator, conn, chunk_size: Cell::new(0) } )
     }
@@ -688,7 +686,7 @@ impl<'a,T> LOB<'a,T>
         let stmt = conn.prepare("
             select text from test_lobs where id = :id
         ")?;
-        let rows = stmt.query(&[ &id ])?;
+        let mut rows = stmt.query(&[ &id ])?;
         let row = rows.next()?.expect("selected row");
         let selected_lob : CLOB = row.get(0)?.expect("CLOB locator");
 
@@ -884,7 +882,7 @@ impl<'a, T> LOB<'a,T>
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn empty(conn: &'a dyn Conn) -> Result<Self> {
+    pub fn empty(conn: &'a Connection) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
         locator.set_attr(OCI_ATTR_LOBEMPTY, 0u32, conn.err_ptr())?;
         Ok( Self { locator, conn, chunk_size: Cell::new(0) } )
@@ -1409,7 +1407,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
         The LOB is feed automatically either when a LOB goes out of scope or at the end of the session whichever comes first.
     */
-    pub fn temp(conn: &'a dyn Conn, csform: CharSetForm, cache: Cache) -> Result<Self> {
+    pub fn temp(conn: &'a Connection, csform: CharSetForm, cache: Cache) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
         catch!{conn.err_ptr() =>
             OCILobCreateTemporary(
@@ -1721,7 +1719,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
         The LOB is feed automatically either when a LOB goes out of scope or at the end of the session whichever comes first.
     */
-    pub fn temp(conn: &'a dyn Conn, cache: Cache) -> Result<Self> {
+    pub fn temp(conn: &'a Connection, cache: Cache) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
         catch!{conn.err_ptr() =>
             OCILobCreateTemporary(

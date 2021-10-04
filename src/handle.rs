@@ -132,3 +132,9 @@ impl<T: HandleType> Handle<T> {
 }
 
 impl Handle<OCIStmt> {}
+
+impl ToSqlOut for Handle<OCIStmt> {
+    fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
+        (SQLT_RSET, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCIStmt>(), std::mem::size_of::<*mut OCIStmt>())
+    }
+}

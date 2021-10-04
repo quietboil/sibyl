@@ -2,10 +2,10 @@
 
 mod tosql;
 
+use super::Ctx;
+use super::interval::Interval;
 use crate::*;
 use crate::desc::{ Descriptor, DescriptorType };
-use super::*;
-use super::interval::Interval;
 use libc::{ c_void, size_t };
 use std::{ mem, ptr, cmp::Ordering };
 
@@ -183,12 +183,12 @@ extern "C" {
     ) -> i32;
 }
 
-pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: *const OCIDateTime, usrenv: &dyn UsrEnv) -> Result<String> {
+pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: *const OCIDateTime, ctx: &dyn Ctx) -> Result<String> {
     let mut name: [u8;128] = unsafe { mem::MaybeUninit::uninit().assume_init() };
     let mut size = name.len() as u32;
-    catch!{usrenv.err_ptr() =>
+    catch!{ctx.err_ptr() =>
         OCIDateTimeToText(
-            usrenv.as_ptr(), usrenv.err_ptr(), ts,
+            ctx.as_ptr(), ctx.err_ptr(), ts,
             if fmt.len() == 0 { ptr::null() } else { fmt.as_ptr() }, fmt.len() as u8, fsprec,
             ptr::null(), 0,
             &mut size as *mut u32, name.as_mut_ptr()
@@ -198,38 +198,38 @@ pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: *const OCIDateTime, usrenv: &
     Ok( String::from_utf8_lossy(txt).to_string() )
 }
 
-pub(crate) fn from_timestamp<'a,T>(ts: &Descriptor<T>, usrenv: &'a dyn UsrEnv) -> Result<Timestamp<'a, T>>
+pub(crate) fn from_timestamp<'a,T>(ts: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<Timestamp<'a, T>>
     where T: DescriptorType<OCIType=OCIDateTime>
 {
-    let datetime = Descriptor::new(usrenv.env_ptr())?;
-    catch!{usrenv.err_ptr() =>
+    let datetime = Descriptor::new(ctx.env_ptr())?;
+    catch!{ctx.err_ptr() =>
         OCIDateTimeAssign(
-            usrenv.as_ptr(), usrenv.err_ptr(),
+            ctx.as_ptr(), ctx.err_ptr(),
             ts.get(), datetime.get()
         )
     }
-    Ok( Timestamp { usrenv, datetime } )
+    Ok( Timestamp { ctx, datetime } )
 }
 
-pub(crate) fn convert_into<'a,T,U>(ts: &Descriptor<T>, usrenv: &'a dyn UsrEnv) -> Result<Timestamp<'a, U>>
+pub(crate) fn convert_into<'a,T,U>(ts: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<Timestamp<'a, U>>
     where T: DescriptorType<OCIType=OCIDateTime>
         , U: DescriptorType<OCIType=OCIDateTime>
 {
-    let datetime: Descriptor<U> = Descriptor::new(usrenv.env_ptr())?;
-    catch!{usrenv.err_ptr() =>
+    let datetime: Descriptor<U> = Descriptor::new(ctx.env_ptr())?;
+    catch!{ctx.err_ptr() =>
         OCIDateTimeConvert(
-            usrenv.as_ptr(), usrenv.err_ptr(),
+            ctx.as_ptr(), ctx.err_ptr(),
             ts.get(), datetime.get()
         )
     }
-    Ok( Timestamp { usrenv, datetime } )
+    Ok( Timestamp { ctx, datetime } )
 }
 
 pub struct Timestamp<'e, T>
     where T: DescriptorType<OCIType=OCIDateTime>
 {
     datetime: Descriptor<T>,
-    usrenv: &'e dyn UsrEnv,
+    ctx: &'e dyn Ctx,
 }
 
 impl<'e, T> Timestamp<'e, T>
@@ -251,14 +251,14 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn new(usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let datetime = Descriptor::new(usrenv.env_ptr())?;
-        Ok( Self { usrenv, datetime } )
+    pub fn new(ctx: &'e dyn Ctx) -> Result<Self> {
+        let datetime = Descriptor::new(ctx.env_ptr())?;
+        Ok( Self { ctx, datetime } )
     }
 
     /// Changes a timestamp context.
-    pub fn move_to(&mut self, usrenv: &'e dyn UsrEnv) {
-        self.usrenv = usrenv;
+    pub fn move_to(&mut self, ctx: &'e dyn Ctx) {
+        self.ctx = ctx;
     }
 
     /**
@@ -305,15 +305,15 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_datetime(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, fsec: u32, tz: &str, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let datetime = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+    pub fn with_datetime(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, fsec: u32, tz: &str, ctx: &'e dyn Ctx) -> Result<Self> {
+        let datetime = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIDateTimeConstruct(
-                usrenv.as_ptr(), usrenv.err_ptr(), datetime.get(),
+                ctx.as_ptr(), ctx.err_ptr(), datetime.get(),
                 year, month, day, hour, min, sec, fsec, tz.as_ptr(), tz.len()
             )
         }
-        Ok( Self { usrenv, datetime } )
+        Ok( Self { ctx, datetime } )
     }
 
     /**
@@ -337,17 +337,17 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_string(txt: &str, fmt: &str, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let datetime = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+    pub fn from_string(txt: &str, fmt: &str, ctx: &'e dyn Ctx) -> Result<Self> {
+        let datetime = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIDateTimeFromText(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 txt.as_ptr(), txt.len(), fmt.as_ptr(), fmt.len() as u8,
                 ptr::null(), 0,
                 datetime.get()
             )
         }
-        Ok( Self { usrenv, datetime } )
+        Ok( Self { ctx, datetime } )
     }
 
     /**
@@ -376,10 +376,10 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn convert_into<U>(&self, usrenv: &'e dyn UsrEnv) -> Result<Timestamp<'e, U>>
+    pub fn convert_into<U>(&self, ctx: &'e dyn Ctx) -> Result<Timestamp<'e, U>>
         where U: DescriptorType<OCIType=OCIDateTime>
     {
-        convert_into(&self.datetime, usrenv)
+        convert_into(&self.datetime, ctx)
     }
 
     pub(crate) fn as_ptr(&self) -> *const OCIDateTime {
@@ -402,8 +402,8 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_timestamp(other: &Self, usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        from_timestamp(&other.datetime, usrenv)
+    pub fn from_timestamp(other: &Self, ctx: &'e dyn Ctx) -> Result<Self> {
+        from_timestamp(&other.datetime, ctx)
     }
 
     /**
@@ -423,16 +423,16 @@ impl<'e, T> Timestamp<'e, T>
         ```
     */
     pub fn add<I: DescriptorType<OCIType=OCIInterval>>(&self, interval: &Interval<I>) -> Result<Self> {
-        let usrenv = self.usrenv;
-        let datetime = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+        let ctx = self.ctx;
+        let datetime = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIDateTimeIntervalAdd(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 self.as_ptr(), interval.as_ptr(),
                 datetime.get()
             )
         }
-        Ok( Self { usrenv, datetime } )
+        Ok( Self { ctx, datetime } )
     }
 
     /**
@@ -452,16 +452,16 @@ impl<'e, T> Timestamp<'e, T>
         ```
     */
     pub fn sub<I: DescriptorType<OCIType=OCIInterval>>(&self, interval: &Interval<I>) -> Result<Self> {
-        let usrenv = self.usrenv;
-        let datetime = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
+        let ctx = self.ctx;
+        let datetime = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
             OCIDateTimeIntervalSub(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 self.as_ptr(), interval.as_ptr(),
                 datetime.get()
             )
         }
-        Ok( Self { usrenv, datetime } )
+        Ok( Self { ctx, datetime } )
     }
 
     /**
@@ -485,11 +485,11 @@ impl<'e, T> Timestamp<'e, T>
         where U: DescriptorType<OCIType=OCIDateTime>
             , I: DescriptorType<OCIType=OCIInterval>
     {
-        let usrenv = self.usrenv;
-        let interval: Interval<I> = Interval::new(self.usrenv)?;
-        catch!{usrenv.err_ptr() =>
+        let ctx = self.ctx;
+        let interval: Interval<I> = Interval::new(self.ctx)?;
+        catch!{ctx.err_ptr() =>
             OCIDateTimeSubtract(
-                usrenv.as_ptr(), usrenv.err_ptr(),
+                ctx.as_ptr(), ctx.err_ptr(),
                 self.as_ptr(), other.as_ptr(),
                 interval.as_mut_ptr()
             )
@@ -517,9 +517,9 @@ impl<'e, T> Timestamp<'e, T>
         where U: DescriptorType<OCIType=OCIDateTime>
     {
         let mut res = mem::MaybeUninit::<i32>::uninit();
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIDateTimeCompare(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(),
                 self.as_ptr(), other.as_ptr(),
                 res.as_mut_ptr()
             )
@@ -547,9 +547,9 @@ impl<'e, T> Timestamp<'e, T>
         let mut year  = mem::MaybeUninit::<i16>::uninit();
         let mut month = mem::MaybeUninit::<u8>::uninit();
         let mut day   = mem::MaybeUninit::<u8>::uninit();
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIDateTimeGetDate(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(), self.as_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(), self.as_ptr(),
                 year.as_mut_ptr(), month.as_mut_ptr(), day.as_mut_ptr()
             )
         }
@@ -575,9 +575,9 @@ impl<'e, T> Timestamp<'e, T>
         let mut min  = mem::MaybeUninit::<u8>::uninit();
         let mut sec  = mem::MaybeUninit::<u8>::uninit();
         let mut fsec = mem::MaybeUninit::<u32>::uninit();
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIDateTimeGetTime(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(), self.as_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(), self.as_ptr(),
                 hour.as_mut_ptr(), min.as_mut_ptr(), sec.as_mut_ptr(), fsec.as_mut_ptr()
             )
         }
@@ -627,9 +627,9 @@ impl<'e, T> Timestamp<'e, T>
     pub fn get_tz_name(&self) -> Result<String> {
         let mut name: [u8;64] = unsafe { mem::MaybeUninit::uninit().assume_init() };
         let mut size = name.len() as u32;
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIDateTimeGetTimeZoneName(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(), self.as_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(), self.as_ptr(),
                 name.as_mut_ptr(), &mut size
             )
         }
@@ -655,9 +655,9 @@ impl<'e, T> Timestamp<'e, T>
     pub fn get_tz_offset(&self) -> Result<(i8, i8)> {
         let mut hours = mem::MaybeUninit::<i8>::uninit();
         let mut min   = mem::MaybeUninit::<i8>::uninit();
-        catch!{self.usrenv.err_ptr() =>
+        catch!{self.ctx.err_ptr() =>
             OCIDateTimeGetTimeZoneOffset(
-                self.usrenv.as_ptr(), self.usrenv.err_ptr(), self.as_ptr(),
+                self.ctx.as_ptr(), self.ctx.err_ptr(), self.as_ptr(),
                 hours.as_mut_ptr(), min.as_mut_ptr()
             )
         }
@@ -690,7 +690,7 @@ impl<'e, T> Timestamp<'e, T>
         ```
     */
     pub fn to_string(&self, fmt: &str, fsprec: u8) -> Result<String> {
-        to_string(fmt, fsprec, self.as_ptr(), self.usrenv)
+        to_string(fmt, fsprec, self.as_ptr(), self.ctx)
     }
 }
 
@@ -720,12 +720,12 @@ impl<'e> Timestamp<'e, OCITimestampTZ> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_systimestamp(usrenv: &'e dyn UsrEnv) -> Result<Self> {
-        let datetime = Descriptor::new(usrenv.env_ptr())?;
-        catch!{usrenv.err_ptr() =>
-            OCIDateTimeSysTimeStamp(usrenv.as_ptr(), usrenv.err_ptr(), datetime.get())
+    pub fn from_systimestamp(ctx: &'e dyn Ctx) -> Result<Self> {
+        let datetime = Descriptor::new(ctx.env_ptr())?;
+        catch!{ctx.err_ptr() =>
+            OCIDateTimeSysTimeStamp(ctx.as_ptr(), ctx.err_ptr(), datetime.get())
         }
-        Ok( Self { usrenv, datetime } )
+        Ok( Self { ctx, datetime } )
     }
 }
 

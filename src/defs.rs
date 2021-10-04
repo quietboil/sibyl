@@ -13,21 +13,17 @@ pub(crate) const OCI_STILL_EXECUTING        : i32 = -3123;
 pub(crate) const OCI_CONTINUE               : i32 = -24200;
 
 // Attribute Constants
-pub(crate) const OCI_ATTR_NONBLOCKING_MODE  : u32 = 3;
-pub(crate) const OCI_ATTR_SERVER            : u32 = 6;
-pub(crate) const OCI_ATTR_SESSION           : u32 = 7;
 pub(crate) const OCI_ATTR_ROW_COUNT         : u32 = 9;
 pub(crate) const OCI_ATTR_PREFETCH_ROWS     : u32 = 11;
 pub(crate) const OCI_ATTR_PARAM_COUNT       : u32 = 18;     // number of columns in the select list
-pub(crate) const OCI_ATTR_USERNAME          : u32 = 22;
-pub(crate) const OCI_ATTR_PASSWORD          : u32 = 23;
 pub(crate) const OCI_ATTR_STMT_TYPE         : u32 = 24;
-pub(crate) const OCI_ATTR_SERVER_STATUS     : u32 = 143;
 pub(crate) const OCI_ATTR_BIND_COUNT        : u32 = 190;
 pub(crate) const OCI_ATTR_ROWS_FETCHED      : u32 = 197;
 pub(crate) const OCI_ATTR_STMT_IS_RETURNING : u32 = 218;
 pub(crate) const OCI_ATTR_UB8_ROW_COUNT     : u32 = 457;
 pub(crate) const OCI_ATTR_INVISIBLE_COL     : u32 = 461;
+
+// Attributes
 
 // Handle Types
 pub(crate) const OCI_HTYPE_ENV              : u32 = 1;
@@ -72,6 +68,7 @@ pub(crate) const OCI_DTYPE_TIMESTAMP_LTZ    : u32 = 70;  // Timestamp with local
 #[repr(C)] pub struct OCIRowid              { _private: [u8; 0] }
 #[repr(C)] pub struct OCIDateTime           { _private: [u8; 0] }
 #[repr(C)] pub struct OCIInterval           { _private: [u8; 0] }
+#[repr(C)] pub struct OCIString             { _private: [u8; 0] }
 
 // Virtual descriptors
 pub struct OCICLobLocator           {}

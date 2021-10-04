@@ -3,14 +3,13 @@
 mod tosql;
 
 use crate::*;
-use super::*;
 use libc::c_void;
 use std::{ mem, ptr, cmp::Ordering };
 
 extern "C" {
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-E0890180-8714-4243-A585-0FD21EB05CA9
     fn OCIDateAddDays(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         date:       *const OCIDate,
         num_days:   i32,
         result:     *mut OCIDate
@@ -18,7 +17,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-CE37ECF1-622A-49A9-A9FD-40E1BD67C941
     fn OCIDateAddMonths(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         date:       *const OCIDate,
         num_months: i32,
         result:     *mut OCIDate
@@ -26,21 +25,21 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-2251373B-4F7B-4680-BB90-F9013216465A
     fn OCIDateAssign(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         date:       *const OCIDate,
         result:     *mut OCIDate
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-067F7EB4-419B-4A5B-B1C4-B4C650B874A3
     // fn OCIDateCheck(
-    //     err:        *mut OCIError,
+    //     env:        *mut OCIError,
     //     date:       *const OCIDate,
     //     result:     *mut u32
     // ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-282C5B79-64AA-4B34-BFC6-292144B1AD16
     fn OCIDateCompare(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         date1:      *const OCIDate,
         date2:      *const OCIDate,
         result:     *mut i32
@@ -48,7 +47,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-42422C47-805F-4EAA-BF44-E6DE6164082E
     fn OCIDateDaysBetween(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         date1:      *const OCIDate,
         date2:      *const OCIDate,
         result:     *mut i32
@@ -56,7 +55,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-EA8FEB07-401C-477E-805B-CC9E89FB13F4
     fn OCIDateFromText(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         txt:        *const u8,
         txt_len:    u32,
         fmt:        *const u8,
@@ -68,14 +67,14 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-14FB323E-BAEB-4FC7-81DA-6AF243C0D7D6
     fn OCIDateLastDay(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         date:       *const OCIDate,
         result:     *mut OCIDate
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-A16AB88E-A3BF-4B50-8FEF-6427926198F4
     fn OCIDateNextDay(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         date:       *const OCIDate,
         day:        *const u8,
         day_len:    u32,
@@ -84,7 +83,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-123DD789-48A2-4AD7-8B1E-5E454DFE3F1E
     fn OCIDateToText(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         date:       *const OCIDate,
         fmt:        *const u8,
         fmt_len:    u8,
@@ -96,7 +95,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-751D4F33-E593-4845-9D5E-8761A19BD243
     fn OCIDateSysDate(
-        err:        *mut OCIError,
+        env:        *mut OCIError,
         result:     *mut OCIDate
     ) -> i32;
 }
@@ -134,16 +133,16 @@ pub(crate) fn to_string(fmt: &str, date: *const OCIDate, err: *mut OCIError) -> 
     Ok( String::from_utf8_lossy(txt).to_string() )
 }
 
-pub(crate) fn from_date<'a>(from: &OCIDate, env: &'a dyn UsrEnv) -> Result<Date<'a>> {
+pub(crate) fn from_date<'a>(from: *const OCIDate, env: &'a dyn Env) -> Result<Date<'a>> {
     let mut date = mem::MaybeUninit::<OCIDate>::uninit();
     catch!{env.err_ptr() =>
-        OCIDateAssign(env.err_ptr(), from as *const OCIDate, date.as_mut_ptr())
+        OCIDateAssign(env.err_ptr(), from, date.as_mut_ptr())
     }
     let date = unsafe { date.assume_init() };
-    Ok( Date { env, date } )
+    Ok( Date { date, env } )
 }
 
-// fn check_date(date: &OCIDate, env: & dyn UsrEnv) -> Result<()> {
+// fn check_date(date: &OCIDate, env: & dyn Env) -> Result<()> {
 //     let mut res = 0;
 //     catch!{env.err_ptr() =>
 //         OCIDateCheck(env.err_ptr(), date, &mut res)
@@ -173,9 +172,9 @@ pub(crate) fn from_date<'a>(from: &OCIDate, env: &'a dyn UsrEnv) -> Result<Date<
 // }
 
 /// Represents Oracle DATE
-pub struct Date<'e> {
+pub struct Date<'a> {
     date: OCIDate,
-    env: &'e dyn UsrEnv,
+    env: &'a dyn Env,
 }
 
 impl Date<'_> {
@@ -188,11 +187,11 @@ impl Date<'_> {
     }
 }
 
-impl<'e> Date<'e> {
+impl<'a> Date<'a> {
 
     /// Returns unitinialized (and invalid) date to be used as an output variable
-    pub fn new(env: &'e dyn UsrEnv) -> Self {
-        Self { env, date: new() }
+    pub fn new(env: &'a dyn Env) -> Self {
+        Self { date: new(), env }
     }
 
     /**
@@ -210,7 +209,7 @@ impl<'e> Date<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_date(year: i16, month: u8, day: u8, env: &'e dyn UsrEnv) -> Result<Self> {
+    pub fn with_date(year: i16, month: u8, day: u8, env: &'a dyn Env) -> Result<Self> {
         let date = OCIDate { year, month, day, hour: 0, min: 0, sec: 0 };
         from_date(&date, env)
     }
@@ -230,7 +229,7 @@ impl<'e> Date<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_datetime(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, env: &'e dyn UsrEnv) -> Result<Self> {
+    pub fn with_datetime(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, env: &'a dyn Env) -> Result<Self> {
         let date = OCIDate { year, month, day, hour, min, sec };
         from_date(&date, env)
     }
@@ -249,7 +248,7 @@ impl<'e> Date<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_string(txt: &str, fmt: &str, env: &'e dyn UsrEnv) -> Result<Self> {
+    pub fn from_string(txt: &str, fmt: &str, env: &'a dyn Env) -> Result<Self> {
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
         catch!{env.err_ptr() =>
             OCIDateFromText(
@@ -261,7 +260,7 @@ impl<'e> Date<'e> {
             )
         }
         let date = unsafe { date.assume_init() };
-        Ok( Self { env, date } )
+        Ok( Self { date, env } )
     }
 
     /**
@@ -279,7 +278,7 @@ impl<'e> Date<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_sysdate(env: &'e dyn UsrEnv) -> Result<Self> {
+    pub fn from_sysdate(env: &'a dyn Env) -> Result<Self> {
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
         catch!{env.err_ptr() =>
             OCIDateSysDate(env.err_ptr(), date.as_mut_ptr())
@@ -305,7 +304,7 @@ impl<'e> Date<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_date(from: &'e Date) -> Result<Self> {
+    pub fn from_date(from: &'a Date) -> Result<Self> {
         from_date(&from.date, from.env)
     }
 
@@ -622,7 +621,7 @@ impl<'e> Date<'e> {
     }
 }
 
-impl<'e> std::fmt::Debug for Date<'_> {
+impl std::fmt::Debug for Date<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.date.fmt(f)
     }

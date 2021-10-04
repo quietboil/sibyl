@@ -4,13 +4,14 @@
 mod convert;
 mod tosql;
 
+use self::convert::{IntoNumber, FromNumber};
+use super::Ctx;
 use crate::*;
-use super::*;
 use libc::c_void;
 use std::{ mem, ptr, cmp::Ordering };
 
 /// Marker trait for integer numbers
-pub trait Integer : convert::IntoNumber + convert::FromNumber {}
+pub trait Integer : IntoNumber + FromNumber {}
 
 macro_rules! impl_int {
     ($($t:ty),+) => {
@@ -24,7 +25,7 @@ impl_int!(i8, i16, i32, i64, i128, isize);
 impl_int!(u8, u16, u32, u64, u128, usize);
 
 /// Marker trait for floating ppoint numbers
-pub trait Real : convert::IntoNumber + convert::FromNumber {}
+pub trait Real : IntoNumber + FromNumber {}
 impl Real for f32 {}
 impl Real for f64 {}
 
@@ -46,12 +47,12 @@ pub(crate) fn to_string(fmt: &str, num: *const OCINumber, err: *mut OCIError) ->
     Ok( String::from_utf8_lossy(txt).to_string() )
 }
 
-pub(crate) fn from_number<'a>(from_num: &OCINumber, env: &'a dyn UsrEnv) -> Result<Number<'a>> {
+pub(crate) fn from_number<'a>(from_num: &OCINumber, ctx: &'a dyn Ctx) -> Result<Number<'a>> {
     let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-    catch!{env.err_ptr() =>
-        OCINumberAssign(env.err_ptr(), from_num as *const OCINumber, num.as_mut_ptr())
+    catch!{ctx.err_ptr() =>
+        OCINumberAssign(ctx.err_ptr(), from_num as *const OCINumber, num.as_mut_ptr())
     }
-    Ok( Number { env, num: unsafe { num.assume_init() } } )
+    Ok( Number { ctx, num: unsafe { num.assume_init() } } )
 }
 
 pub(crate) fn new() -> OCINumber {
@@ -59,8 +60,8 @@ pub(crate) fn new() -> OCINumber {
     unsafe { mem::MaybeUninit::<OCINumber>::uninit().assume_init() }
 }
 
-pub(crate) fn new_number<'a>(num: OCINumber, env: &'a dyn UsrEnv) -> Number<'a> {
-    Number { env, num }
+pub(crate) fn new_number<'a>(num: OCINumber, ctx: &'a dyn Ctx) -> Number<'a> {
+    Number { ctx, num }
 }
 
 extern "C" {
@@ -441,8 +442,8 @@ fn compare(num1: &OCINumber, num2: &OCINumber, err: *mut OCIError) -> Result<Ord
 macro_rules! impl_query {
     ($this:ident => $f:ident) => {
         let mut res : i32 = 0;
-        catch!{$this.env.err_ptr() =>
-            $f($this.env.err_ptr(), $this.as_ptr(), &mut res)
+        catch!{$this.ctx.err_ptr() =>
+            $f($this.ctx.err_ptr(), $this.as_ptr(), &mut res)
         }
         Ok( res != 0 )
     };
@@ -450,47 +451,47 @@ macro_rules! impl_query {
 
 macro_rules! impl_fn {
     ($this:ident => $f:ident) => {
-        let env = $this.env;
+        let ctx = $this.ctx;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        catch!{env.err_ptr() =>
-            $f(env.err_ptr(), $this.as_ptr(), num.as_mut_ptr())
+        catch!{ctx.err_ptr() =>
+            $f(ctx.err_ptr(), $this.as_ptr(), num.as_mut_ptr())
         }
-        Ok( Number { env, num: unsafe { num.assume_init() } } )
+        Ok( Number { ctx, num: unsafe { num.assume_init() } } )
     };
 }
 
 macro_rules! impl_op {
     ($this:ident, $arg:ident => $f:ident) => {
-        let env = $this.env;
+        let ctx = $this.ctx;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        catch!{env.err_ptr() =>
-            $f(env.err_ptr(), $this.as_ptr(), $arg.as_ptr(), num.as_mut_ptr())
+        catch!{ctx.err_ptr() =>
+            $f(ctx.err_ptr(), $this.as_ptr(), $arg.as_ptr(), num.as_mut_ptr())
         }
-        Ok( Number { env, num: unsafe { num.assume_init() } } )
+        Ok( Number { ctx, num: unsafe { num.assume_init() } } )
     };
 }
 
 macro_rules! impl_opi {
     ($this:ident, $arg:ident => $f:ident) => {
-        let env = $this.env;
+        let ctx = $this.ctx;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        catch!{env.err_ptr() =>
-            $f(env.err_ptr(), $this.as_ptr(), $arg, num.as_mut_ptr())
+        catch!{ctx.err_ptr() =>
+            $f(ctx.err_ptr(), $this.as_ptr(), $arg, num.as_mut_ptr())
         }
-        Ok( Number { env, num: unsafe { num.assume_init() } } )
+        Ok( Number { ctx, num: unsafe { num.assume_init() } } )
     };
 }
 
 /// Represents OTS types NUMBER, NUMERIC, INT, SHORTINT, REAL, DOUBLE PRECISION, FLOAT and DECIMAL.
-pub struct Number<'e> {
-    pub(crate) env: &'e dyn UsrEnv,
+pub struct Number<'a> {
+    pub(crate) ctx: &'a dyn Ctx,
     num: OCINumber,
 }
 
-impl<'e> Number<'e> {
+impl<'a> Number<'a> {
     /// Returns a new uninitialized number.
-    pub fn new(env: &'e dyn UsrEnv) -> Self {
-        Self { env, num: new() }
+    pub fn new(ctx: &'a dyn Ctx) -> Self {
+        Self { ctx, num: new() }
     }
 
     /**
@@ -507,12 +508,12 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn zero(env: &'e dyn UsrEnv) -> Self {
+    pub fn zero(ctx: &'a dyn Ctx) -> Self {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
         unsafe {
-            OCINumberSetZero(env.err_ptr(), num.as_mut_ptr());
+            OCINumberSetZero(ctx.err_ptr(), num.as_mut_ptr());
         }
-        Self { env, num: unsafe { num.assume_init() } }
+        Self { ctx, num: unsafe { num.assume_init() } }
     }
 
     /**
@@ -529,12 +530,12 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn pi(env: &'e dyn UsrEnv) -> Self {
+    pub fn pi(ctx: &'a dyn Ctx) -> Self {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
         unsafe {
-            OCINumberSetPi(env.err_ptr(), num.as_mut_ptr());
+            OCINumberSetPi(ctx.err_ptr(), num.as_mut_ptr());
         }
-        Self { env, num: unsafe { num.assume_init() } }
+        Self { ctx, num: unsafe { num.assume_init() } }
     }
 
     /**
@@ -551,18 +552,18 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_string(txt: &str, fmt: &str, env: &'e dyn UsrEnv) -> Result<Self> {
+    pub fn from_string(txt: &str, fmt: &str, ctx: &'a dyn Ctx) -> Result<Self> {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        catch!{env.err_ptr() =>
+        catch!{ctx.err_ptr() =>
             OCINumberFromText(
-                env.err_ptr(),
+                ctx.err_ptr(),
                 txt.as_ptr(), txt.len() as u32,
                 fmt.as_ptr(), fmt.len() as u32,
                 ptr::null(), 0,
                 num.as_mut_ptr()
             )
         }
-        Ok( Self { env, num: unsafe { num.assume_init() } } )
+        Ok( Self { ctx, num: unsafe { num.assume_init() } } )
     }
 
     /**
@@ -580,9 +581,9 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_int<T:Integer>(val: T, env: &'e dyn UsrEnv) -> Result<Self> {
-        let num = val.into_number(env.err_ptr())?;
-        Ok( Self { env, num } )
+    pub fn from_int<T:Integer>(val: T, ctx: &'a dyn Ctx) -> Result<Self> {
+        let num = val.into_number(ctx.err_ptr())?;
+        Ok( Self { ctx, num } )
     }
 
     /**
@@ -599,9 +600,9 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_real<T:Real>(val: T, env: &'e dyn UsrEnv) -> Result<Self> {
-        let num = val.into_number(env.err_ptr())?;
-        Ok( Self { env, num } )
+    pub fn from_real<T:Real>(val: T, ctx: &'a dyn Ctx) -> Result<Self> {
+        let num = val.into_number(ctx.err_ptr())?;
+        Ok( Self { ctx, num } )
     }
 
     /**
@@ -619,8 +620,8 @@ impl<'e> Number<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_number(other: &'e Number) -> Result<Self> {
-        from_number(&other.num, other.env)
+    pub fn from_number(other: &'a Number) -> Result<Self> {
+        from_number(&other.num, other.ctx)
     }
 
     /**
@@ -661,8 +662,8 @@ impl<'e> Number<'e> {
         ```
     */
     pub fn assign(&mut self, num: &Number) -> Result<()> {
-        catch!{self.env.err_ptr() =>
-            OCINumberAssign(self.env.err_ptr(), num.as_ptr(), self.as_mut_ptr())
+        catch!{self.ctx.err_ptr() =>
+            OCINumberAssign(self.ctx.err_ptr(), num.as_ptr(), self.as_mut_ptr())
         }
         Ok(())
     }
@@ -683,7 +684,7 @@ impl<'e> Number<'e> {
         ```
     */
     pub fn to_string(&self, fmt: &str) -> Result<String> {
-        to_string(fmt, self.as_ptr(), self.env.err_ptr())
+        to_string(fmt, self.as_ptr(), self.ctx.err_ptr())
     }
 
     /**
@@ -702,7 +703,7 @@ impl<'e> Number<'e> {
         ```
     */
     pub fn to_int<T:Integer>(&self) -> Result<T> {
-        <T>::from_number(&self.num, self.env.err_ptr())
+        <T>::from_number(&self.num, self.ctx.err_ptr())
     }
 
     /**
@@ -721,7 +722,7 @@ impl<'e> Number<'e> {
         ```
     */
     pub fn to_real<T:Real>(&self) -> Result<T> {
-        to_real(&self.num, self.env.err_ptr())
+        to_real(&self.num, self.ctx.err_ptr())
     }
 
     /**
@@ -788,8 +789,8 @@ impl<'e> Number<'e> {
         ```
     */
     pub fn inc(&mut self) -> Result<()> {
-        catch!{self.env.err_ptr() =>
-            OCINumberInc(self.env.err_ptr(), self.as_mut_ptr())
+        catch!{self.ctx.err_ptr() =>
+            OCINumberInc(self.ctx.err_ptr(), self.as_mut_ptr())
         }
         Ok(())
     }
@@ -814,8 +815,8 @@ impl<'e> Number<'e> {
         ```
     */
     pub fn dec(&mut self) -> Result<()> {
-        catch!{self.env.err_ptr() =>
-            OCINumberDec(self.env.err_ptr(), self.as_mut_ptr())
+        catch!{self.ctx.err_ptr() =>
+            OCINumberDec(self.ctx.err_ptr(), self.as_mut_ptr())
         }
         Ok(())
     }
@@ -845,8 +846,8 @@ impl<'e> Number<'e> {
     */
     pub fn sign(&self) -> Result<Ordering> {
         let mut res = mem::MaybeUninit::<i32>::uninit();
-        catch!{self.env.err_ptr() =>
-            OCINumberSign(self.env.err_ptr(), self.as_ptr(), res.as_mut_ptr())
+        catch!{self.ctx.err_ptr() =>
+            OCINumberSign(self.ctx.err_ptr(), self.as_ptr(), res.as_mut_ptr())
         }
         let res = unsafe { res.assume_init() };
         let ordering = if res == 0 { Ordering::Equal } else if res < 0 { Ordering::Less } else { Ordering::Greater };
@@ -871,7 +872,7 @@ impl<'e> Number<'e> {
         ```
     */
     pub fn compare(&self, other: &Self) -> Result<Ordering> {
-        compare(&self.num, &other.num, self.env.err_ptr())
+        compare(&self.num, &other.num, self.ctx.err_ptr())
     }
 
     /**
@@ -1464,12 +1465,12 @@ impl<'e> Number<'e> {
         ```
     */
     pub fn log(&self, num: &Number) -> Result<Self> {
-        let env = self.env;
+        let ctx = self.ctx;
         let mut res = mem::MaybeUninit::<OCINumber>::uninit();
-        catch!{env.err_ptr() =>
-            OCINumberLog(env.err_ptr(), num.as_ptr(), self.as_ptr(), res.as_mut_ptr())
+        catch!{ctx.err_ptr() =>
+            OCINumberLog(ctx.err_ptr(), num.as_ptr(), self.as_ptr(), res.as_mut_ptr())
         }
-        Ok( Number { env, num: unsafe { res.assume_init() } } )
+        Ok( Number { ctx, num: unsafe { res.assume_init() } } )
     }
 
     pub fn size(&self) -> usize {

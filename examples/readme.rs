@@ -19,7 +19,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
          WHERE ord = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &conn)?;
-    let rows = stmt.query(&[ &date ])?;
+    let mut rows = stmt.query(&[ &date ])?;
     if let Some( row ) = rows.next()? {
         let first_name : Option<&str> = row.get(0)?;
         let last_name : &str = row.get(1)?.unwrap();

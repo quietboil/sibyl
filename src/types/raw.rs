@@ -10,20 +10,20 @@ use std::{ mem, ptr };
 /// C mapping of the Oracle RAW
 #[repr(C)] pub struct OCIRaw { _private: [u8; 0] }
 
-pub(crate) fn new(size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<*mut OCIRaw> {
+pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<*mut OCIRaw> {
     let mut bin = ptr::null_mut::<OCIRaw>();
     catch!{err =>
-        OCIRawResize(env, err, size as u32, &mut bin)
+        OCIRawResize(env, err, size, &mut bin)
     }
     Ok( bin )
 }
 
-pub(crate) fn resize(bin: &mut *mut OCIRaw, size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<()> {
-    catch!{err =>
-        OCIRawResize(env, err, size as u32, bin)
-    }
-    Ok(())
-}
+// pub(crate) fn resize(bin: &mut *mut OCIRaw, size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<()> {
+//     catch!{err =>
+//         OCIRawResize(env, err, size as u32, bin)
+//     }
+//     Ok(())
+// }
 
 pub(crate) fn free(raw: &mut *mut OCIRaw, env: *mut OCIEnv, err: *mut OCIError) {
     unsafe {
@@ -105,9 +105,9 @@ extern "C" {
     The maximum length of a RAW column is 2000 bytes.
     The LONG RAW datatype is similar to the RAW datatype, except that it stores raw data with a length up to two gigabytes.
 */
-pub struct Raw<'e> {
+pub struct Raw<'a> {
     raw: *mut OCIRaw,
-    env: &'e dyn Env,
+    env: &'a dyn Env,
 }
 
 impl Drop for Raw<'_> {
@@ -116,7 +116,7 @@ impl Drop for Raw<'_> {
     }
 }
 
-impl<'e> Raw<'e> {
+impl<'a> Raw<'a> {
     /**
         Returns a new Raw constructed with the copy of the `data`
 
@@ -133,7 +133,7 @@ impl<'e> Raw<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_bytes(data: &[u8], env: &'e dyn Env) -> Result<Self> {
+    pub fn from_bytes(data: &[u8], env: &'a dyn Env) -> Result<Self> {
         let mut raw = ptr::null_mut::<OCIRaw>();
         catch!{env.err_ptr() =>
             OCIRawAssignBytes(env.env_ptr(), env.err_ptr(), data.as_ptr(), data.len() as u32, &mut raw)
@@ -157,7 +157,7 @@ impl<'e> Raw<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_raw(other: &Raw<'e>) -> Result<Self> {
+    pub fn from_raw(other: &Raw<'a>) -> Result<Self> {
         let env = other.env;
         let mut raw = ptr::null_mut::<OCIRaw>();
         catch!{env.err_ptr() =>
@@ -181,8 +181,8 @@ impl<'e> Raw<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_capacity(size: usize, env: &'e dyn Env) -> Result<Self> {
-        let raw = new(size, env.env_ptr(), env.err_ptr())?;
+    pub fn with_capacity(size: usize, env: &'a dyn Env) -> Result<Self> {
+        let raw = new(size as u32, env.env_ptr(), env.err_ptr())?;
         Ok( Self { env, raw } )
     }
 

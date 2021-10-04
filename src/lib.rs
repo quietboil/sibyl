@@ -25,7 +25,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
          WHERE ord = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
-    let rows = stmt.query(&[ &date ])?;
+    let mut rows = stmt.query(&[ &date ])?;
     if let Some( row ) = rows.next()? {
         let first_name : Option<&str> = row.get(0)?;
         let last_name : &str = row.get(1)?.unwrap();
@@ -33,11 +33,11 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
             |first_name| format!("{}, {}", last_name, first_name)
         );
         let hire_date : oracle::Date = row.get(2)?.unwrap();
-        let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
+        let hire_date = hire_date.to_string("fmMonth DD, YYYY")?;
 
         println!("{} was hired on {}", name, hire_date);
     } else {
-        println!("No one was hired after {}", date.to_string("FMMonth DD, YYYY")?);
+        println!("No one was hired after {}", date.to_string("fmMonth DD, YYYY")?);
     }
     Ok(())
 }
@@ -54,7 +54,7 @@ you might build sibyl's example as:
 OCI_LIB_DIR=/usr/lib/oracle/19.12/client64/lib cargo build --examples
 ```
 
-On Windows the process is similar if the target environment is `gnu`. The `OCI_LIB_DIR` would point to the
+On Windows the process is similar if the target environment is `gnu`. There the `OCI_LIB_DIR` would point to the
 directory with `oci.dll`:
 
 ```bat
@@ -63,7 +63,7 @@ cargo build --examples
 ```
 
 However, for `msvc` environment the `OCI_LIB_DIR` must point to the directory with `oci.lib`. For example,
-you might build that example as:
+you might build provided example application as:
 
 ```bat
 set OCI_LIB_DIR=%ORACLE_HOME%\oci\lib\msvc
@@ -86,7 +86,7 @@ fn main() {
 }
 ```
 
-Note that some function will need a direct reference to this handle, so instead of passing it around
+Note that some functions will need a direct reference to this handle, so instead of passing it around
 some applications might prefer to create it statically:
 
 ```ignore
@@ -126,8 +126,8 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
 }
 ```
 
-Where `dbname` can be any name that is acceptable by Oracle clients - from local TNS name
-to Eazy Connect identifier to a connect descriptor.
+Where `dbname` can be any database reference/address that is acceptable to Oracle
+clients - from local TNS name to Eazy Connect identifier to a connect descriptor.
 
 ### SQL Statement Execution
 
@@ -155,7 +155,7 @@ A prepared statement can be executed either with the `query` or `execute` or `ex
 
 `query` and `execute` take a slice of IN arguments, which can be specified as positional
 arguments or as name-value tuples. For example, to execute the above SELECT we can call
-`query` using apositional argument as:
+`query` using a positional argument as:
 
 ```
 # let dbname = std::env::var("DBNAME")?;
@@ -188,7 +188,7 @@ or binding `:id` by name as:
 #  ORDER BY employee_id
 # ")?;
 let rows = stmt.query(&[
-    &( ":id", 103 )
+    &( ":ID", 103 )
 ])?;
 # Ok::<(),Box<dyn std::error::Error>>(())
 ```
@@ -219,14 +219,14 @@ let stmt = conn.prepare("
 ")?;
 let mut department_id: u32 = 0;
 let num_rows = stmt.execute_into(&[
-    &( ":department_name", "Security" ),
-    &( ":manager_id",      ""         ),
-    &( ":location_id",     1700      ),
+    &( ":DEPARTMENT_NAME", "Security" ),
+    &( ":MANAGER_ID",      ""         ),
+    &( ":LOCATION_ID",     1700      ),
 ], &mut [
-    &mut ( ":department_id", &mut department_id )
+    &mut ( ":DEPARTMENT_ID", &mut department_id )
 ])?;
 assert_eq!(num_rows, 1);
-assert!(!stmt.is_null(":department_id")?);
+assert!(!stmt.is_null(":DEPARTMENT_ID")?);
 assert!(department_id > 0);
 # conn.rollback()?;
 # Ok::<(),Box<dyn std::error::Error>>(())
@@ -234,7 +234,7 @@ assert!(department_id > 0);
 
 `execute` and `execute_into` return the number of rows affected by the statement. `query` returns what
 is colloquially called a "streaming iterator" which is typically iterated using `while`. For example
-(continuing the SELECT example from above):
+(continuing the previous SELECT example):
 
 ```
 # use std::collections::HashMap;
@@ -251,7 +251,7 @@ is colloquially called a "streaming iterator" which is typically iterated using 
 # ")?;
 let mut employees = HashMap::new();
 
-let rows = stmt.query(&[ &103 ])?;
+let mut rows = stmt.query(&[ &103 ])?;
 while let Some( row ) = rows.next()? {
     let employee_id : u32 = row.get(0)?.unwrap();
     let last_name : &str = row.get(1)?.unwrap();
@@ -274,8 +274,8 @@ from the respective column buffers. However those values will only be valid duri
 of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be
 retrieved as a `String`.
 
-**Note** that instead of column indexes sibyl also accept column names. The row processing loop
-of the previous example can be written as:
+**Note** that sibyl can also identify columns by their names. The row processing loop of the
+previous example can be written as:
 
 ```rust
 # use std::collections::HashMap;
@@ -291,7 +291,7 @@ of the previous example can be written as:
 #  ORDER BY employee_id
 # ")?;
 # let mut employees = HashMap::new();
-# let rows = stmt.query(&[ &103 ])?;
+# let mut rows = stmt.query(&[ &103 ])?;
 while let Some( row ) = rows.next()? {
     let employee_id : u32 = row.get("EMPLOYEE_ID")?.unwrap();
     let last_name : &str  = row.get("LAST_NAME")?.unwrap();
@@ -393,7 +393,7 @@ let stmt = conn.prepare("
      WHERE employee_id = :id
        FOR UPDATE
 ")?;
-let rows = stmt.query(&[ &107 ])?;
+let mut rows = stmt.query(&[ &107 ])?;
 if let Some( row ) = rows.next()? {
     let rowid = row.get_rowid()?;
 
@@ -482,14 +482,11 @@ mod fromsql;
 mod conn;
 mod stmt;
 mod rowid;
-mod cursor;
-mod column;
-mod rows;
 mod lob;
 
 /**
     Allows parameter or column identification by either
-    its numeric position its name
+    its numeric position or its name
 */
 pub trait Position {
     fn index(&self) -> Option<usize>;
@@ -506,6 +503,19 @@ impl Position for &str {
     fn name(&self)  -> Option<&str>  { Some(*self) }
 }
 
+/// Character set form
+pub enum CharSetForm {
+    Undefined = 0,
+    Implicit = 1,
+    NChar = 2
+}
+
+/// LOB cache control flags
+pub enum Cache {
+    No  = 0,
+    Yes = 1,
+}
+
 /**
     Returns a new environment handle, which is then used by the OCI functions.
 
@@ -514,6 +524,7 @@ impl Position for &str {
 
     As nothing can outlive its environment, when only one environment is used,
     it might be created either in `main` function:
+
     ```
     use sibyl as oracle; // pun intended :)
     fn main() {
@@ -521,7 +532,9 @@ impl Position for &str {
         // ...
     }
     ```
+
     and passed around, or it might be created statically:
+
     ```ignore
     use sibyl::Environment;
     lazy_static! {
@@ -537,15 +550,18 @@ pub(crate) use crate::defs::*;
 pub(crate) use crate::handle::Handle;
 
 pub use crate::err::Error;
-pub use crate::env::{ Environment, Env };
-pub use crate::conn::{ Connection, Conn };
-pub use crate::stmt::{ Statement, ColumnType, SqlInArg, SqlOutArg, Stmt };
-pub use crate::rows::{ Rows, Row };
-pub use crate::cursor::Cursor;
-pub use crate::types::number::Number;
-pub use crate::types::date::Date;
-pub use crate::types::raw::Raw;
-pub use crate::types::varchar::Varchar;
+pub use crate::env::{Environment, Env};
+pub use crate::conn::Connection;
+pub use crate::stmt::{
+    Statement,
+    cols::ColumnType,
+    args::{ SqlInArg, SqlOutArg },
+    rows::{ Rows, Row },
+    cursor::Cursor
+};
+pub use crate::types::{
+    Ctx, number::Number, date::Date, raw::Raw, varchar::Varchar
+};
 pub use crate::tosql::ToSql;
 pub use crate::tosqlout::ToSqlOut;
 pub use crate::fromsql::FromSql;
@@ -560,16 +576,3 @@ pub type CLOB<'a>           = crate::lob::LOB<'a,OCICLobLocator>;
 pub type BLOB<'a>           = crate::lob::LOB<'a,OCIBLobLocator>;
 pub type BFile<'a>          = crate::lob::LOB<'a,OCIBFileLocator>;
 pub type RowID              = crate::desc::Descriptor<OCIRowid>;
-
-/// Character set form
-pub enum CharSetForm {
-    Undefined = 0,
-    Implicit = 1,
-    NChar = 2
-}
-
-/// LOB cache control flags
-pub enum Cache {
-    No  = 0,
-    Yes = 1,
-}

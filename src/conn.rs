@@ -1,26 +1,8 @@
 //! User Session
 
-use crate::*;
-use crate::env::Env;
+use libc::c_void;
 
-// Server Handle Attribute Values
-// const OCI_SERVER_NOT_CONNECTED  : u32 = 0;
-const OCI_SERVER_NORMAL : u32 = 1;
-
-// Credential Types
-const OCI_CRED_RDBMS    : u32 = 1;
-const OCI_CRED_EXT      : u32 = 2;
-
-// Attributes
-const OCI_ATTR_CURRENT_SCHEMA           : u32 = 224;
-const OCI_ATTR_CLIENT_IDENTIFIER        : u32 = 278;
-const OCI_ATTR_MODULE                   : u32 = 366;
-const OCI_ATTR_ACTION                   : u32 = 367;
-const OCI_ATTR_CLIENT_INFO              : u32 = 368;
-const OCI_ATTR_COLLECT_CALL_TIME        : u32 = 369;
-const OCI_ATTR_CALL_TIME                : u32 = 370;
-const OCI_ATTR_DRIVER_NAME              : u32 = 424;
-const OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE : u32 = 438;
+use crate::{*, types::Ctx};
 
 extern "C" {
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-B6291228-DA2F-4CE9-870A-F94243141757
@@ -78,93 +60,114 @@ extern "C" {
     ) -> i32;
 }
 
+// Credential Types
+const OCI_CRED_RDBMS    : u32 = 1;
+const OCI_CRED_EXT      : u32 = 2;
+
+// Server Handle Attribute Values
+// const OCI_SERVER_NOT_CONNECTED  : u32 = 0;
+const OCI_SERVER_NORMAL : u32 = 1;
+const OCI_ATTR_NONBLOCKING_MODE  : u32 = 3;
+const OCI_ATTR_SERVER            : u32 = 6;
+const OCI_ATTR_SESSION           : u32 = 7;
+const OCI_ATTR_USERNAME          : u32 = 22;
+const OCI_ATTR_PASSWORD          : u32 = 23;
+const OCI_ATTR_SERVER_STATUS     : u32 = 143;
+const OCI_ATTR_CURRENT_SCHEMA    : u32 = 224;
+const OCI_ATTR_CLIENT_IDENTIFIER : u32 = 278;
+const OCI_ATTR_MODULE            : u32 = 366;
+const OCI_ATTR_ACTION            : u32 = 367;
+const OCI_ATTR_CLIENT_INFO       : u32 = 368;
+const OCI_ATTR_COLLECT_CALL_TIME : u32 = 369;
+const OCI_ATTR_CALL_TIME         : u32 = 370;
+const OCI_ATTR_DRIVER_NAME       : u32 = 424;
+const OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE : u32 = 438;
+
 /// Represents a user session
-pub struct Connection<'e> {
-    state: ConnState,
+pub struct Connection<'a> {
+    env: &'a Environment,
     usr: Handle<OCISession>,
     svc: Handle<OCISvcCtx>,
     srv: Handle<OCIServer>,
-    env: &'e dyn Env,
-}
-
-impl Env for Connection<'_> {
-    fn env_ptr(&self) -> *mut OCIEnv      { self.env.env_ptr() }
-    fn err_ptr(&self) -> *mut OCIError    { self.env.err_ptr() }
-}
-
-/// A trait for types that can provides access to `Connection` handles
-pub trait Conn : Env {
-    fn srv_ptr(&self) -> *mut OCIServer;
-    fn svc_ptr(&self) -> *mut OCISvcCtx;
-    fn usr_ptr(&self) -> *mut OCISession;
-}
-
-impl Conn for Connection<'_> {
-    fn srv_ptr(&self) -> *mut OCIServer   { self.srv.get() }
-    fn svc_ptr(&self) -> *mut OCISvcCtx   { self.svc.get() }
-    fn usr_ptr(&self) -> *mut OCISession  { self.usr.get() }
-}
-
-enum ConnState {
-    Detached,
-    Attached,
-    Session
+    err: Handle<OCIError>,
 }
 
 impl Drop for Connection<'_> {
     fn drop(&mut self) {
-        if let ConnState::Session = self.state {
-            unsafe {
-                OCISessionEnd(self.svc_ptr(), self.err_ptr(), self.usr_ptr(), OCI_DEFAULT);
+        if let Ok(ptr) = self.svc.get_attr::<*mut c_void>(OCI_ATTR_SESSION, self.err_ptr()) {
+            if !ptr.is_null() {
+                unsafe {
+                    OCISessionEnd(self.svc_ptr(), self.err_ptr(), self.usr_ptr(), OCI_DEFAULT);
+                }
             }
-            self.state = ConnState::Attached;
         }
-        if let ConnState::Attached = self.state {
-            unsafe {
-                OCIServerDetach(self.srv.get(), self.err_ptr(), OCI_DEFAULT);
+        if let Ok(ptr) = self.svc.get_attr::<*mut c_void>(OCI_ATTR_SERVER, self.err_ptr()) {
+            if !ptr.is_null() {
+                unsafe {
+                    OCIServerDetach(self.srv_ptr(), self.err_ptr(), OCI_DEFAULT);
+                }
             }
         }
     }
 }
 
-impl<'e> Connection<'e> {
-    pub(crate) fn new(env: &'e dyn Env) -> Result<Self> {
-        let srv: Handle<OCIServer>  = Handle::new(env.env_ptr())?;
-        let svc: Handle<OCISvcCtx>  = Handle::new(env.env_ptr())?;
-        let usr: Handle<OCISession> = Handle::new(env.env_ptr())?;
-        Ok( Self { env, srv, svc, usr, state: ConnState::Detached } )
+impl Env for Connection<'_> {
+    fn env_ptr(&self) -> *mut OCIEnv {
+        self.env.env_ptr()
     }
 
-    pub(crate) fn attach(&mut self, addr: &str) -> Result<()> {
-        if let ConnState::Detached = self.state {} else {
-            return Err( Error::new("already attached") );
-        }
+    fn err_ptr(&self) -> *mut OCIError {
+        self.err.get()
+    }
+}
+
+impl Ctx for Connection<'_> {
+    fn as_ptr(&self) -> *mut c_void {
+        self.usr.get() as *mut c_void
+    }
+}
+
+impl<'a> Connection<'a> {
+    pub(crate) fn new(env: &'a Environment) -> Result<Self> {
+        let err = Handle::<OCIError>::new(env.env_ptr())?;
+        let srv = Handle::<OCIServer>::new(env.env_ptr())?;
+        let svc = Handle::<OCISvcCtx>::new(env.env_ptr())?;
+        let usr = Handle::<OCISession>::new(env.env_ptr())?;
+        usr.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", err.get())?;
+        Ok( Self { env, usr, svc, srv, err } )
+    }
+
+    pub(crate) fn attach(&self, addr: &str) -> Result<()> {
         catch!{self.err_ptr() =>
             OCIServerAttach(self.srv_ptr(), self.err_ptr(), addr.as_ptr(), addr.len() as u32, OCI_DEFAULT)
         }
-        self.state = ConnState::Attached;
-        self.svc.set_attr(OCI_ATTR_SERVER, self.srv.get(), self.err_ptr())?;
-        Ok(())
+        self.svc.set_attr(OCI_ATTR_SERVER, self.srv_ptr(), self.err_ptr())
     }
 
-    pub(crate) fn login(&mut self, user: &str, pass: &str) -> Result<()> {
-        match self.state {
-            ConnState::Detached => return Err( Error::new("not attached to the server") ),
-            ConnState::Attached => { /* the expected state */ },
-            ConnState::Session  => return Err( Error::new("user session is active") ),
-        }
-        self.usr.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", self.err_ptr())?;
+    pub(crate) fn login(&self, user: &str, pass: &str) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_USERNAME, user, self.err_ptr())?;
         self.usr.set_attr(OCI_ATTR_PASSWORD, pass, self.err_ptr())?;
         let cred = if user.len() == 0 && pass.len() == 0 { OCI_CRED_EXT } else { OCI_CRED_RDBMS };
         catch!{self.err_ptr() =>
             OCISessionBegin(self.svc_ptr(), self.err_ptr(), self.usr_ptr(), cred, OCI_DEFAULT)
         }
-        self.state = ConnState::Session;
-        self.svc.set_attr(OCI_ATTR_SESSION, self.usr_ptr(), self.err_ptr())?;
-        Ok(())
+        self.svc.set_attr(OCI_ATTR_SESSION, self.usr_ptr(), self.err_ptr())
     }
 
+    pub(crate) fn srv_ptr(&self) -> *mut OCIServer {
+        self.srv.get()
+    }
+
+    pub(crate) fn svc_ptr(&self) -> *mut OCISvcCtx {
+        self.svc.get()
+    }
+
+    pub(crate) fn usr_ptr(&self) -> *mut OCISession {
+        self.usr.get()
+    }
+}
+
+impl<'a> Connection<'a> {
     /// Reports whether self is connected to the server
     pub fn is_connected(&self) -> Result<bool> {
         let status : u32 = self.srv.get_attr(OCI_ATTR_SERVER_STATUS, self.err_ptr())?;
@@ -201,24 +204,19 @@ impl<'e> Connection<'e> {
                     SELECT employee_id, row_number() OVER (ORDER BY hire_date) ord
                     FROM hr.employees
                    )
-            WHERE ord = 1
+             WHERE ord = 1
         ")?;
-        let rows = stmt.query(&[])?;
-        let optrow = rows.next()?;
-        assert!(optrow.is_some());
-        if let Some( row ) = optrow {
-            // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
-            let id : usize = row.get(0)?.unwrap();
-
-            assert_eq!(id, 102);
-        }
-        let optrow = rows.next()?;
-        assert!(optrow.is_none());
+        let mut rows = stmt.query(&[])?;
+        let row = rows.next()?.expect("first (and only) row");
+        // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
+        let id : u32 = row.get(0)?.unwrap();
+        assert_eq!(id, 102);
+        assert!(rows.next()?.is_none());
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
     pub fn prepare(&self, sql: &str) -> Result<Statement> {
-        Statement::new(sql, self as &dyn Conn)
+        Statement::new(sql, self)
     }
 
     /**
@@ -237,13 +235,13 @@ impl<'e> Connection<'e> {
         let stmt = conn.prepare("
             UPDATE hr.employees
                SET salary = :new_salary
-             WHERE employee_id = :id
+             WHERE employee_id = :emp_id
         ")?;
         let num_updated_rows = stmt.execute(&[
-            &( ":id",         107  ),
-            &( ":new_salary", 4200 ),
+            &( ":EMP_ID",     107  ),
+            &( ":NEW_SALARY", 4200 ),
         ])?;
-        assert_eq!(1, num_updated_rows);
+        assert_eq!(num_updated_rows, 1);
 
         conn.commit()?;
         # Ok::<(),Box<dyn std::error::Error>>(())
@@ -270,10 +268,10 @@ impl<'e> Connection<'e> {
         let stmt = conn.prepare("
             UPDATE hr.employees
                SET salary = ROUND(salary * 1.1)
-             WHERE employee_id = :id
+             WHERE employee_id = :emp_id
         ")?;
         let num_updated_rows = stmt.execute(&[ &107 ])?;
-        assert_eq!(1, num_updated_rows);
+        assert_eq!(num_updated_rows, 1);
 
         conn.rollback()?;
         # Ok::<(),Box<dyn std::error::Error>>(())
@@ -320,13 +318,9 @@ impl<'e> Connection<'e> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
-        let module : Option<&str> = row.get(0)?;
-        assert!(module.is_some());
-        let module = module.unwrap();
+        let mut rows = stmt.query(&[])?;
+        let row = rows.next()?.unwrap();
+        let module : &str = row.get(0)?.unwrap();
         assert_eq!(module, "sibyl");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
@@ -354,13 +348,9 @@ impl<'e> Connection<'e> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
-        let action : Option<&str> = row.get(0)?;
-        assert!(action.is_some());
-        let action = action.unwrap();
+        let mut rows = stmt.query(&[])?;
+        let row = rows.next()?.unwrap();
+        let action : &str = row.get(0)?.unwrap();
         assert_eq!(action, "Session Test");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
@@ -380,21 +370,17 @@ impl<'e> Connection<'e> {
         # let dbpass = std::env::var("DBPASS")?;
         # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        conn.set_client_identifier("Test Weilder");
+        conn.set_client_identifier("Test Wielder");
 
         let stmt = conn.prepare("
             SELECT client_identifier
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
-        let client_identifier : Option<&str> = row.get(0)?;
-        assert!(client_identifier.is_some());
-        let client_identifier = client_identifier.unwrap();
-        assert_eq!(client_identifier, "Test Weilder");
+        let mut rows = stmt.query(&[])?;
+        let row = rows.next()?.unwrap();
+        let client_identifier : &str = row.get(0)?.unwrap();
+        assert_eq!(client_identifier, "Test Wielder");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -420,13 +406,9 @@ impl<'e> Connection<'e> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
-        let client_info : Option<&str> = row.get(0)?;
-        assert!(client_info.is_some());
-        let client_info = client_info.unwrap();
+        let mut rows = stmt.query(&[])?;
+        let row = rows.next()?.unwrap();
+        let client_info : &str = row.get(0)?.unwrap();
         assert_eq!(client_info, "Nothing to see here, move along folks");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
@@ -482,13 +464,9 @@ impl<'e> Connection<'e> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
-        let row = rows.next()?;
-        assert!(row.is_some());
-        let row = row.unwrap();
-        let schema_name : Option<&str> = row.get(0)?;
-        assert!(schema_name.is_some());
-        let schema_name = schema_name.unwrap();
+        let mut rows = stmt.query(&[])?;
+        let row = rows.next()?.unwrap();
+        let schema_name : &str = row.get(0)?.unwrap();
         assert_eq!(schema_name, "HR");
 
         conn.set_current_schema(orig_name)?;
@@ -505,7 +483,8 @@ impl<'e> Connection<'e> {
 
         This attribute value enables prefetching for all the LOB locators fetched in the session.
         The default value for this attribute is zero (no prefetch of LOB data). This option
-        relieves the application developer from setting the prefetch LOB size for each define handle.
+        relieves the application developer from setting the prefetch LOB size for each LOB column
+        in each prepared statement.
     */
     pub fn set_lob_prefetch_size(&self, size: u32) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE, size, self.err_ptr())

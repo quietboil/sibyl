@@ -3,26 +3,22 @@
 mod tosql;
 
 use crate::*;
-use super::*;
 use std::{ mem, ptr };
 
-/// C mapping of the OCI String
-#[repr(C)] pub struct OCIString { _private: [u8; 0] }
-
-pub(crate) fn new(size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<*mut OCIString> {
+pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<*mut OCIString> {
     let mut oci_str = ptr::null_mut::<OCIString>();
     catch!{err =>
-        OCIStringResize(env, err, size as u32, &mut oci_str)
+        OCIStringResize(env, err, size, &mut oci_str)
     }
     Ok( oci_str )
 }
 
-pub(crate) fn resize(txt: &mut *mut OCIString, size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<()> {
-    catch!{err =>
-        OCIStringResize(env, err, size as u32, txt)
-    }
-    Ok(())
-}
+// pub(crate) fn resize(txt: &mut *mut OCIString, size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<()> {
+//     catch!{err =>
+//         OCIStringResize(env, err, size as u32, txt)
+//     }
+//     Ok(())
+// }
 
 pub(crate) fn free(txt: &mut *mut OCIString, env: *mut OCIEnv, err: *mut OCIError) {
     unsafe {
@@ -118,9 +114,9 @@ extern "C" {
 }
 
 /// Represents Oracle character types - VARCHAR, LONG, etc.
-pub struct Varchar<'e> {
+pub struct Varchar<'a> {
     txt: *mut OCIString,
-    env: &'e dyn Env,
+    env: &'a dyn Env,
 }
 
 impl Drop for Varchar<'_> {
@@ -129,7 +125,7 @@ impl Drop for Varchar<'_> {
     }
 }
 
-impl<'e> Varchar<'e> {
+impl<'a> Varchar<'a> {
     /**
         Returns a new Varchar constructed from the specified string
 
@@ -146,7 +142,7 @@ impl<'e> Varchar<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from(text: &str, env: &'e dyn Env) -> Result<Self> {
+    pub fn from(text: &str, env: &'a dyn Env) -> Result<Self> {
         let mut txt = ptr::null_mut::<OCIString>();
         catch!{env.err_ptr() =>
             OCIStringAssignText(env.env_ptr(), env.err_ptr(), text.as_ptr(), text.len() as u32, &mut txt)
@@ -170,7 +166,7 @@ impl<'e> Varchar<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_varchar(other: &'e Varchar) -> Result<Self> {
+    pub fn from_varchar(other: &'a Varchar) -> Result<Self> {
         let env = other.env;
         let mut txt = ptr::null_mut::<OCIString>();
         catch!{env.err_ptr() =>
@@ -179,7 +175,7 @@ impl<'e> Varchar<'e> {
         Ok( Self { env, txt } )
     }
 
-    pub(crate) fn from_ocistring(oci_str: *const OCIString, env: &'e dyn Env) -> Result<Self> {
+    pub(crate) fn from_ocistring(oci_str: *const OCIString, env: &'a dyn Env) -> Result<Self> {
         let mut txt = ptr::null_mut::<OCIString>();
         catch!{env.err_ptr() =>
             OCIStringAssign(env.env_ptr(), env.err_ptr(), oci_str, &mut txt)
@@ -202,8 +198,8 @@ impl<'e> Varchar<'e> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_capacity(size: usize, env: &'e dyn Env) -> Result<Self> {
-        let txt = new(size, env.env_ptr(), env.err_ptr())?;
+    pub fn with_capacity(size: usize, env: &'a dyn Env) -> Result<Self> {
+        let txt = new(size as u32, env.env_ptr(), env.err_ptr())?;
         Ok( Self { env, txt } )
     }
 
