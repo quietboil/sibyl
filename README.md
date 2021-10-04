@@ -1,6 +1,6 @@
 # Sibyl
 
-Sibyl is an [OCI][1]-based driver for Rust applications to interface with Oracle databases.
+Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databases.
 
 ## Example
 
@@ -25,11 +25,13 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
          WHERE ord = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
-    let rows = stmt.query(&[ &date ])?;
+    let mut rows = stmt.query(&[ &date ])?;
     if let Some( row ) = rows.next()? {
         let first_name : Option<&str> = row.get("FIRST_NAME")?;
         let last_name : &str = row.get("LAST_NAME")?.unwrap();
-        let name = first_name.map_or(last_name.to_string(), |first_name| format!("{}, {}", last_name, first_name));
+        let name = first_name.map_or(last_name.to_string(),
+            |first_name| format!("{}, {}", last_name, first_name)
+        );
         let hire_date : oracle::Date = row.get("HIRE_DATE")?.unwrap();
         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
@@ -170,12 +172,14 @@ let stmt = conn.prepare("
     WHERE manager_id = :id
     ORDER BY employee_id
 ")?;
-let rows = stmt.query(&[ &103 ])?;
+let mut rows = stmt.query(&[ &103 ])?;
 while let Some( row ) = rows.next()? {
     let employee_id : u32 = row.get(0)?.unwrap();
     let last_name : &str  = row.get(1)?.unwrap();
     let first_name : Option<&str> = row.get(2)?;
-    let name = first_name.map_or(last_name.to_string(), |first_name| format!("{}, {}", last_name, first_name));
+    let name = first_name.map_or(last_name.to_string(),
+        |first_name| format!("{}, {}", last_name, first_name)
+    );
     employees.insert(employee_id, name);
 }
 ```
@@ -184,14 +188,16 @@ There are a few notable points of interest in the last example:
 - Column value are returned as `Option`s. However, if a column is declared as `NOT NULL`, like `EMPLOYEE_ID` and `LAST_NAME`, the result will always be `Some` and therefore can be safely unwrapped.
 - `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they are borrowed directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
 
-**Note** that instead of column indexes sibyl also accept column names. The row processing loop of the previous example can be written as:
+**Note** that instead of column indexes sibyl also accepts column names. The row processing loop of the previous example can be written as:
 
 ```rust
 while let Some( row ) = rows.next()? {
     let employee_id : u32 = row.get("EMPLOYEE_ID")?.unwrap();
     let last_name : &str  = row.get("LAST_NAME")?.unwrap();
     let first_name : Option<&str> = row.get("FIRST_NAME")?;
-    let name = first_name.map_or(last_name.to_string(), |first_name| format!("{}, {}", last_name, first_name));
+    let name = first_name.map_or(last_name.to_string(),
+        |first_name| format!("{}, {}", last_name, first_name)
+    );
     employees.insert(employee_id, name);
 }
 ```
@@ -271,7 +277,7 @@ let stmt = conn.prepare("
      WHERE employee_id = :id
        FOR UPDATE
 ")?;
-let rows = stmt.query(&[ &107 ])?;
+let mut rows = stmt.query(&[ &107 ])?;
 let cur_row = rows.next()?.unwrap();
 let rowid = row.get_rowid()?;
 
@@ -306,7 +312,7 @@ let stmt = conn.prepare("
 ")?;
 let mut cursor = Cursor::new(&stmt)?;
 stmt.execute_into(&[], &mut [ &mut cursor ])?;
-let rows = cursor.rows()?;
+let mut rows = cursor.rows()?;
 // ...
 ```
 
@@ -327,7 +333,7 @@ let stmt = conn.prepare("
 ")?;
 stmt.execute(&[])?;
 if let Some( cursor ) = stmt.next_result()? {
-    let rows = cursor.rows()?;
+    let mut rows = cursor.rows()?;
     // ...
 }
 ```
@@ -359,7 +365,7 @@ At this time sibyl provides only the most commonly needed means to interface wit
 - Shards
 - Direct path load
 
-Some of these features will be added in the upcoming releases. Some will be likely kept on a backburner until the need arises or they are explicitly requested. And some might never be implemented.
+Some of these features will be added in the upcoming releases. Some will likely be kept on a backburner until the need arises or they are explicitly requested. And some might never be implemented.
 
 [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html
 [2]: https://docs.oracle.com/en/database/oracle/oracle-database/19/comsc/installing-sample-schemas.html#GUID-1E645D09-F91F-4BA6-A286-57C5EC66321D
