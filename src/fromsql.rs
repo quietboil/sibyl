@@ -1,5 +1,15 @@
-use crate::*;
-use crate::types::*;
+use crate::{
+    IntervalDS, IntervalYM, Result, RowID, Timestamp, TimestampLTZ, TimestampTZ, 
+    desc::Descriptor, err::Error, handle::Handle, 
+    lob::{self, LOB}, oci::*, 
+    stmt::cursor::Cursor, 
+    types::{
+        date, interval, number, raw, timestamp, varchar,
+        number::OCINumber, 
+        date::{ Date, OCIDate },
+        varchar::Varchar,
+    }
+};
 use crate::stmt::{cols::ColumnBuffer, rows::ResultSetProvider};
 
 /// A trait for types which instances can be created from the returned Oracle values.
@@ -15,9 +25,9 @@ pub trait FromSql<'a> : Sized {
 impl<'a> FromSql<'a> for String {
     fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
         match val {
-            ColumnBuffer::Text( oci_str )       => Ok( varchar::to_string(*oci_str, stmt.env_ptr()) ),
-            ColumnBuffer::Number( oci_num_box ) => number::to_string("TM", oci_num_box.as_ref() as *const number::OCINumber, stmt.err_ptr()),
-            ColumnBuffer::Date( oci_date )      => date::to_string("YYYY-MM-DD HH24::MI:SS", oci_date as *const date::OCIDate, stmt.err_ptr()),
+            ColumnBuffer::Text( oci_str_ptr )   => Ok( varchar::to_string(oci_str_ptr.get(), stmt.env_ptr()) ),
+            ColumnBuffer::Number( oci_num_box ) => number::to_string("TM", oci_num_box.as_ref() as *const OCINumber, stmt.err_ptr()),
+            ColumnBuffer::Date( oci_date )      => date::to_string("YYYY-MM-DD HH24::MI:SS", oci_date as *const OCIDate, stmt.err_ptr()),
             ColumnBuffer::Timestamp( ts )       => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF", 3, ts.get(), stmt.get_ctx()),
             ColumnBuffer::TimestampTZ( ts )     => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF TZH:TZM", 3, ts.get(), stmt.get_ctx()),
             ColumnBuffer::TimestampLTZ( ts )    => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF TZH:TZM", 3, ts.get(), stmt.get_ctx()),
@@ -25,7 +35,7 @@ impl<'a> FromSql<'a> for String {
             ColumnBuffer::IntervalDS( int )     => interval::to_string(9, 5, int.get(), stmt.get_ctx()),
             ColumnBuffer::Float( val )          => Ok( val.to_string() ),
             ColumnBuffer::Double( val )         => Ok( val.to_string() ),
-            &ColumnBuffer::Rowid( ref rowid )   => rowid.to_string(stmt.err_ptr()),
+            &ColumnBuffer::Rowid( ref rowid )   => rowid.to_string(stmt.get_env()),
             _                                   => Err( Error::new("cannot convert") )
         }
     }
@@ -33,8 +43,8 @@ impl<'a> FromSql<'a> for String {
 
 impl<'a> FromSql<'a> for Varchar<'a> {
     fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
-        if let ColumnBuffer::Text( oci_str ) = val {
-            Varchar::from_ocistring(*oci_str, stmt.get_env())
+        if let ColumnBuffer::Text( oci_str_ptr ) = val {
+            Varchar::from_ocistring(oci_str_ptr.get(), stmt.get_env())
         } else {
             let text : String = FromSql::value(val, stmt)?;
             Varchar::from(&text, stmt.get_env())
@@ -45,7 +55,7 @@ impl<'a> FromSql<'a> for Varchar<'a> {
 impl<'a> FromSql<'a> for &'a str {
     fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
         match val {
-            ColumnBuffer::Text( oci_str ) => Ok( varchar::as_str(*oci_str, stmt.get_ctx().env_ptr()) ),
+            ColumnBuffer::Text( oci_str_ptr ) => Ok( varchar::as_str(oci_str_ptr.get(), stmt.get_ctx().env_ptr()) ),
             _ => Err( Error::new("cannot convert") )
         }
     }
@@ -54,7 +64,7 @@ impl<'a> FromSql<'a> for &'a str {
 impl<'a> FromSql<'a> for &'a [u8] {
     fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
         match val {
-            ColumnBuffer::Binary( oci_raw ) => Ok( raw::as_bytes(*oci_raw, stmt.get_ctx().env_ptr()) ),
+            ColumnBuffer::Binary( oci_raw_ptr ) => Ok( raw::as_bytes(oci_raw_ptr.get(), stmt.get_ctx().env_ptr()) ),
             _ => Err( Error::new("cannot convert") )
         }
     }
@@ -190,7 +200,8 @@ impl<'a> FromSql<'a> for Cursor<'a> {
     fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
         match val {
             ColumnBuffer::Cursor( handle ) => {
-                let ref_cursor = handle.take(stmt.env_ptr())?;
+                let ref_cursor : Handle<OCIStmt> = Handle::new(stmt.env_ptr())?;
+                handle.swap(&ref_cursor);
                 Ok( Cursor::from_handle(ref_cursor, stmt) )
             }
             _ => Err( Error::new("cannot convert") )
@@ -200,13 +211,14 @@ impl<'a> FromSql<'a> for Cursor<'a> {
 
 macro_rules! impl_from_lob {
     ($var:path => $t:ident ) => {
-        impl<'a> FromSql<'a> for $t<'a> {
+        impl<'a> FromSql<'a> for LOB<'a,$t> {
             fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
                 match val {
                     $var ( lob ) => {
                         if lob::is_initialized(lob, stmt.env_ptr(), stmt.err_ptr())? {
-                            let loc = lob.take(stmt.env_ptr())?;
-                            Ok( $t::make(loc, stmt.conn()) )
+                            let loc : Descriptor<$t> = Descriptor::new(stmt.env_ptr())?;
+                            lob.swap(&loc);
+                            Ok( LOB::<$t>::make(loc, stmt.conn()) )
                         } else {
                             Err(Error::new("already consumed"))
                         }
@@ -218,17 +230,18 @@ macro_rules! impl_from_lob {
     };
 }
 
-impl_from_lob!{ ColumnBuffer::CLOB  => CLOB  }
-impl_from_lob!{ ColumnBuffer::BLOB  => BLOB  }
-impl_from_lob!{ ColumnBuffer::BFile => BFile }
+impl_from_lob!{ ColumnBuffer::CLOB  => OCICLobLocator  }
+impl_from_lob!{ ColumnBuffer::BLOB  => OCIBLobLocator  }
+impl_from_lob!{ ColumnBuffer::BFile => OCIBFileLocator }
 
-// impl<'a> FromSql<'a> for CLOB<'a> {
+// impl<'a> FromSql<'a> for LOB<'a,OCICLobLocator> {
 //     fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
 //         match val {
 //             ColumnBuffer::CLOB ( lob ) => {
 //                 if lob::is_initialized(lob, stmt.env_ptr(), stmt.err_ptr())? {
-//                     let loc = lob.take(stmt.env_ptr())?;
-//                     Ok( CLOB::make(loc, stmt.conn()) )
+//                     let loc : Descriptor<OCICLobLocator> = Descriptor::new(stmt.env_ptr())?;
+//                     lob.swap(&loc);
+//                     Ok( LOB::<OCICLobLocator>::make(loc, stmt.conn()) )
 //                 } else {
 //                     Err(Error::new("already consumed"))
 //                 }
@@ -244,7 +257,9 @@ impl<'a> FromSql<'a> for RowID {
         match val {
             ColumnBuffer::Rowid( rowid )  => {
                 if rowid.is_initialized() {
-                    rowid.take(stmt.env_ptr())
+                    let res = RowID::new(stmt.env_ptr())?;
+                    rowid.swap(&res);
+                    Ok(res)
                 } else {
                     Err(Error::new("already consumed"))
                 }
@@ -351,7 +366,7 @@ mod tests {
         let row = rows.next()?.expect("selected row");
         let strid : String = row.get(0)?.expect("ROWID as text");
         let rowid : RowID = row.get(0)?.expect("ROWID");
-        assert_eq!(rowid.to_string(conn.err_ptr())?, strid);
+        assert_eq!(rowid.to_string(&conn)?, strid);
         let manager_id: u32 = row.get(1)?.expect("menager ID");
         assert_eq!(manager_id, 102);
 

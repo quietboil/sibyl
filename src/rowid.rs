@@ -1,6 +1,6 @@
 /// The ROWID data type identifies a particular row in a database table.
 
-use crate::*;
+use crate::{Result, RowID, env::Env, oci::*, tosql::ToSql, tosqlout::ToSqlOut};
 use libc::c_void;
 
 impl ToSql for &RowID {
@@ -15,23 +15,13 @@ impl ToSqlOut for RowID {
     }
 }
 
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/miscellaneous-functions.html#GUID-064F2680-453A-40D1-9C36-518F1E2B31DF
-    fn OCIRowidToChar(
-        desc:   *mut OCIRowid,
-        text:   *mut u8,
-        size:   *mut u16,
-        err:    *mut OCIError,
-    ) -> i32;
-}
-
 impl RowID  {
-    pub fn to_string(&self, err: *mut OCIError) -> Result<String> {
+    pub fn to_string(&self, env: &dyn Env) -> Result<String> {
         let mut text = String::with_capacity(20);
         let txt = unsafe { text.as_mut_vec() };
         let mut len = txt.capacity() as u16;
-        catch!{err =>
-            OCIRowidToChar(self.get(), txt.as_mut_ptr(), &mut len, err)
+        catch!{env.err_ptr() =>
+            OCIRowidToChar(self.get(), txt.as_mut_ptr(), &mut len, env.err_ptr())
         }
         unsafe {
             txt.set_len(len as usize);

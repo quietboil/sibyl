@@ -1,4 +1,4 @@
-use crate::*;
+use crate::oci::*;
 use libc::c_void;
 
 /// A trait for types that can be used as SQL OUT arguments

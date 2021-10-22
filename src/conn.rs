@@ -1,87 +1,14 @@
 //! User Session
 
+use crate::{
+    Result,
+    oci::*,
+    handle::Handle,
+    types::Ctx,
+    env::{ Environment, Env },
+    stmt::Statement,
+};
 use libc::c_void;
-
-use crate::{*, types::Ctx};
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-B6291228-DA2F-4CE9-870A-F94243141757
-    fn OCIServerAttach(
-        srvhp:      *mut OCIServer,
-        errhp:      *mut OCIError,
-        dblink:     *const u8,
-        dblink_len: u32,
-        mode:       u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-402B540A-05FF-464B-B9C8-B2E7B4ABD564
-    fn OCIServerDetach(
-        srvhp:      *mut OCIServer,
-        errhp:      *mut OCIError,
-        mode:       u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-31B1FDB3-056E-4AF9-9B89-8DA6AA156947
-    fn OCISessionBegin(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        userhp:     *mut OCISession,
-        credt:      u32,
-        mode:       u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-2AE88BDC-2C44-4958-B26A-434B0407F06F
-    fn OCISessionEnd(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        userhp:     *mut OCISession,
-        mode:       u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/transaction-functions.html#GUID-DDAE3122-8769-4A30-8D78-EB2A3CCF77D4
-    fn OCITransCommit(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        flags:      u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/transaction-functions.html#GUID-06EF9A0A-01A3-40CE-A0B7-DF0504A93366
-    fn OCITransRollback(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        flags:      u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/miscellaneous-functions.html#GUID-033BF96D-D88D-4F18-909A-3AB7C2F6C70F
-    fn OCIPing(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        mode:       u32
-    ) -> i32;
-}
-
-// Credential Types
-const OCI_CRED_RDBMS    : u32 = 1;
-const OCI_CRED_EXT      : u32 = 2;
-
-// Server Handle Attribute Values
-// const OCI_SERVER_NOT_CONNECTED  : u32 = 0;
-const OCI_SERVER_NORMAL : u32 = 1;
-const OCI_ATTR_NONBLOCKING_MODE  : u32 = 3;
-const OCI_ATTR_SERVER            : u32 = 6;
-const OCI_ATTR_SESSION           : u32 = 7;
-const OCI_ATTR_USERNAME          : u32 = 22;
-const OCI_ATTR_PASSWORD          : u32 = 23;
-const OCI_ATTR_SERVER_STATUS     : u32 = 143;
-const OCI_ATTR_CURRENT_SCHEMA    : u32 = 224;
-const OCI_ATTR_CLIENT_IDENTIFIER : u32 = 278;
-const OCI_ATTR_MODULE            : u32 = 366;
-const OCI_ATTR_ACTION            : u32 = 367;
-const OCI_ATTR_CLIENT_INFO       : u32 = 368;
-const OCI_ATTR_COLLECT_CALL_TIME : u32 = 369;
-const OCI_ATTR_CALL_TIME         : u32 = 370;
-const OCI_ATTR_DRIVER_NAME       : u32 = 424;
-const OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE : u32 = 438;
 
 /// Represents a user session
 pub struct Connection<'a> {
@@ -128,30 +55,39 @@ impl Ctx for Connection<'_> {
 }
 
 impl<'a> Connection<'a> {
-    pub(crate) fn new(env: &'a Environment) -> Result<Self> {
+    pub(crate) fn new(env: &'a Environment, addr: &str, user: &str, pass: &str) -> Result<Self> {
         let err = Handle::<OCIError>::new(env.env_ptr())?;
         let srv = Handle::<OCIServer>::new(env.env_ptr())?;
         let svc = Handle::<OCISvcCtx>::new(env.env_ptr())?;
         let usr = Handle::<OCISession>::new(env.env_ptr())?;
         usr.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", err.get())?;
-        Ok( Self { env, usr, svc, srv, err } )
-    }
-
-    pub(crate) fn attach(&self, addr: &str) -> Result<()> {
-        catch!{self.err_ptr() =>
-            OCIServerAttach(self.srv_ptr(), self.err_ptr(), addr.as_ptr(), addr.len() as u32, OCI_DEFAULT)
+        catch!{err.get() =>
+            OCIServerAttach(srv.get(), err.get(), addr.as_ptr(), addr.len() as u32, OCI_DEFAULT)
         }
-        self.svc.set_attr(OCI_ATTR_SERVER, self.srv_ptr(), self.err_ptr())
-    }
-
-    pub(crate) fn login(&self, user: &str, pass: &str) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_USERNAME, user, self.err_ptr())?;
-        self.usr.set_attr(OCI_ATTR_PASSWORD, pass, self.err_ptr())?;
-        let cred = if user.len() == 0 && pass.len() == 0 { OCI_CRED_EXT } else { OCI_CRED_RDBMS };
-        catch!{self.err_ptr() =>
-            OCISessionBegin(self.svc_ptr(), self.err_ptr(), self.usr_ptr(), cred, OCI_DEFAULT)
+        if let Err(set_attr_err) = svc.set_attr(OCI_ATTR_SERVER, srv.get(), err.get()) {
+            unsafe {
+                OCIServerDetach(srv.get(), err.get(), OCI_DEFAULT);
+            }
+            return Err(set_attr_err);
         }
-        self.svc.set_attr(OCI_ATTR_SESSION, self.usr_ptr(), self.err_ptr())
+
+        let conn = Self { env, usr, svc, srv, err };
+        conn.usr.set_attr(OCI_ATTR_USERNAME, user, conn.err_ptr())?;
+        conn.usr.set_attr(OCI_ATTR_PASSWORD, pass, conn.err_ptr())?;
+        catch!{conn.err_ptr() =>
+            OCISessionBegin(
+                conn.svc_ptr(), conn.err_ptr(), conn.usr_ptr(),
+                if user.len() == 0 && pass.len() == 0 { OCI_CRED_EXT } else { OCI_CRED_RDBMS },
+                OCI_DEFAULT
+            )
+        }
+        if let Err(set_attr_err) = conn.svc.set_attr(OCI_ATTR_SESSION, conn.usr_ptr(), conn.err_ptr()) {
+            unsafe {
+                OCISessionEnd(conn.svc_ptr(), conn.err_ptr(), conn.usr_ptr(), OCI_DEFAULT);
+            }
+            return Err(set_attr_err);
+        }
+        Ok(conn)
     }
 
     pub(crate) fn srv_ptr(&self) -> *mut OCIServer {
@@ -201,10 +137,11 @@ impl<'a> Connection<'a> {
         let stmt = conn.prepare("
             SELECT employee_id
               FROM (
-                    SELECT employee_id, row_number() OVER (ORDER BY hire_date) ord
-                    FROM hr.employees
+                    SELECT employee_id
+                         , row_number() OVER (ORDER BY hire_date) AS hire_date_rank
+                      FROM hr.employees
                    )
-             WHERE ord = 1
+             WHERE hire_date_rank = 1
         ")?;
         let mut rows = stmt.query(&[])?;
         let row = rows.next()?.expect("first (and only) row");

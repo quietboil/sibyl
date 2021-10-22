@@ -6,120 +6,24 @@ pub mod cols;
 pub mod cursor;
 pub mod rows;
 
-use self::defs::*;
-use self::args::*;
-use self::cols::{Columns, ColumnInfo};
-use self::cursor::Cursor;
-use self::rows::{Rows, ResultSetProvider};
-use crate::*;
-use crate::types::Ctx;
+use self::{
+    defs::*, args::*,
+    cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE},
+    cursor::Cursor,
+    rows::{Rows, ResultSetProvider}
+};
+use crate::{
+    Position, Result,
+    attr,
+    oci::{ *, ptr::Ptr },
+    err::Error,
+    env::Env,
+    conn::Connection,
+    types::Ctx,
+};
 use libc::c_void;
-use std::{cell::{Cell, RefCell}, collections::{HashMap, HashSet}, ptr};
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/statement-functions.html#GUID-E6C1DC67-D464-4D2A-9F19-737423D31779
-    fn OCIStmtPrepare2(
-        svchp:      *mut OCISvcCtx,
-        stmthp:     *mut *mut OCIStmt,
-        errhp:      *mut OCIError,
-        stmttext:   *const u8,
-        stmt_len:   u32,
-        key:        *const u8,
-        keylen:     u32,
-        language:   u32,
-        mode:       u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/statement-functions.html#GUID-256034CE-2ADB-4BE5-BC8D-748307F2EA8E
-    fn OCIStmtRelease(
-        stmtp:      *mut OCIStmt,
-        errhp:      *mut OCIError,
-        key:        *const u8,
-        keylen:     u32,
-        mode:       u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-87D50C09-F18D-45BB-A8AF-1E6AFEC6FE2E
-    fn OCIStmtGetBindInfo(
-        stmtp:      *mut OCIStmt,
-        errhp:      *mut OCIError,
-        size:       u32,
-        startloc:   u32,
-        found:      *mut i32,
-        bvnp:       *const *mut u8,
-        bvnl:       *mut u8,
-        invp:       *const *mut u8,
-        invl:       *mut u8,
-        dupl:       *mut u8,
-        hndl:       *const *mut OCIBind
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-CD63DF78-2178-4727-A896-B9673C4A37F0
-    // fn OCIBindByName2(
-    //     stmtp:      *mut OCIStmt,
-    //     bindpp:     *mut *mut OCIBind,
-    //     errhp:      *mut OCIError,
-    //     namep:      *const u8,
-    //     name_len:   i32,
-    //     valuep:     *mut c_void,
-    //     value_sz:   i64,
-    //     dty:        u16,
-    //     indp:       *mut c_void,
-    //     alenp:      *mut u32,
-    //     rcodep:     *mut u16,
-    //     maxarr_len: u32,
-    //     curelep:    *mut u32,
-    //     mode:       u32
-    // ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-D28DF5A7-3C75-4E52-82F7-A5D6D5714E69
-    fn OCIBindByPos2(
-        stmtp:      *mut OCIStmt,
-        bindpp:     *mut *mut OCIBind,
-        errhp:      *mut OCIError,
-        position:   u32,
-        valuep:     *mut c_void,
-        value_sz:   i64,
-        dty:        u16,
-        indp:       *mut c_void,
-        alenp:      *mut u32,
-        rcodep:     *mut u16,
-        maxarr_len: u32,
-        curelep:    *mut u32,
-        mode:       u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-030270CB-346A-412E-B3B3-556DD6947BE2
-    // fn OCIBindDynamic(
-    //     bindp:      *mut OCIBind,
-    //     errhp:      *mut OCIError,
-    //     ictxp:      *mut c_void,
-    //     icbfp:      OCICallbackInBind,
-    //     octxp:      *mut c_void,
-    //     ocbfp:      OCICallbackOutBind
-    // ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/statement-functions.html#GUID-98B26708-3E02-45C0-8258-5D5544F32BE9
-    fn OCIStmtExecute(
-        svchp:      *mut OCISvcCtx,
-        stmtp:      *mut OCIStmt,
-        errhp:      *mut OCIError,
-        iters:      u32,
-        rowoff:     u32,
-        snap_in:    *const c_void,  // *const OCISnapshot
-        snap_out:   *mut c_void,    // *mut OCISnapshot
-        mode:       u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/statement-functions.html#GUID-60B998F9-F213-43BA-AB84-76F1EC6A6687
-    fn OCIStmtGetNextResult(
-        stmtp:      *mut OCIStmt,
-        errhp:      *mut OCIError,
-        result:     *mut *mut OCIStmt,
-        rtype:      *mut u32,
-        mode:       u32
-    ) -> i32;
-}
+use std::{cell::Cell, collections::{HashMap, HashSet}, ptr};
+use once_cell::unsync::OnceCell;
 
 // type OCICallbackInBindFn = extern "C" fn(
 //     ictxp:  *mut c_void,
@@ -149,20 +53,28 @@ extern "C" {
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
     conn:        &'a Connection<'a>,
-    stmt:        *mut OCIStmt,
+    stmt:        Ptr<OCIStmt>,
     param_idxs:  HashMap<String,usize>,
-    args_binds:  Vec<Cell<*mut OCIBind>>,
+    args_binds:  Vec<Ptr<OCIBind>>,
+
     indicators:  Vec<Cell<i16>>,
     data_sizes:  Vec<Cell<u32>>,
-    cols:        RefCell<Columns>,
+    cols:        OnceCell<Columns>,
+
+    max_long:    Cell<u32>,
 }
 
 impl Drop for Statement<'_> {
     fn drop(&mut self) {
-        self.cols.borrow_mut().drop_output_buffers(self.env_ptr(), self.err_ptr());
-        if !self.stmt.is_null() {
+        let env = self.env_ptr();
+        let err = self.err_ptr();
+        if let Some(cols) = self.cols.get_mut() {
+            cols.drop_output_buffers(env, err);
+        }
+        let ocistmt = self.stmt.get();
+        if !ocistmt.is_null() {
             unsafe {
-                OCIStmtRelease(self.stmt, self.err_ptr(), ptr::null(), 0, OCI_DEFAULT);
+                OCIStmtRelease(ocistmt, err, ptr::null(), 0, OCI_DEFAULT);
             }
         }
     }
@@ -184,7 +96,7 @@ pub trait Stmt: Env {
 
 impl Stmt for Statement<'_> {
     fn stmt_ptr(&self) -> *mut OCIStmt {
-        self.stmt
+        self.stmt.get()
     }
 }
 
@@ -195,8 +107,8 @@ impl Ctx for Statement<'_> {
 }
 
 impl ResultSetProvider for Statement<'_> {
-    fn get_cols(&self) -> &RefCell<Columns> {
-        &self.cols
+    fn get_cols(&self) -> Option<&Columns> {
+        self.cols.get()
     }
 
     fn get_ctx(&self) -> &dyn Ctx {
@@ -212,7 +124,7 @@ impl ResultSetProvider for Statement<'_> {
     }
 }
 
-fn define_binds(stmt: *mut OCIStmt, err: *mut OCIError) -> Result<(HashMap<String,usize>, Vec<Cell<*mut OCIBind>>, Vec<Cell<i16>>, Vec<Cell<u32>>)> {
+fn define_binds(stmt: *mut OCIStmt, err: *mut OCIError) -> Result<(HashMap<String,usize>, Vec<Ptr<OCIBind>>, Vec<Cell<i16>>, Vec<Cell<u32>>)> {
     let num_binds = attr::get::<u32>(OCI_ATTR_BIND_COUNT, OCI_HTYPE_STMT, stmt as *const c_void, err)? as usize;
     let mut param_idxs = HashMap::with_capacity(num_binds);
     let mut args_binds = Vec::with_capacity(num_binds);
@@ -242,7 +154,7 @@ fn define_binds(stmt: *mut OCIStmt, err: *mut OCIError) -> Result<(HashMap<Strin
                 let name = String::from_utf8_lossy(name).to_string();
                 param_idxs.insert(name, i);
             }
-            args_binds.push(Cell::new(oci_binds[i]));
+            args_binds.push(Ptr::new(oci_binds[i]));
             indicators.push(Cell::new(OCI_IND_NOTNULL));
             data_sizes.push(Cell::new(0u32));
         }
@@ -400,19 +312,19 @@ impl<'a> Statement<'a> {
 
 impl<'a> Statement<'a> {
     pub(crate) fn new(sql: &str, conn: &'a Connection<'a>) -> Result<Self> {
-        let mut stmt = ptr::null_mut::<OCIStmt>();
+        let stmt = Ptr::null();
         catch!{conn.err_ptr() =>
             OCIStmtPrepare2(
-                conn.svc_ptr(), &mut stmt, conn.err_ptr(),
+                conn.svc_ptr(), stmt.as_ptr(), conn.err_ptr(),
                 sql.as_ptr(), sql.len() as u32,
                 ptr::null(), 0,
                 OCI_NTV_SYNTAX, OCI_DEFAULT
             )
         }
-        let (param_idxs, args_binds, indicators, data_sizes) = define_binds(stmt, conn.err_ptr())?;
+        let (param_idxs, args_binds, indicators, data_sizes) = define_binds(stmt.get(), conn.err_ptr())?;
         Ok(Self {
             conn, stmt, param_idxs, args_binds, indicators, data_sizes,
-            cols: RefCell::new(Columns::new()),
+            cols: OnceCell::new(), max_long: Cell::new(DEFAULT_LONG_BUFFER_SIZE)
         })
     }
 }
@@ -632,10 +544,10 @@ impl<'a> Statement<'a> {
         ```
     */
     pub fn next_result(&'a self) -> Result<Option<Cursor>> {
-        let mut stmt = ptr::null_mut::<OCIStmt>();
-        let mut stmt_type = std::mem::MaybeUninit::<u32>::uninit();
+        let stmt = Ptr::null();
+        let mut stmt_type = 0u32;
         let res = unsafe {
-            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), &mut stmt, stmt_type.as_mut_ptr(), OCI_DEFAULT)
+            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), stmt.as_ptr(), &mut stmt_type, OCI_DEFAULT)
         };
         match res {
             OCI_NO_DATA => Ok( None ),
@@ -645,23 +557,34 @@ impl<'a> Statement<'a> {
     }
 
     /**
-        Sets the buffer size for fetching LONG and LONG RAW via the data interface.
+        Sets the number of top-level rows to be prefetched. The default value is 1 row.
 
-        By default 32768 bytes are allocated for values from LONG and LONG RAW columns.
-        If the actual value is expected to be larger than that, then the "column size"
-        has to be changed before `query` is run.
+        # Example
+        ```
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT employee_id, first_name, last_name
+              FROM hr.employees
+             WHERE manager_id = :id
+        ")?;
+        stmt.set_prefetch_rows(10)?;
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
     */
-    #[deprecated="Use set_column_size"]
-    pub fn set_max_column_fetch_size(&self, size: usize) {
-        self.cols.borrow_mut().set_max_long_fetch_size(size as u32);
+    pub fn set_prefetch_rows(&self, num_rows: u32) -> Result<()> {
+        self.set_attr(OCI_ATTR_PREFETCH_ROWS, num_rows)
     }
 
     /**
-        Sets the buffer size for fetching LONG and LONG RAW via the data interface.
+        Sets the maximum size of data that will be fetched from LONG and LONG RAW.
 
         By default 32768 bytes are allocated for values from LONG and LONG RAW columns.
         If the actual value is expected to be larger than that, then the "column size"
-        has to be changed before `query` is run.
+        has to be changed **before** the `query` is run.
 
         # Example
         ```
@@ -707,7 +630,7 @@ impl<'a> Statement<'a> {
               FROM test_long_and_raw_data
              WHERE id = :id
         ")?;
-        stmt.set_column_size(0, 100_000);
+        stmt.set_max_long_size(100_000);
         let mut rows = stmt.query(&[ &id ])?;
         let row = rows.next()?.expect("first (and only) row");
         let txt : &str = row.get(0)?.expect("long text");
@@ -715,8 +638,8 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn set_column_size(&self, pos: usize, size: usize) {
-        self.cols.borrow_mut().set_long_column_size(pos, size as u32);
+    pub fn set_max_long_size(&self, size: u32) {
+        self.max_long.set(size);
     }
 
     /**
@@ -766,7 +689,7 @@ impl<'a> Statement<'a> {
             return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
         }
         let res = self.exec(stmt_type, args, &mut [])?;
-        self.cols.borrow_mut().setup(self)?;
+        let _cols = self.cols.get_or_try_init(|| Columns::new(self, self.max_long.get()))?;
         match res {
             OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
                 Ok( Rows::new(res, self) )
@@ -837,7 +760,7 @@ impl<'a> Statement<'a> {
         ```
     */
     pub fn get_column(&self, pos: usize) -> Option<ColumnInfo> {
-        self.cols.borrow().get_column_info(self, pos)
+        self.cols.get().and_then(|cols| cols.get_column_info(self, pos))
     }
 
     /**
@@ -880,29 +803,6 @@ impl<'a> Statement<'a> {
     pub fn get_row_count(&self) -> Result<usize> {
         let num_rows = self.get_attr::<u64>(OCI_ATTR_UB8_ROW_COUNT)? as usize;
         Ok( num_rows )
-    }
-
-    /**
-        Sets the number of top-level rows to be prefetched. The default value is 1 row.
-
-        # Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            SELECT employee_id, first_name, last_name
-              FROM hr.employees
-             WHERE manager_id = :id
-        ")?;
-        stmt.set_prefetch_rows(10)?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn set_prefetch_rows(&self, num_rows: u32) -> Result<()> {
-        self.set_attr(OCI_ATTR_PREFETCH_ROWS, num_rows)
     }
 
     // Indicates the number of rows that were successfully fetched into the user's buffers

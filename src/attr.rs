@@ -1,28 +1,9 @@
-use crate::*;
+use crate::{
+    RowID, Result,
+    oci::*,
+};
 use libc::c_void;
 use std::mem;
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/handle-and-descriptor-functions.html#GUID-FA199A99-4D7A-42C2-BB0A-C20047B95DF9
-    fn OCIAttrGet(
-        trgthndlp:  *const c_void,
-        trghndltyp: u32,
-        attributep: *mut c_void,
-        sizep:      *mut u32,
-        attrtype:   u32,
-        errhp:      *mut OCIError
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/handle-and-descriptor-functions.html#GUID-3741D7BD-7652-4D7A-8813-AC2AEA8D3B03
-    fn OCIAttrSet(
-        trgthndlp:  *mut c_void,
-        trghndltyp: u32,
-        attributep: *const c_void,
-        size:       u32,
-        attrtype:   u32,
-        errhp:      *mut OCIError
-    ) -> i32;
-}
 
 pub(crate) fn get<T: AttrGet>(attr_type: u32, obj_type: u32, obj: *const c_void, err: *mut OCIError) -> Result<T> {
     let mut attr_val  = mem::MaybeUninit::<T::ValueType>::uninit();

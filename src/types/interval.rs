@@ -2,10 +2,8 @@
 
 mod tosql;
 
-use super::Ctx;
-use super::number::OCINumber;
-use crate::*;
-use crate::desc::{ Descriptor, DescriptorType };
+use super::{ Ctx, number::{ OCINumber, Number } };
+use crate::{ Result, oci::*, desc::{ Descriptor, DescriptorType } };
 use libc::{ c_void, size_t };
 use std::{ mem, cmp::Ordering };
 

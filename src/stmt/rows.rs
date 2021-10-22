@@ -1,28 +1,19 @@
-use super::{Stmt, cols::Columns};
-use crate::*;
-use crate::types::Ctx;
+use super::{ Stmt, cols::Columns };
+use crate::{ 
+    Position, RowID, Result,
+    attr,
+    oci::*,
+    err::Error,
+    env::Env,
+    conn::Connection,
+    types::Ctx,
+    fromsql::FromSql,
+};
 use libc::c_void;
-use std::cell::RefCell;
-
-const OCI_ATTR_ROWID : u32 = 19;
-
-const OCI_FETCH_NEXT : u16 = 2;
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/statement-functions.html#GUID-DF585B90-58BA-45FC-B7CE-6F7F987C03B9
-    fn OCIStmtFetch2(
-        stmtp:      *mut OCIStmt,
-        errhp:      *mut OCIError,
-        nrows:      u32,
-        orient:     u16,
-        offset:     i16,
-        mode:       u32
-    ) -> i32;
-}
 
 /// Methods that the provider of the returned results (`Statement` or `Cursor`) must implement.
 pub trait ResultSetProvider : Stmt {
-    fn get_cols(&self) -> &RefCell<Columns>;
+    fn get_cols(&self) -> Option<&Columns>;
     fn get_ctx(&self) -> &dyn Ctx;
     fn get_env(&self) -> &dyn Env;
     fn conn(&self) -> &Connection;
@@ -130,10 +121,11 @@ impl<'a> Row<'a> {
         This method considers the out of bounds or unknown/misnamed
         "columns" to be NULL.
     */
-    pub fn is_null(&self, pos: impl Position) -> bool {
-        let cols = self.rset.get_cols().borrow();
-        pos.name().and_then(|name| cols.col_index(name)).or(pos.index())
-            .map_or(true, |ix| cols.is_null(ix))
+    pub fn is_null(&self, pos: impl Position) -> bool {        
+        self.rset.get_cols().and_then(|cols| {
+            pos.name().and_then(|name| cols.col_index(name)).or(pos.index())
+                .map(|ix| cols.is_null(ix))
+        }).unwrap_or(true)
     }
 
     /**
@@ -168,15 +160,18 @@ impl<'a> Row<'a> {
         ```
     */
     pub fn get<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<Option<T>> {
-        let cols = self.rset.get_cols().borrow();
-        if let Some(pos) = pos.name().and_then(|name| cols.col_index(name)).or(pos.index()) {
-            if cols.is_null(pos) {
-                Ok(None)
+        if let Some(cols) = self.rset.get_cols() {
+            if let Some(pos) = pos.name().and_then(|name| cols.col_index(name)).or(pos.index()) {
+                if cols.is_null(pos) {
+                    Ok(None)
+                } else {
+                    cols.get(self.rset, pos)
+                }
             } else {
-                cols.get(self.rset, pos)
+                Err(Error::new("no such column"))
             }
         } else {
-            Err(Error::new("no such column"))
+            Err(Error::new("projection is not initialized"))
         }
     }
 

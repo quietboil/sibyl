@@ -18,11 +18,11 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
         SELECT first_name, last_name, hire_date
           FROM (
                 SELECT first_name, last_name, hire_date
-                     , row_number() OVER (ORDER BY hire_date) ord
+                     , Row_Number() OVER (ORDER BY hire_date) hire_date_rank
                   FROM hr.employees
                  WHERE hire_date >= :hire_date
                )
-         WHERE ord = 1
+         WHERE hire_date_rank = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
     let mut rows = stmt.query(&[ &date ])?;

@@ -6,7 +6,7 @@ mod tosql;
 
 use self::convert::{IntoNumber, FromNumber};
 use super::Ctx;
-use crate::*;
+use crate::{ Result, oci::* };
 use libc::c_void;
 use std::{ mem, ptr, cmp::Ordering };
 

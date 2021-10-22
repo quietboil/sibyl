@@ -1,323 +1,17 @@
 //! Functions for performing operations on large objects (LOBs).
 
-use crate::{*, desc::{ Descriptor, DescriptorType }};
+use crate::{
+    Result, BFile, CharSetForm, Cache,
+    err::Error,
+    env::Env,
+    oci::*, 
+    desc::{ Descriptor, DescriptorType },
+    conn::Connection,
+    tosql::ToSql,
+    tosqlout::ToSqlOut,
+};
 use libc::c_void;
 use std::{ cmp, mem, ptr, cell::Cell };
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-84EA4A66-27BF-470C-8464-3DE31937702A
-    // fn OCIDurationBegin(
-    //     envhp:      *mut OCIEnv,
-    //     errhp:      *mut OCIError,
-    //     svchp:      *const OCISvcCtx,
-    //     parent:     u16,
-    //     duration:   *mut u16
-    // ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-AABC3F29-C91B-45A7-AF1E-D486C12E4962
-    // fn OCIDurationEnd(
-    //     envhp:      *mut OCIEnv,
-    //     errhp:      *mut OCIError,
-    //     svchp:      *const OCISvcCtx,
-    //     duration:   u16
-    // ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-5B43FC88-A649-4764-8C1E-6D792F05F7CE
-    fn OCILobAppend(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        dst:        *mut OCILobLocator,
-        src:        *const OCILobLocator,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-9B25760D-649E-4B83-A0AA-8C4F3C479BC8
-    fn OCILobCharSetForm(
-        envhp:      *mut OCIEnv,
-        errhp:      *mut OCIError,
-        src:        *const OCILobLocator,
-        csform:     *mut u8
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-A243691D-8180-4AF6-AA6E-DF9333F8258B
-    fn OCILobCharSetId(
-        envhp:      *mut OCIEnv,
-        errhp:      *mut OCIError,
-        src:        *const OCILobLocator,
-        csid:       *mut u16
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-CBEB9238-6B47-4A08-8C8D-FC2E5ED56557
-    fn OCILobClose(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-404C8A50-516F-4DFD-939D-646A232AF7DF
-    fn OCILobCopy2(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        dst:        *mut OCILobLocator,
-        src:        *mut OCILobLocator,
-        amount:     u64,
-        dst_off:    u64,
-        src_off:    u64,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-63F75EC5-EB14-4E25-B593-270FF814615A
-    fn OCILobCreateTemporary(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        csid:       u16,
-        csfrm:      u8,
-        lob_type:   u8,
-        cache:      u8,
-        duration:   u16,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-264797B2-B3EA-4F6D-9A0E-BF8A4DDA13FA
-    fn OCILobErase2(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        amount:     *mut u64,
-        offset:     u64,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-40AFA7A3-3A24-4DF7-A719-AECA7C1F522A
-    fn OCILobFileClose(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        filep:      *mut OCILobLocator,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-977F905D-DAFB-4D88-8FE0-7A345837B147
-    fn OCILobFileExists(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        filep:      *mut OCILobLocator,
-        flag:       *mut u8
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-BF637A34-B18A-47EE-A060-93C4E79D1813
-    fn OCILobFileGetName(
-        envhp:      *mut OCIEnv,
-        errhp:      *mut OCIError,
-        loc:        *const OCILobLocator,
-        dir:        *mut u8,
-        dir_len:    *mut u16,
-        filename:   *mut u8,
-        name_len:   *mut u16,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-A662166C-DC74-40B4-9BFA-8D3ED216FDE7
-    fn OCILobFileIsOpen(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        filep:      *mut OCILobLocator,
-        flag:       *mut u8
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-2E933BBA-BCE3-41F2-B8A2-4F9485F0BCB0
-    fn OCILobFileOpen(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        filep:      *mut OCILobLocator,
-        mode:       u8
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-507AC0EF-4CAB-437E-BB94-1FD77EDC1B5C
-    fn OCILobFileSetName(
-        envhp:      *mut OCIEnv,
-        errhp:      *mut OCIError,
-        filepp:     *mut *mut OCILobLocator,
-        dir:        *const u8,
-        dir_len:    u16,
-        filename:   *const u8,
-        name_len:   u16,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-E0FBF017-1B08-410C-9E53-F6E14008813A
-    fn OCILobFreeTemporary(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-ABB71585-172E-4F3E-A0CF-F70D709F2072
-    fn OCILobGetChunkSize(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        size:       *mut u32,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-D62200EF-FA60-4788-950F-0C0686D807FD
-    fn OCILobGetContentType(
-        envhp:      *mut OCIEnv,
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        ctx_type:   *mut u8,
-        len:        *mut u32,
-        mode:       u32
-    )-> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-9BC0A78A-37CB-432F-AE2B-22C905608C4C
-    fn OCILobGetLength2(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        len:        *mut u64,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-5142710F-03AD-43D5-BBAB-6732B874E52E
-    fn OCILobIsEqual(
-        envhp:      *mut OCIEnv,
-        loc1:       *const OCILobLocator,
-        loc2:       *const OCILobLocator,
-        flag:       *mut u8,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-FFF883CE-3B99-4319-A81C-A11F8740209E
-    fn OCILobIsOpen(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        flag:       *mut u8,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-071D8134-F9E7-4C5A-8E63-E90831FA7AC3
-    fn OCILobIsTemporary(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        flag:       *mut u8,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-DA1CD18B-7044-4E40-B1F4-4FCC1FCAB6C4
-    fn OCILobLoadFromFile2(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        dst:        *mut OCILobLocator,
-        src:        *mut OCILobLocator,
-        amount:     u64,
-        dst_off:    u64,
-        src_off:    u64,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-F7887376-4B3C-430C-94A3-11FE96E26627
-    fn OCILobLocatorAssign(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        src:        *const OCILobLocator,
-        dst:        *const *mut OCILobLocator,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-4CA17A83-795F-43B2-8B76-611B13E4C8DE
-    fn OCILobLocatorIsInit(
-        envhp:      *mut OCIEnv,
-        errhp:      *mut OCIError,
-        src:        *const OCILobLocator,
-        flag:       *mut u8,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-B007A3C7-999B-4AD7-8BF7-C6D14572F470
-    fn OCILobOpen(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        mode:       u8,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-6AC6E6DA-236B-4BF9-942F-9FCC4178FEDA
-    fn OCILobRead2(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        byte_cnt:   *mut u64,
-        char_cnt:   *mut u64,
-        offset:     u64,
-        buf:        *mut u8,
-        buf_len:    u64,
-        piece:      u8,
-        ctx:        *mut c_void,
-        read_cb:    *const c_void,
-        csid:       u16,
-        csfrm:      u8,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-789C0971-76D5-4439-9379-E3DCE7885528
-    fn OCILobSetContentType(
-        envhp:      *mut OCIEnv,
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        ctype:      *const u8,
-        len:        u32,
-        mode:       u32,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-ABDB1543-1782-4216-AD80-55FA82CFF733
-    fn OCILobTrim2(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        len:        u64,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-77F056CA-9EEE-4550-8A8E-0155DF994DBE
-    fn OCILobWrite2(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        byte_cnt:   *mut u64,
-        char_cnt:   *mut u64,
-        offset:     u64,
-        buf:        *const u8,
-        buf_len:    u64,
-        piece:      u8,
-        ctx:        *mut c_void,
-        write_cb:   *const c_void,
-        csid:       u16,
-        csfrm:      u8,
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-87D3275A-B042-4991-B261-AB531BB83CA2
-    fn OCILobWriteAppend2(
-        svchp:      *mut OCISvcCtx,
-        errhp:      *mut OCIError,
-        loc:        *mut OCILobLocator,
-        byte_cnt:   *mut u64,
-        char_cnt:   *mut u64,
-        buf:        *const u8,
-        buf_len:    u64,
-        piece:      u8,
-        ctx:        *mut c_void,
-        write_cb:   *const c_void,
-        csid:       u16,
-        csfrm:      u8,
-    ) -> i32;
-}
-
-const OCI_ATTR_LOBEMPTY     : u32 = 45;
-const OCI_ATTR_LOB_REMOTE   : u32 = 520;
-const OCI_ATTR_LOB_TYPE     : u32 = 591;
-
-const OCI_TEMP_BLOB         : u8 = 1;
-const OCI_TEMP_CLOB         : u8 = 2;
-
-const OCI_FILE_READONLY     : u8 = 1;
-const OCI_LOB_READONLY      : u8 = 1;
-const OCI_LOB_READWRITE     : u8 = 2;
-
-const OCI_ONE_PIECE         : u8 = 0;
-const OCI_FIRST_PIECE       : u8 = 1;
-const OCI_NEXT_PIECE        : u8 = 2;
-const OCI_LAST_PIECE        : u8 = 3;
-
-const OCI_LOB_CONTENTTYPE_MAXSIZE   : usize = 128;
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
 pub trait InternalLob {}
@@ -2189,7 +1883,7 @@ impl LOB<'_,OCIBFileLocator> {
         # let dbpass = std::env::var("DBPASS")?;
         # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let file = BFile::new(&conn)?;
+        let mut file = BFile::new(&conn)?;
         file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
 
         assert!(file.file_exists()?);
@@ -2197,16 +1891,14 @@ impl LOB<'_,OCIBFileLocator> {
         ```
     */
     pub fn set_file_name(&self, dir: &str, name: &str) -> Result<()> {
-        let mut filep = self.locator.get();
         catch!{self.conn.err_ptr() =>
             OCILobFileSetName(
                 self.conn.env_ptr(), self.conn.err_ptr(),
-                &mut filep as *mut *mut OCILobLocator,
+                self.locator.as_ptr(),
                 dir.as_ptr(),  dir.len() as u16,
                 name.as_ptr(), name.len() as u16
             )
         }
-        self.locator.replace(filep as *mut OCIBFileLocator);
         Ok(())
     }
 

@@ -2,36 +2,79 @@
 
 mod tosql;
 
-use crate::*;
-use std::{ mem, ptr };
+use crate::{
+    Result,
+    oci::{ *, ptr::Ptr },
+    env::Env,
+};
 
-pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<*mut OCIString> {
-    let mut oci_str = ptr::null_mut::<OCIString>();
-    catch!{err =>
-        OCIStringResize(env, err, size, &mut oci_str)
-    }
-    Ok( oci_str )
+extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-3F336010-D8C8-4B50-89CB-ABCCA98905DA
+    fn OCIStringAllocSize(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        txt:        *const OCIString,
+        size:       *mut u32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-58BC140A-900C-4409-B3D2-C2DC8FB643FF
+    fn OCIStringAssign(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        rhs:        *const OCIString,
+        lhs:        *mut *mut OCIString
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-96E8375B-9017-4E06-BF85-09C12DF286F4
+    fn OCIStringAssignText(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        rhs:        *const u8,
+        rhs_len:    u32,
+        lhs:        *mut *mut OCIString
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-0E1302F7-A32C-46F1-93D7-FB33CF60C24F
+    fn OCIStringPtr(
+        env:        *mut OCIEnv,
+        txt:        *const OCIString
+    ) -> *mut u8;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-CA52A8A4-08BA-4F08-A4A3-79F841F6AE9E
+    fn OCIStringResize(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        size:       u32,
+        txt:        *mut *mut OCIString
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-DBDAB2D9-4E78-4752-85B6-55D30CA6AF30
+    fn OCIStringSize(
+        env:        *mut OCIEnv,
+        txt:        *const OCIString
+    ) -> u32;
 }
 
-// pub(crate) fn resize(txt: &mut *mut OCIString, size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<()> {
-//     catch!{err =>
-//         OCIStringResize(env, err, size as u32, txt)
-//     }
-//     Ok(())
-// }
+pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Ptr<OCIString>> {
+    let txt = Ptr::null();
+    catch!{err =>
+        OCIStringResize(env, err, size, txt.as_ptr())
+    }
+    Ok( txt )
+}
 
-pub(crate) fn free(txt: &mut *mut OCIString, env: *mut OCIEnv, err: *mut OCIError) {
+pub(crate) fn free(txt: &Ptr<OCIString>, env: *mut OCIEnv, err: *mut OCIError) {
     unsafe {
-        OCIStringResize(env, err, 0, txt);
+        OCIStringResize(env, err, 0, txt.as_ptr());
     }
 }
 
 pub(crate) fn capacity(txt: *const OCIString, env: *mut OCIEnv, err: *mut OCIError) -> Result<usize> {
-    let mut size = mem::MaybeUninit::<u32>::uninit();
+    let mut size = 0u32;
     catch!{err =>
-        OCIStringAllocSize(env, err, txt, size.as_mut_ptr())
+        OCIStringAllocSize(env, err, txt, &mut size)
     }
-    Ok( unsafe { size.assume_init() } as usize )
+    Ok( size as usize )
 }
 
 pub(crate) fn to_string(txt: *const OCIString, env: *mut OCIEnv) -> String {
@@ -66,62 +109,15 @@ pub(crate) fn as_str<'a>(txt: *const OCIString, env: *mut OCIEnv) -> &'a str {
     }
 }
 
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-3F336010-D8C8-4B50-89CB-ABCCA98905DA
-    fn OCIStringAllocSize(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        txt:        *const OCIString,
-        size:       *mut u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-58BC140A-900C-4409-B3D2-C2DC8FB643FF
-    fn OCIStringAssign(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        rhs:        *const OCIString,
-        lhs:        &*mut OCIString
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-96E8375B-9017-4E06-BF85-09C12DF286F4
-    fn OCIStringAssignText(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        rhs:        *const u8,
-        rhs_len:    u32,
-        lhs:        &*mut OCIString
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-0E1302F7-A32C-46F1-93D7-FB33CF60C24F
-    fn OCIStringPtr(
-        env:        *mut OCIEnv,
-        txt:        *const OCIString
-    ) -> *mut u8;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-CA52A8A4-08BA-4F08-A4A3-79F841F6AE9E
-    fn OCIStringResize(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        size:       u32,
-        txt:        &*mut OCIString
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-DBDAB2D9-4E78-4752-85B6-55D30CA6AF30
-    fn OCIStringSize(
-        env:        *mut OCIEnv,
-        txt:        *const OCIString
-    ) -> u32;
-}
-
 /// Represents Oracle character types - VARCHAR, LONG, etc.
 pub struct Varchar<'a> {
-    txt: *mut OCIString,
+    txt: Ptr<OCIString>,
     env: &'a dyn Env,
 }
 
 impl Drop for Varchar<'_> {
     fn drop(&mut self) {
-        free(&mut self.txt, self.env.env_ptr(), self.env.err_ptr());
+        free(&self.txt, self.env.env_ptr(), self.env.err_ptr());
     }
 }
 
@@ -143,9 +139,9 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn from(text: &str, env: &'a dyn Env) -> Result<Self> {
-        let mut txt = ptr::null_mut::<OCIString>();
+        let txt = Ptr::null();
         catch!{env.err_ptr() =>
-            OCIStringAssignText(env.env_ptr(), env.err_ptr(), text.as_ptr(), text.len() as u32, &mut txt)
+            OCIStringAssignText(env.env_ptr(), env.err_ptr(), text.as_ptr(), text.len() as u32, txt.as_ptr())
         }
         Ok( Self { env, txt } )
     }
@@ -168,17 +164,17 @@ impl<'a> Varchar<'a> {
     */
     pub fn from_varchar(other: &'a Varchar) -> Result<Self> {
         let env = other.env;
-        let mut txt = ptr::null_mut::<OCIString>();
+        let txt = Ptr::null();
         catch!{env.err_ptr() =>
-            OCIStringAssign(env.env_ptr(), env.err_ptr(), other.as_ptr(), &mut txt)
+            OCIStringAssign(env.env_ptr(), env.err_ptr(), other.as_ptr(), txt.as_ptr())
         }
         Ok( Self { env, txt } )
     }
 
     pub(crate) fn from_ocistring(oci_str: *const OCIString, env: &'a dyn Env) -> Result<Self> {
-        let mut txt = ptr::null_mut::<OCIString>();
+        let txt = Ptr::null();
         catch!{env.err_ptr() =>
-            OCIStringAssign(env.env_ptr(), env.err_ptr(), oci_str, &mut txt)
+            OCIStringAssign(env.env_ptr(), env.err_ptr(), oci_str, txt.as_ptr())
         }
         Ok( Self { env, txt } )
     }
@@ -204,11 +200,11 @@ impl<'a> Varchar<'a> {
     }
 
     pub(crate) fn as_ptr(&self) -> *const OCIString {
-        self.txt
+        self.txt.get()
     }
 
     pub(crate) fn as_mut_ptr(&self) -> *mut OCIString {
-        self.txt
+        self.txt.get()
     }
 
     /**
@@ -229,7 +225,7 @@ impl<'a> Varchar<'a> {
     */
     pub fn set(&mut self, text: &str) -> Result<()> {
         catch!{self.env.err_ptr() =>
-            OCIStringAssignText(self.env.env_ptr(), self.env.err_ptr(), text.as_ptr(), text.len() as u32, &mut self.txt)
+            OCIStringAssignText(self.env.env_ptr(), self.env.err_ptr(), text.as_ptr(), text.len() as u32, self.txt.as_ptr())
         }
         Ok(())
     }
@@ -303,7 +299,7 @@ impl<'a> Varchar<'a> {
     */
     pub fn resize(&mut self, new_size: usize) -> Result<()> {
         catch!{self.env.err_ptr() =>
-            OCIStringResize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, &mut self.txt)
+            OCIStringResize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, self.txt.as_ptr())
         }
         Ok(())
     }
@@ -323,7 +319,7 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn as_str(&self) -> &str {
-        as_str(self.txt, self.env.env_ptr())
+        as_str(self.as_ptr(), self.env.env_ptr())
     }
 
     /// Returns unsafe pointer to the string data

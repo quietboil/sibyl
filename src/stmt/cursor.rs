@@ -1,42 +1,66 @@
-use super::cols::{Columns, ColumnInfo};
-use super::rows::{Rows, ResultSetProvider};
-use super::Stmt;
-use crate::*;
-use crate::types::*;
+//! REF CURSOR
+
+use super::{
+    Stmt, Statement,
+    cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE},
+    rows::{Rows, ResultSetProvider}
+};
+use crate::{
+    Result,
+    attr,
+    oci::{ *, ptr::Ptr },
+    env::Env,
+    conn::Connection,
+    handle::Handle,
+    types::Ctx,
+    tosqlout::ToSqlOut,
+};
 use libc::c_void;
-use std::cell::RefCell;
+use std::cell::Cell;
+use once_cell::unsync::OnceCell;
+
+impl ToSqlOut for Handle<OCIStmt> {
+    fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
+        (SQLT_RSET, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCIStmt>(), std::mem::size_of::<*mut OCIStmt>())
+    }
+}
 
 pub(crate) enum RefCursor {
     Handle( Handle<OCIStmt> ),
-    Ptr( *mut OCIStmt )
+    Ptr( Ptr<OCIStmt> )
 }
 
 impl RefCursor {
     fn get(&self) -> *mut OCIStmt {
         match self {
             RefCursor::Handle( handle ) => handle.get(),
-            RefCursor::Ptr( ptr )       => *ptr,
+            RefCursor::Ptr( ptr )       => ptr.get(),
         }
     }
 
     fn as_ptr(&mut self) -> *mut *mut OCIStmt {
         match self {
             RefCursor::Handle( handle ) => handle.as_ptr(),
-            RefCursor::Ptr( ptr )       => ptr,
+            RefCursor::Ptr( ptr )       => ptr.as_ptr(),
         }
     }
 }
 
 /// Cursors - implicit results and REF CURSOR - from an executed PL/SQL statement
 pub struct Cursor<'a> {
-    stmt:       &'a dyn ResultSetProvider,
-    cursor:     RefCursor,
-    cols:       RefCell<Columns>,
+    stmt:     &'a dyn ResultSetProvider,
+    cursor:   RefCursor,
+    cols:     OnceCell<Columns>,
+    max_long: Cell<u32>,
 }
 
 impl Drop for Cursor<'_> {
     fn drop(&mut self) {
-        self.cols.borrow_mut().drop_output_buffers(self.env_ptr(), self.err_ptr());
+        let env = self.env_ptr();
+        let err = self.err_ptr();
+        if let Some(cols) = self.cols.get_mut() {
+            cols.drop_output_buffers(env, err);
+        }
     }
 }
 
@@ -63,8 +87,8 @@ impl Ctx for Cursor<'_> {
 }
 
 impl<'a> ResultSetProvider for Cursor<'a> {
-    fn get_cols(&self) -> &RefCell<Columns> {
-        &self.cols
+    fn get_cols(&self) -> Option<&Columns> {
+        self.cols.get()
     }
 
     fn get_ctx(&self) -> &dyn Ctx {
@@ -192,19 +216,21 @@ impl<'a> Cursor<'a> {
         Ok( Self::from_handle(handle, stmt) )
     }
 
-    pub(crate) fn implicit(istmt: *mut OCIStmt, stmt: &'a dyn ResultSetProvider) -> Self {
+    pub(crate) fn implicit(istmt: Ptr<OCIStmt>, stmt: &'a dyn ResultSetProvider) -> Self {
         Self {
             cursor: RefCursor::Ptr( istmt ),
-            cols: RefCell::new(Columns::new()),
+            cols: OnceCell::new(),
             stmt,
+            max_long: Cell::new(DEFAULT_LONG_BUFFER_SIZE)
         }
     }
 
     pub(crate) fn from_handle(handle: Handle<OCIStmt>, stmt: &'a dyn ResultSetProvider) -> Self {
         Self {
             cursor: RefCursor::Handle( handle ),
-            cols: RefCell::new(Columns::new()),
+            cols: OnceCell::new(),
             stmt,
+            max_long: Cell::new(DEFAULT_LONG_BUFFER_SIZE)
         }
     }
 
@@ -214,80 +240,6 @@ impl<'a> Cursor<'a> {
 
     fn set_attr<V: attr::AttrSet>(&self, attr_type: u32, attr_val: V) -> Result<()> {
         attr::set::<V>(attr_type, attr_val, OCI_HTYPE_STMT, self.stmt_ptr() as *mut c_void, self.err_ptr())
-    }
-
-    /**
-        Sets the buffer size for fetching LONG and LONG RAW via the data interface.
-
-        By default 32768 bytes are allocated for values from LONG and LONG RAW columns.
-        If the actual value is expected to be larger than that, then the "column size"
-        has to be changed before `query` is run.
-
-        # Example
-
-        ```rust
-        use sibyl::Cursor;
-
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        # let stmt = conn.prepare("
-        #     DECLARE
-        #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-        #     BEGIN
-        #         EXECUTE IMMEDIATE '
-        #             CREATE TABLE test_long_and_raw_data (
-        #                 id      NUMBER GENERATED ALWAYS AS IDENTITY,
-        #                 bin     RAW(100),
-        #                 text    LONG
-        #             )
-        #         ';
-        #     EXCEPTION
-        #       WHEN name_already_used THEN
-        #         EXECUTE IMMEDIATE '
-        #             TRUNCATE TABLE test_long_and_raw_data
-        #         ';
-        #     END;
-        # ")?;
-        # stmt.execute(&[])?;
-        # let stmt = conn.prepare("
-        #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
-        #     RETURNING id INTO :ID
-        # ")?;
-        # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
-        # let mut id = 0;
-        # let count = stmt.execute_into(
-        #     &[
-        #         &(":TEXT", text)
-        #     ], &mut [
-        #         &mut (":ID", &mut id),
-        #     ]
-        # )?;
-        let stmt = conn.prepare("
-            BEGIN
-                OPEN :long_texts FOR
-                    SELECT text
-                      FROM test_long_and_raw_data
-                     WHERE id = :id
-                ;
-            END;
-        ")?;
-        let mut long_texts = Cursor::new(&stmt)?;
-        stmt.execute_into(&[&(":ID", &id)], &mut [
-            &mut (":LONG_TEXTS", &mut long_texts),
-        ])?;
-        long_texts.set_column_size(0, 100_000);
-        let mut rows = long_texts.rows()?;
-        let row = rows.next()?.expect("first (and only) row");
-        let txt : &str = row.get(0)?.expect("long text");
-        # assert_eq!(txt, text);
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn set_column_size(&self, pos: usize, size: usize) {
-        self.cols.borrow_mut().set_long_column_size(pos, size as u32);
     }
 
     /**
@@ -352,7 +304,7 @@ impl<'a> Cursor<'a> {
         stmt.execute_into(&[&(":ID", 103)], &mut [
             &mut (":SUBORDINATES", &mut subordinates),
         ])?;
-        let mut _rows = subordinates.rows()?;        
+        let mut _rows = subordinates.rows()?;
         let col = subordinates.get_column(0).expect("ID column info");
         assert_eq!(col.name()?, "EMPLOYEE_ID", "column name");
         assert_eq!(col.data_type()?, ColumnType::Number, "column type");
@@ -365,7 +317,7 @@ impl<'a> Cursor<'a> {
         ```
     */
     pub fn get_column(&self, pos: usize) -> Option<ColumnInfo> {
-        self.cols.borrow().get_column_info(self, pos)
+        self.cols.get().and_then(|cols| cols.get_column_info(self, pos))
     }
 
     /**
@@ -454,6 +406,80 @@ impl<'a> Cursor<'a> {
     }
 
     /**
+        Sets the maximum size of data that will be fetched from LONG and LONG RAW.
+
+        By default 32768 bytes are allocated for values from LONG and LONG RAW columns.
+        If the actual value is expected to be larger than that, then the "column size"
+        has to be changed before `query` is run.
+
+        # Example
+
+        ```rust
+        use sibyl::Cursor;
+
+        # let dbname = std::env::var("DBNAME")?;
+        # let dbuser = std::env::var("DBUSER")?;
+        # let dbpass = std::env::var("DBPASS")?;
+        # let oracle = sibyl::env()?;
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        # let stmt = conn.prepare("
+        #     DECLARE
+        #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
+        #     BEGIN
+        #         EXECUTE IMMEDIATE '
+        #             CREATE TABLE test_long_and_raw_data (
+        #                 id      NUMBER GENERATED ALWAYS AS IDENTITY,
+        #                 bin     RAW(100),
+        #                 text    LONG
+        #             )
+        #         ';
+        #     EXCEPTION
+        #       WHEN name_already_used THEN
+        #         EXECUTE IMMEDIATE '
+        #             TRUNCATE TABLE test_long_and_raw_data
+        #         ';
+        #     END;
+        # ")?;
+        # stmt.execute(&[])?;
+        # let stmt = conn.prepare("
+        #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
+        #     RETURNING id INTO :ID
+        # ")?;
+        # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
+        # let mut id = 0;
+        # let count = stmt.execute_into(
+        #     &[
+        #         &(":TEXT", text)
+        #     ], &mut [
+        #         &mut (":ID", &mut id),
+        #     ]
+        # )?;
+        let stmt = conn.prepare("
+            BEGIN
+                OPEN :long_texts FOR
+                    SELECT text
+                      FROM test_long_and_raw_data
+                     WHERE id = :id
+                ;
+            END;
+        ")?;
+        let mut long_texts = Cursor::new(&stmt)?;
+        stmt.execute_into(&[&(":ID", &id)], &mut [
+            &mut (":LONG_TEXTS", &mut long_texts),
+        ])?;
+        long_texts.set_max_long_size(100_000);
+        let mut rows = long_texts.rows()?;
+        let row = rows.next()?.expect("first (and only) row");
+        let txt : &str = row.get(0)?.expect("long text");
+        # assert_eq!(txt, text);
+        # Ok::<(),Box<dyn std::error::Error>>(())
+        ```
+    */
+    pub fn set_max_long_size(&self, size: u32) {
+        self.max_long.set(size);
+    }
+
+    /**
         Returns rows selected by this cursor
 
         # Example
@@ -505,7 +531,7 @@ impl<'a> Cursor<'a> {
         ```
     */
     pub fn rows(&'a self) -> Result<Rows<'a>> {
-        self.cols.borrow_mut().setup(self)?;
+        let _cols = self.cols.get_or_try_init(|| Columns::new(self, self.max_long.get()))?;
         Ok( Rows::new(OCI_SUCCESS, self) )
     }
 }

@@ -1,6 +1,8 @@
 /// Implementation of traits that allow Intervals to be used as SQL parameters
 
-use super::*;
+use libc::c_void;
+use crate::{ oci::*, tosql::ToSql, tosqlout::ToSqlOut, desc::Descriptor };
+use super::Interval;
 
 macro_rules! impl_int_to_sql {
     ($ts:ty => $sqlt:ident) => {

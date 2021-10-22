@@ -1,6 +1,8 @@
 /// Convertion between Oracle Numbers and Rust numerics
 
-use super::*;
+use std::mem;
+use crate::{ Result, err::Error, oci::* };
+use super::{ OCINumber, real_into_number, to_real };
 
 fn u128_into_number(mut val: u128) -> OCINumber {
     let mut num = mem::MaybeUninit::<OCINumber>::uninit();

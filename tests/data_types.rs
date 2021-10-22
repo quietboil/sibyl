@@ -587,9 +587,9 @@ fn rowid_datatype() -> Result<()> {
     let row = rows.next()?.expect("selected row");
     let implicit_rowid = row.get_rowid()?;
     let str_rowid : String = row.get(0)?.expect("ROWID as text");
-    assert_eq!(str_rowid, implicit_rowid.to_string(conn.err_ptr())?);
+    assert_eq!(str_rowid, implicit_rowid.to_string(&conn)?);
     let explicit_rowid : RowID = row.get(0)?.expect("ROWID pseudo-column");
-    assert_eq!(explicit_rowid.to_string(conn.err_ptr())?, implicit_rowid.to_string(conn.err_ptr())?);
+    assert_eq!(explicit_rowid.to_string(&conn)?, implicit_rowid.to_string(&conn)?);
     let manager_id: u32 = row.get(1)?.expect("menager ID");
     assert_eq!(manager_id, 102);
 

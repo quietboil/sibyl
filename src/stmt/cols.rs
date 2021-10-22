@@ -1,33 +1,21 @@
-use super::defs::*;
-use super::Stmt;
-use crate::{*, desc::Descriptor, types::*};
+use super::{defs::*, rows::ResultSetProvider, Stmt};
+use crate::{
+    attr,
+    desc::Descriptor,
+    fromsql::FromSql,
+    handle::Handle,
+    oci::{ *, ptr::Ptr },
+    param,
+    types::{date, date::OCIDate, number, number::OCINumber, raw, varchar},
+    Result, RowID,
+};
 use libc::c_void;
-use std::cmp::max;
-use std::collections::HashMap;
-use std::ptr;
+use std::{ collections::HashMap, ptr };
 
-const DEFAULT_LONG_BUFFER_SIZE : u32 = 32768;
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-74939FB5-919E-4D24-B327-AFB532435061
-    fn OCIDefineByPos2(
-        stmtp:      *mut OCIStmt,
-        defnpp:     *mut *mut OCIDefine,
-        errhp:      *mut OCIError,
-        position:   u32,
-        valuep:     *mut c_void,
-        value_sz:   i64,
-        dty:        u16,
-        indp:       *mut i16,
-        rlenp:      *mut u32,
-        rcodep:     *mut u16,
-        mode:       u32
-    ) -> i32;
-}
-
+pub(crate) const DEFAULT_LONG_BUFFER_SIZE: u32 = 32768;
 
 /// Column data type.
-#[derive(Debug,PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ColumnType {
     /// Less common type for which data type decoder has not been implemented (yet).
     Unknown,
@@ -51,58 +39,62 @@ pub enum ColumnType {
     IntervalYearToMonth,
     IntervalDayToSecond,
     RowID,
-    Cursor
+    Cursor,
 }
 
 impl std::fmt::Display for ColumnType {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            ColumnType::Unknown                     => write!(f, "UNKNOWN"),
-            ColumnType::Char                        => write!(f, "CHAR"),
-            ColumnType::NChar                       => write!(f, "NCHAR"),
-            ColumnType::Varchar                     => write!(f, "VARCHAR2"),
-            ColumnType::NVarchar                    => write!(f, "NVARCHAR2"),
-            ColumnType::Clob                        => write!(f, "CLOB"),
-            ColumnType::NClob                       => write!(f, "NCLOB"),
-            ColumnType::Long                        => write!(f, "LONG"),
-            ColumnType::Raw                         => write!(f, "RAW"),
-            ColumnType::LongRaw                     => write!(f, "LONG RAW"),
-            ColumnType::Blob                        => write!(f, "BLOB"),
-            ColumnType::Number                      => write!(f, "NUMBER"),
-            ColumnType::BinaryFloat                 => write!(f, "BINARY_FLOAT"),
-            ColumnType::BinaryDouble                => write!(f, "BINARY_DOUBLE"),
-            ColumnType::Date                        => write!(f, "DATE"),
-            ColumnType::Timestamp                   => write!(f, "TIMESTAMP"),
-            ColumnType::TimestampWithTimeZone       => write!(f, "TIMESTAMP WITH TIME ZONE"),
-            ColumnType::TimestampWithLocalTimeZone  => write!(f, "TIMESTAMP WITH LOCAL TIME ZONE"),
-            ColumnType::IntervalYearToMonth         => write!(f, "INTERVAL YEAR TO MONTH"),
-            ColumnType::IntervalDayToSecond         => write!(f, "INTERVAL DAY TO SECOND"),
-            ColumnType::RowID                       => write!(f, "ROWID"),
-            ColumnType::Cursor                      => write!(f, "SYS_REFCURSOR"),
+            ColumnType::Unknown => write!(f, "UNKNOWN"),
+            ColumnType::Char => write!(f, "CHAR"),
+            ColumnType::NChar => write!(f, "NCHAR"),
+            ColumnType::Varchar => write!(f, "VARCHAR2"),
+            ColumnType::NVarchar => write!(f, "NVARCHAR2"),
+            ColumnType::Clob => write!(f, "CLOB"),
+            ColumnType::NClob => write!(f, "NCLOB"),
+            ColumnType::Long => write!(f, "LONG"),
+            ColumnType::Raw => write!(f, "RAW"),
+            ColumnType::LongRaw => write!(f, "LONG RAW"),
+            ColumnType::Blob => write!(f, "BLOB"),
+            ColumnType::Number => write!(f, "NUMBER"),
+            ColumnType::BinaryFloat => write!(f, "BINARY_FLOAT"),
+            ColumnType::BinaryDouble => write!(f, "BINARY_DOUBLE"),
+            ColumnType::Date => write!(f, "DATE"),
+            ColumnType::Timestamp => write!(f, "TIMESTAMP"),
+            ColumnType::TimestampWithTimeZone => write!(f, "TIMESTAMP WITH TIME ZONE"),
+            ColumnType::TimestampWithLocalTimeZone => write!(f, "TIMESTAMP WITH LOCAL TIME ZONE"),
+            ColumnType::IntervalYearToMonth => write!(f, "INTERVAL YEAR TO MONTH"),
+            ColumnType::IntervalDayToSecond => write!(f, "INTERVAL DAY TO SECOND"),
+            ColumnType::RowID => write!(f, "ROWID"),
+            ColumnType::Cursor => write!(f, "SYS_REFCURSOR"),
         }
     }
 }
 
-
 /// Provides access to the column metadata.
 pub struct ColumnInfo<'a> {
-    desc: *mut OCIParam,
-    stmt: &'a dyn Stmt
+    desc: Ptr<OCIParam>,
+    stmt: &'a dyn Stmt,
 }
 
 impl<'a> ColumnInfo<'a> {
     pub(crate) fn new(desc: *mut OCIParam, stmt: &'a dyn Stmt) -> Self {
-        Self { desc, stmt }
+        Self { desc: Ptr::new(desc), stmt }
     }
 
     fn get_attr<T: attr::AttrGet>(&self, attr: u32) -> Result<T> {
-        attr::get(attr, OCI_DTYPE_PARAM, self.desc as *const c_void, self.stmt.err_ptr())
+        attr::get(
+            attr,
+            OCI_DTYPE_PARAM,
+            self.desc.get() as *const c_void,
+            self.stmt.err_ptr(),
+        )
     }
 
     /// Returns `true` if a column is visible
     pub fn is_visible(&self) -> Result<bool> {
         let invisible: u8 = self.get_attr(OCI_ATTR_INVISIBLE_COL)?;
-        Ok( invisible == 0 )
+        Ok(invisible == 0)
     }
 
     /// Returns `true` if NULLs are permitted in the column.
@@ -110,26 +102,26 @@ impl<'a> ColumnInfo<'a> {
     /// Does not return a correct value for a CUBE or ROLLUP operation.
     pub fn is_null(&self) -> Result<bool> {
         let is_null: u8 = self.get_attr(OCI_ATTR_IS_NULL)?;
-        Ok( is_null != 0 )
+        Ok(is_null != 0)
     }
 
     /// Returns `true` if column is an identity column.
     pub fn is_identity(&self) -> Result<bool> {
         let col_props: u8 = self.get_attr(OCI_ATTR_COL_PROPERTIES)?;
-        Ok( col_props & OCI_ATTR_COL_PROPERTY_IS_IDENTITY != 0 )
+        Ok(col_props & OCI_ATTR_COL_PROPERTY_IS_IDENTITY != 0)
     }
 
     /// Returns `true` if column value is GENERATED ALWAYS.
     /// `false` means that the value is GENERATED BY DEFAULT.
     pub fn is_generated_always(&self) -> Result<bool> {
         let col_props: u8 = self.get_attr(OCI_ATTR_COL_PROPERTIES)?;
-        Ok( col_props & OCI_ATTR_COL_PROPERTY_IS_GEN_ALWAYS != 0 )
+        Ok(col_props & OCI_ATTR_COL_PROPERTY_IS_GEN_ALWAYS != 0)
     }
 
     /// Returns true if column was declared as GENERATED BY DEFAULT ON NULL.
     pub fn is_generated_on_null(&self) -> Result<bool> {
         let col_props: u8 = self.get_attr(OCI_ATTR_COL_PROPERTIES)?;
-        Ok( col_props & OCI_ATTR_COL_PROPERTY_IS_GEN_BY_DEF_ON_NULL != 0 )
+        Ok(col_props & OCI_ATTR_COL_PROPERTY_IS_GEN_BY_DEF_ON_NULL != 0)
     }
 
     /// Returns the column name
@@ -141,7 +133,7 @@ impl<'a> ColumnInfo<'a> {
     /// For example, it returns 22 for NUMBERs.
     pub fn size(&self) -> Result<usize> {
         let size = self.get_attr::<u16>(OCI_ATTR_DATA_SIZE)? as usize;
-        Ok( size )
+        Ok(size)
     }
 
     /// Returns the column character length that is the number of characters allowed in the column.
@@ -149,7 +141,7 @@ impl<'a> ColumnInfo<'a> {
     /// It is the counterpart of `size`, which gets the byte length.
     pub fn char_size(&self) -> Result<usize> {
         let size = self.get_attr::<u16>(OCI_ATTR_CHAR_SIZE)? as usize;
-        Ok( size )
+        Ok(size)
     }
 
     /// The precision of numeric columns.
@@ -172,41 +164,35 @@ impl<'a> ColumnInfo<'a> {
     pub fn data_type(&self) -> Result<ColumnType> {
         let col_type = match self.get_attr::<u16>(OCI_ATTR_DATA_TYPE)? {
             SQLT_RDD => ColumnType::RowID,
-            SQLT_CHR => {
-                match self.get_attr::<u8>(OCI_ATTR_CHARSET_FORM)? {
-                    SQLCS_NCHAR => ColumnType::NVarchar,
-                    _ => ColumnType::Varchar,
-                }
-            }
-            SQLT_AFC => {
-                match self.get_attr::<u8>(OCI_ATTR_CHARSET_FORM)? {
-                    SQLCS_NCHAR => ColumnType::NChar,
-                    _ => ColumnType::Char,
-                }
-            }
-            SQLT_CLOB => {
-                match self.get_attr::<u8>(OCI_ATTR_CHARSET_FORM)? {
-                    SQLCS_NCHAR => ColumnType::NClob,
-                    _ => ColumnType::Clob,
-                }
-            }
-            SQLT_LNG  => ColumnType::Long,
-            SQLT_BIN  => ColumnType::Raw,
-            SQLT_LBI  => ColumnType::LongRaw,
+            SQLT_CHR => match self.get_attr::<u8>(OCI_ATTR_CHARSET_FORM)? {
+                SQLCS_NCHAR => ColumnType::NVarchar,
+                _ => ColumnType::Varchar,
+            },
+            SQLT_AFC => match self.get_attr::<u8>(OCI_ATTR_CHARSET_FORM)? {
+                SQLCS_NCHAR => ColumnType::NChar,
+                _ => ColumnType::Char,
+            },
+            SQLT_CLOB => match self.get_attr::<u8>(OCI_ATTR_CHARSET_FORM)? {
+                SQLCS_NCHAR => ColumnType::NClob,
+                _ => ColumnType::Clob,
+            },
+            SQLT_LNG => ColumnType::Long,
+            SQLT_BIN => ColumnType::Raw,
+            SQLT_LBI => ColumnType::LongRaw,
             SQLT_BLOB => ColumnType::Blob,
-            SQLT_NUM  => ColumnType::Number,
-            SQLT_DAT  => ColumnType::Date,
-            SQLT_TIMESTAMP     => ColumnType::Timestamp,
-            SQLT_TIMESTAMP_TZ  => ColumnType::TimestampWithTimeZone,
+            SQLT_NUM => ColumnType::Number,
+            SQLT_DAT => ColumnType::Date,
+            SQLT_TIMESTAMP => ColumnType::Timestamp,
+            SQLT_TIMESTAMP_TZ => ColumnType::TimestampWithTimeZone,
             SQLT_TIMESTAMP_LTZ => ColumnType::TimestampWithLocalTimeZone,
-            SQLT_INTERVAL_YM   => ColumnType::IntervalYearToMonth,
-            SQLT_INTERVAL_DS   => ColumnType::IntervalDayToSecond,
-            SQLT_IBFLOAT  => ColumnType::BinaryFloat,
+            SQLT_INTERVAL_YM => ColumnType::IntervalYearToMonth,
+            SQLT_INTERVAL_DS => ColumnType::IntervalDayToSecond,
+            SQLT_IBFLOAT => ColumnType::BinaryFloat,
             SQLT_IBDOUBLE => ColumnType::BinaryDouble,
             SQLT_RSET => ColumnType::Cursor,
-            _ => ColumnType::Unknown
+            _ => ColumnType::Unknown,
         };
-        Ok( col_type )
+        Ok(col_type)
     }
 
     /// Returns the column type name:
@@ -223,101 +209,99 @@ impl<'a> ColumnInfo<'a> {
     }
 }
 
-
 /// Column output buffer
 pub enum ColumnBuffer {
-    Undefined,
-    Text( *mut OCIString ),
-    CLOB( Descriptor<OCICLobLocator> ),
-    Binary( *mut raw::OCIRaw ),
-    BLOB( Descriptor<OCIBLobLocator> ),
-    BFile( Descriptor<OCIBFileLocator> ),
-    Number( Box<number::OCINumber> ),
-    Date( date::OCIDate ),
-    Timestamp( Descriptor<OCITimestamp> ),
-    TimestampTZ( Descriptor<OCITimestampTZ> ),
-    TimestampLTZ( Descriptor<OCITimestampLTZ> ),
-    IntervalYM( Descriptor<OCIIntervalYearToMonth> ),
-    IntervalDS( Descriptor<OCIIntervalDayToSecond> ),
-    Float( f32 ),
-    Double( f64 ),
-    Rowid( RowID ),
-    Cursor( Handle<OCIStmt> )
+    Text(Ptr<OCIString>),
+    CLOB(Descriptor<OCICLobLocator>),
+    Binary(Ptr<OCIRaw>),
+    BLOB(Descriptor<OCIBLobLocator>),
+    BFile(Descriptor<OCIBFileLocator>),
+    Number(Box<OCINumber>),
+    Date(OCIDate),
+    Timestamp(Descriptor<OCITimestamp>),
+    TimestampTZ(Descriptor<OCITimestampTZ>),
+    TimestampLTZ(Descriptor<OCITimestampLTZ>),
+    IntervalYM(Descriptor<OCIIntervalYearToMonth>),
+    IntervalDS(Descriptor<OCIIntervalDayToSecond>),
+    Float(f32),
+    Double(f64),
+    Rowid(RowID),
+    Cursor(Handle<OCIStmt>),
 }
 
 impl ColumnBuffer {
     fn new(data_type: u16, data_size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Self> {
         let val = match data_type {
-            SQLT_DAT            => ColumnBuffer::Date( date::new() ),
-            SQLT_TIMESTAMP      => ColumnBuffer::Timestamp( Descriptor::<OCITimestamp>::new(env)? ),
-            SQLT_TIMESTAMP_TZ   => ColumnBuffer::TimestampTZ( Descriptor::<OCITimestampTZ>::new(env)? ),
-            SQLT_TIMESTAMP_LTZ  => ColumnBuffer::TimestampLTZ( Descriptor::<OCITimestampLTZ>::new(env)? ),
-            SQLT_INTERVAL_YM    => ColumnBuffer::IntervalYM( Descriptor::<OCIIntervalYearToMonth>::new(env)? ),
-            SQLT_INTERVAL_DS    => ColumnBuffer::IntervalDS( Descriptor::<OCIIntervalDayToSecond>::new(env)? ),
-            SQLT_NUM            => ColumnBuffer::Number( Box::new(number::new()) ),
-            SQLT_IBFLOAT        => ColumnBuffer::Float( 0f32 ),
-            SQLT_IBDOUBLE       => ColumnBuffer::Double( 0f64 ),
-            SQLT_BIN | SQLT_LBI => ColumnBuffer::Binary( raw::new(data_size, env, err)? ),
-            SQLT_CLOB           => ColumnBuffer::CLOB( Descriptor::<OCICLobLocator>::new(env)? ),
-            SQLT_BLOB           => ColumnBuffer::BLOB( Descriptor::<OCIBLobLocator>::new(env)? ),
-            SQLT_BFILE          => ColumnBuffer::BFile( Descriptor::<OCIBFileLocator>::new(env)? ),
-            SQLT_RDD            => ColumnBuffer::Rowid( RowID::new(env)? ),
-            SQLT_RSET           => ColumnBuffer::Cursor( Handle::<OCIStmt>::new(env)? ),
-            _ => ColumnBuffer::Text( varchar::new(data_size, env, err)? )
+            SQLT_DAT => ColumnBuffer::Date(date::new()),
+            SQLT_TIMESTAMP => ColumnBuffer::Timestamp(Descriptor::<OCITimestamp>::new(env)?),
+            SQLT_TIMESTAMP_TZ => ColumnBuffer::TimestampTZ(Descriptor::<OCITimestampTZ>::new(env)?),
+            SQLT_TIMESTAMP_LTZ => {
+                ColumnBuffer::TimestampLTZ(Descriptor::<OCITimestampLTZ>::new(env)?)
+            }
+            SQLT_INTERVAL_YM => {
+                ColumnBuffer::IntervalYM(Descriptor::<OCIIntervalYearToMonth>::new(env)?)
+            }
+            SQLT_INTERVAL_DS => {
+                ColumnBuffer::IntervalDS(Descriptor::<OCIIntervalDayToSecond>::new(env)?)
+            }
+            SQLT_NUM => ColumnBuffer::Number(Box::new(number::new())),
+            SQLT_IBFLOAT => ColumnBuffer::Float(0f32),
+            SQLT_IBDOUBLE => ColumnBuffer::Double(0f64),
+            SQLT_BIN | SQLT_LBI => ColumnBuffer::Binary(raw::new(data_size, env, err)?),
+            SQLT_CLOB => ColumnBuffer::CLOB(Descriptor::<OCICLobLocator>::new(env)?),
+            SQLT_BLOB => ColumnBuffer::BLOB(Descriptor::<OCIBLobLocator>::new(env)?),
+            SQLT_BFILE => ColumnBuffer::BFile(Descriptor::<OCIBFileLocator>::new(env)?),
+            SQLT_RDD => ColumnBuffer::Rowid(RowID::new(env)?),
+            SQLT_RSET => ColumnBuffer::Cursor(Handle::<OCIStmt>::new(env)?),
+            _ => ColumnBuffer::Text(varchar::new(data_size, env, err)?),
         };
-        Ok( val )
+        Ok(val)
     }
 
     fn drop(&mut self, env: *mut OCIEnv, err: *mut OCIError) {
         match self {
-            ColumnBuffer::Text( mut oci_str ) => {
-                varchar::free(&mut oci_str, env, err);
+            ColumnBuffer::Text(oci_str_ptr) => {
+                varchar::free(oci_str_ptr, env, err);
             }
-            ColumnBuffer::Binary( mut oci_raw ) => {
-                raw::free(&mut oci_raw, env, err);
+            ColumnBuffer::Binary(oci_raw_ptr) => {
+                raw::free(oci_raw_ptr, env, err);
             }
-            _ => { }
+            _ => {}
         }
     }
 
     // Returns (output type, pointer to the output buffer, buffer size)
     fn get_output_buffer_def(&mut self, col_size: usize) -> (u16, *mut c_void, usize) {
-        use crate::types::{
-            number::OCINumber,
-            date::OCIDate,
-        };
         use std::mem::size_of;
         match self {
-            ColumnBuffer::Text( oci_str )       => (SQLT_LVC,            (*oci_str) as *mut c_void,                              col_size + size_of::<u32>()),
-            ColumnBuffer::Binary( oci_raw )     => (SQLT_LVB,            (*oci_raw) as *mut c_void,                              col_size + size_of::<u32>()),
-            ColumnBuffer::Number( oci_num_box ) => (SQLT_VNU,            oci_num_box.as_mut() as *mut OCINumber as *mut c_void,  size_of::<OCINumber>()),
-            ColumnBuffer::Date( oci_date )      => (SQLT_ODT,            oci_date as *mut OCIDate as *mut c_void,                size_of::<OCIDate>()),
-            ColumnBuffer::Timestamp( ts )       => (SQLT_TIMESTAMP,      ts.as_ptr() as *mut c_void,                             size_of::<*mut OCIDateTime>()),
-            ColumnBuffer::TimestampTZ( ts )     => (SQLT_TIMESTAMP_TZ,   ts.as_ptr() as *mut c_void,                             size_of::<*mut OCIDateTime>()),
-            ColumnBuffer::TimestampLTZ( ts )    => (SQLT_TIMESTAMP_LTZ,  ts.as_ptr() as *mut c_void,                             size_of::<*mut OCIDateTime>()),
-            ColumnBuffer::IntervalYM( int )     => (SQLT_INTERVAL_YM,    int.as_ptr() as *mut c_void,                            size_of::<*mut OCIInterval>()),
-            ColumnBuffer::IntervalDS( int )     => (SQLT_INTERVAL_DS,    int.as_ptr() as *mut c_void,                            size_of::<*mut OCIInterval>()),
-            ColumnBuffer::Float( val )          => (SQLT_BFLOAT,         val as *mut f32 as *mut c_void,                         size_of::<f32>()),
-            ColumnBuffer::Double( val )         => (SQLT_BDOUBLE,        val as *mut f64 as *mut c_void,                         size_of::<f64>()),
-            ColumnBuffer::CLOB( lob )           => (SQLT_CLOB,           lob.as_ptr() as *mut c_void,                            size_of::<*mut OCILobLocator>()),
-            ColumnBuffer::BLOB( lob )           => (SQLT_BLOB,           lob.as_ptr() as *mut c_void,                            size_of::<*mut OCILobLocator>()),
-            ColumnBuffer::BFile( lob )          => (SQLT_BFILE,          lob.as_ptr() as *mut c_void,                            size_of::<*mut OCILobLocator>()),
-            ColumnBuffer::Rowid( rowid )        => (SQLT_RDD,            rowid.as_ptr() as *mut c_void,                          size_of::<*mut OCIRowid>()),
-            ColumnBuffer::Cursor( handle )      => (SQLT_RSET,           handle.as_ptr() as *mut c_void,                         0),
-            ColumnBuffer::Undefined             => (0,                   ptr::null_mut::<c_void>(),                              0)
+            ColumnBuffer::Text(oci_str_ptr)   => (SQLT_LVC, oci_str_ptr.get() as *mut c_void, col_size + size_of::<u32>()),
+            ColumnBuffer::Binary(oci_raw_ptr) => (SQLT_LVB, oci_raw_ptr.get() as *mut c_void, col_size + size_of::<u32>()),
+            ColumnBuffer::Number(oci_num_box) => (SQLT_VNU, oci_num_box.as_mut() as *mut OCINumber as *mut c_void, size_of::<OCINumber>()),
+            ColumnBuffer::Date(oci_date)      => (SQLT_ODT, oci_date as *mut OCIDate as *mut c_void, size_of::<OCIDate>()),
+            ColumnBuffer::Timestamp(ts)       => (SQLT_TIMESTAMP, ts.as_ptr() as *mut c_void, size_of::<*mut OCIDateTime>()),
+            ColumnBuffer::TimestampTZ(ts)     => (SQLT_TIMESTAMP_TZ, ts.as_ptr() as *mut c_void, size_of::<*mut OCIDateTime>()),
+            ColumnBuffer::TimestampLTZ(ts)    => (SQLT_TIMESTAMP_LTZ, ts.as_ptr() as *mut c_void, size_of::<*mut OCIDateTime>()),
+            ColumnBuffer::IntervalYM(int)     => (SQLT_INTERVAL_YM, int.as_ptr() as *mut c_void, size_of::<*mut OCIInterval>()),
+            ColumnBuffer::IntervalDS(int)     => (SQLT_INTERVAL_DS, int.as_ptr() as *mut c_void, size_of::<*mut OCIInterval>()),
+            ColumnBuffer::Float(val)          => (SQLT_BFLOAT, val as *mut f32 as *mut c_void, size_of::<f32>()),
+            ColumnBuffer::Double(val)         => (SQLT_BDOUBLE, val as *mut f64 as *mut c_void, size_of::<f64>()),
+            ColumnBuffer::CLOB(lob)           => (SQLT_CLOB, lob.as_ptr() as *mut c_void, size_of::<*mut OCILobLocator>()),
+            ColumnBuffer::BLOB(lob)           => (SQLT_BLOB, lob.as_ptr() as *mut c_void, size_of::<*mut OCILobLocator>()),
+            ColumnBuffer::BFile(lob)          => (SQLT_BFILE, lob.as_ptr() as *mut c_void, size_of::<*mut OCILobLocator>()),
+            ColumnBuffer::Rowid(rowid)        => (SQLT_RDD, rowid.as_ptr() as *mut c_void, size_of::<*mut OCIRowid>()),
+            ColumnBuffer::Cursor(handle)      => (SQLT_RSET, handle.as_ptr() as *mut c_void, 0),
         }
     }
 }
 
-
 /// Internal representation of columns from SELECT projection
 pub struct Columns {
-    names: HashMap<String,usize>,
+    names: HashMap<String, usize>,
     info: Vec<Descriptor<OCIParam>>,
     bufs: Vec<ColumnBuffer>,
-    defs: Vec<Handle<OCIDefine>>,
+    _defs: Vec<Handle<OCIDefine>>,
     /// Length of data fetched
-    lens: Vec<u32>,
+    _lens: Vec<u32>,
     /// Output "indicator":
     /// -2 : The length of the item is greater than the length of the output variable; the item has been truncated.
     ///      Unline the case of indicators that are > 0, the original length is longer than the maximum data length
@@ -327,82 +311,55 @@ pub struct Columns {
     /// >0 : The length of the item is greater than the length of the output variable; the item has been truncated.
     ///      The positive value returned in the indicator variable is the actual length before truncation.
     inds: Vec<i16>,
-    max_long: u32
 }
 
 impl Columns {
-    pub(crate) fn new() -> Self {
-        Self {
-            names: HashMap::new(),
-            info: Vec::new(),
-            defs: Vec::new(),
-            bufs: Vec::new(),
-            lens: Vec::new(),
-            inds: Vec::new(),
-            max_long: DEFAULT_LONG_BUFFER_SIZE
-        }
-    }
+    pub(crate) fn new(stmt: &dyn Stmt, max_long_fetch_size: u32) -> Result<Self> {
+        let num_columns = attr::get::<u32>(
+            OCI_ATTR_PARAM_COUNT,
+            OCI_HTYPE_STMT,
+            stmt.stmt_ptr() as *const c_void,
+            stmt.err_ptr(),
+        )? as usize;
 
-    pub(crate) fn set_max_long_fetch_size(&mut self, size: u32) {
-        self.max_long = size as u32;
-    }
+        let mut names = HashMap::with_capacity(num_columns);
+        let mut info  = Vec::with_capacity(num_columns);
+        let mut bufs  = Vec::with_capacity(num_columns);
+        let mut defs  = Vec::with_capacity(num_columns);
+        let mut lens  = vec![0u32;num_columns];
+        let mut inds  = vec![0i16;num_columns];
 
-    pub(crate) fn set_long_column_size(&mut self, pos: usize, size: u32) {
-        if size > DEFAULT_LONG_BUFFER_SIZE {
-            if self.lens.len() <= pos {
-                self.lens.resize(pos + 1, 0u32);
+        for i in 0..num_columns {
+            info.push(param::get::<OCIParam>((i + 1) as u32, OCI_HTYPE_STMT, stmt.stmt_ptr() as *const c_void, stmt.err_ptr())?);
+            let data_type = info[i].get_attr::<u16>(OCI_ATTR_DATA_TYPE, stmt.err_ptr())?;
+            let data_size = match data_type {
+                SQLT_LNG | SQLT_LBI => max_long_fetch_size,
+                _ => info[i].get_attr::<u16>(OCI_ATTR_DATA_SIZE, stmt.err_ptr())? as u32,
+            };
+            bufs.push(ColumnBuffer::new(data_type, data_size, stmt.env_ptr(), stmt.err_ptr())?);
+            defs.push(Handle::from(ptr::null_mut()));
+
+            // Now, that columns buffers are in the vector and thus their locations in memory are fixed,
+            // define the output buffers in OCI
+
+            let (output_type, output_buff_ptr, output_buff_size) = bufs[i].get_output_buffer_def(data_size as usize);
+            catch! {stmt.err_ptr() =>
+                OCIDefineByPos2(
+                    stmt.stmt_ptr(), defs[i].as_ptr(), stmt.err_ptr(),
+                    (i + 1) as u32,
+                    output_buff_ptr, output_buff_size as i64, output_type,
+                    inds.get_unchecked_mut(i),
+                    lens.get_unchecked_mut(i),
+                    ptr::null_mut::<u16>(),
+                    OCI_DEFAULT
+                )
             }
-            self.lens[pos] = size;
+
+            let name = info[i].get_attr::<&str>(OCI_ATTR_NAME, stmt.err_ptr())?;
+            let name = name.to_string();
+            names.insert(name, i);
         }
-    }
-
-    /**
-        Defines column buffers.
-
-        **Note** that columns cannot set up before the statement has been executed.
-    */
-    pub(crate) fn setup(&mut self, stmt: &dyn Stmt) -> Result<()> {
-        if self.names.is_empty() {
-            let num_columns = attr::get::<u32>(OCI_ATTR_PARAM_COUNT, OCI_HTYPE_STMT, stmt.stmt_ptr() as *const c_void, stmt.err_ptr())? as usize;
-            self.names.reserve(num_columns);
-            self.info.reserve_exact(num_columns);
-            self.bufs.reserve_exact(num_columns);
-            self.defs.reserve_exact(num_columns);
-            self.inds.resize(num_columns, 0i16);
-            self.lens.resize(num_columns, 0u32);
-
-            for i in 0..num_columns {
-                self.info.push( param::get::<OCIParam>((i + 1) as u32, OCI_HTYPE_STMT, stmt.stmt_ptr() as *const c_void, stmt.err_ptr())? );
-                let data_type = self.info[i].get_attr::<u16>(OCI_ATTR_DATA_TYPE, stmt.err_ptr())?;
-                let data_size = match data_type {
-                    SQLT_LNG | SQLT_LBI => max(self.max_long, self.lens[i]),
-                    _ => self.info[i].get_attr::<u16>(OCI_ATTR_DATA_SIZE, stmt.err_ptr())? as u32
-                };
-                self.bufs.push( ColumnBuffer::new(data_type, data_size, stmt.env_ptr(), stmt.err_ptr())? );
-                self.defs.push( Handle::from(ptr::null_mut()) );
-
-                // Now, that columns buffers are in the vector and thus their locations in memory are fixed,
-                // define the output buffers in OCI
-
-                let (output_type, output_buff_ptr, output_buff_size) = self.bufs[i].get_output_buffer_def(data_size as usize);
-                catch!{stmt.err_ptr() =>
-                    OCIDefineByPos2(
-                        stmt.stmt_ptr(), self.defs[i].as_ptr(), stmt.err_ptr(),
-                        (i + 1) as u32,
-                        output_buff_ptr, output_buff_size as i64, output_type,
-                        self.inds.get_unchecked_mut(i),
-                        self.lens.get_unchecked_mut(i),
-                        ptr::null_mut::<u16>(),
-                        OCI_DEFAULT
-                    )
-                }
-
-                let name = self.info[i].get_attr::<&str>(OCI_ATTR_NAME, stmt.err_ptr())?;
-                let name = name.to_string();
-                self.names.insert(name, i);
-            }
-        }
-        Ok(())
+        Ok(Self { names, info, _defs: defs, bufs, _lens: lens, inds })
     }
 
     pub(crate) fn drop_output_buffers(&mut self, env: *mut OCIEnv, err: *mut OCIError) {
@@ -421,10 +378,9 @@ impl Columns {
     }
 
     pub(crate) fn get_column_info<'a>(&self, stmt: &'a dyn Stmt, pos: usize) -> Option<ColumnInfo<'a>> {
-        self.info.get(pos).map(|desc| ColumnInfo::new(desc.get(), stmt))
-    }
+        self.info.get(pos).map(|desc| ColumnInfo::new(desc.get(), stmt)) }
 
-    pub(crate) fn get<'a, T: FromSql<'a>>(&self, rset: &'a dyn stmt::rows::ResultSetProvider, pos: usize) -> Result<Option<T>> {
+    pub(crate) fn get<'a, T: FromSql<'a>>(&self, rset: &'a dyn ResultSetProvider, pos: usize) -> Result<Option<T>> {
         self.bufs.get(pos).map(|buf| FromSql::value(buf, rset)).transpose()
     }
 }

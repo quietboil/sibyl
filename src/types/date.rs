@@ -2,8 +2,7 @@
 
 mod tosql;
 
-use crate::*;
-use libc::c_void;
+use crate::{ Result, oci::*, env::Env };
 use std::{ mem, ptr, cmp::Ordering };
 
 extern "C" {

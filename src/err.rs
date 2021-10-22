@@ -1,24 +1,7 @@
 
-use crate::*;
-use libc::c_void;
+use crate::oci::*;
 use std::{ ptr, cmp, fmt, error, io, ffi::CStr };
-
-const OCI_ERROR_MAXMSG_SIZE : usize = 3072;
-const OCI_HTYPE_ENV         : u32 = 1;
-const OCI_HTYPE_ERROR       : u32 = 2;
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/miscellaneous-functions.html#GUID-4B99087C-74F6-498A-8310-D6645172390A
-    fn OCIErrorGet(
-        hndlp:      *const c_void,
-        recordno:   u32,
-        sqlstate:   *const c_void,
-        errcodep:   *mut i32,
-        bufp:       *mut u8,
-        bufsiz:     u32,
-        hnd_type:   u32,
-    ) -> i32;
-}
+use libc::c_void;
 
 fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
     let mut errcode = rc;

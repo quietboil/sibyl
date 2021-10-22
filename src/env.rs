@@ -1,40 +1,21 @@
 //! OCI environment
 
-use crate::*;
-use crate::types::Ctx;
-use libc::{ c_void, size_t };
-use std::{ mem, ptr };
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-16BDA1F1-7DAF-41CA-9EE1-C9A4CB467244
-    fn OCIEnvNlsCreate(
-        envhpp:     *mut *mut  OCIEnv,
-        mode:       u32,
-        ctxp:       *const c_void,
-        malocfp:    *const c_void,
-        ralocfp:    *const c_void,
-        mfreefp:    *const c_void,
-        xtramemsz:  size_t,
-        usrmempp:   *const c_void,
-        charset:    u16,
-        ncharset:   u16
-    ) -> i32;
-}
-
-// Initialization Modes
-const OCI_THREADED : u32 = 1;
-const OCI_OBJECT   : u32 = 2;
-
-const OCI_ATTR_CACHE_OPT_SIZE    : u32 = 34;
-const OCI_ATTR_CACHE_MAX_SIZE    : u32 = 35;
-const OCI_ATTR_ENV_NLS_LANGUAGE  : u32 = 424;
-const OCI_ATTR_ENV_NLS_TERRITORY : u32 = 425;
+use crate::{
+    Result,
+    err::Error,
+    conn::Connection,
+    oci::*,
+    handle::Handle,
+    types::Ctx
+};
+use libc::c_void;
+use std::ptr;
 
 fn create_environment() -> Result<Handle<OCIEnv>> {
-    let mut env = mem::MaybeUninit::<*mut OCIEnv>::uninit();
+    let mut env = ptr::null_mut::<OCIEnv>();
     let res = unsafe {
         OCIEnvNlsCreate(
-            env.as_mut_ptr(), OCI_OBJECT | OCI_THREADED,
+            &mut env, OCI_OBJECT | OCI_THREADED,
             ptr::null(), ptr::null(), ptr::null(), ptr::null(), 0, ptr::null(),
             AL32UTF8, UTF8
         )
@@ -42,7 +23,6 @@ fn create_environment() -> Result<Handle<OCIEnv>> {
     if res != OCI_SUCCESS {
         Err( Error::new("Cannot create OCI environment") )
     } else {
-        let env = unsafe { env.assume_init() };
         Ok( Handle::from(env) )
     }
 }
@@ -56,7 +36,7 @@ pub struct Environment {
 impl Environment {
     pub(crate) fn new() -> Result<Self> {
         let env = create_environment()?;
-        let err: Handle<OCIError> = Handle::new(env.get())?;
+        let err = Handle::<OCIError>::new(env.get())?;
         Ok( Environment { env, err } )
     }
 }
@@ -93,8 +73,10 @@ impl Environment {
 
         The maximum object cache size (in bytes) is computed by incrementing `optimal_size` by the
         `max_size_percentage`, using the following algorithm:
-        ```ignore
-        maximum_cache_size = optimal_size + optimal_size * max_size_percentage / 100
+        ```
+        # fn example(optimal_size: u32, max_size_percentage: u32) -> u32 {
+        let maximum_cache_size = optimal_size + optimal_size * max_size_percentage / 100;
+        # maximum_cache_size }
         ```
         # Example
         ```
@@ -247,11 +229,12 @@ impl Environment {
         ```
     */
     pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Connection> {
-        let conn = Connection::new(self)?;
-        conn.attach(dbname)?;
-        conn.login(username, password)?;
-        Ok(conn)
+        Connection::new(self, dbname, username, password)
     }
+
+    // pub async fn connect_async<'a>(&'a self, dbname: &str, username: &str, password: &str) -> Result<AsyncConnection<'a>> {
+    //     spawn_blocking(|| AsyncConnection::new(self, dbname, username, password)).await?
+    // }
 }
 
 pub trait Env {

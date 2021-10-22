@@ -2,32 +2,70 @@
 
 mod tosql;
 
-use crate::*;
-use super::*;
-use libc::c_void;
-use std::{ mem, ptr };
+use crate::{
+    Result,
+    oci::{ *, ptr::Ptr },
+    env::Env,
+};
 
-/// C mapping of the Oracle RAW
-#[repr(C)] pub struct OCIRaw { _private: [u8; 0] }
+extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-4856A258-8883-4470-9881-51F27FA050F6
+    fn OCIRawAllocSize(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        raw:        *const OCIRaw,
+        size:       *mut u32
+    ) -> i32;
 
-pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<*mut OCIRaw> {
-    let mut bin = ptr::null_mut::<OCIRaw>();
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-3BB4239F-8579-4CC1-B76F-0786BDBAEF9A
+    fn OCIRawAssignBytes(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        rhs:        *const u8,
+        rhs_len:    u32,
+        lhs:        *mut *mut OCIRaw
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-27DBFBE0-4511-4B34-8476-B9AC720E3F51
+    fn OCIRawAssignRaw(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        rhs:        *const OCIRaw,
+        lhs:        *mut *mut OCIRaw
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-B05C44C5-7168-438B-AC2A-BD3AD309AAEA
+    fn OCIRawPtr(
+        env:        *mut OCIEnv,
+        raw:        *const OCIRaw
+    ) -> *mut u8;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-7D757B00-DF25-4F61-A3DF-8C72F18FDC9E
+    fn OCIRawResize(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        size:       u32,
+        raw:        *mut *mut OCIRaw
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-D74E75FA-5985-4DDC-BC25-430B415B8837
+    fn OCIRawSize(
+        env:        *mut OCIEnv,
+        raw:        *const OCIRaw
+    ) -> u32;
+}
+
+pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Ptr<OCIRaw>> {
+    let bin = Ptr::null();
     catch!{err =>
-        OCIRawResize(env, err, size, &mut bin)
+        OCIRawResize(env, err, size, bin.as_ptr())
     }
     Ok( bin )
 }
 
-// pub(crate) fn resize(bin: &mut *mut OCIRaw, size: usize, env: *mut OCIEnv, err: *mut OCIError) -> Result<()> {
-//     catch!{err =>
-//         OCIRawResize(env, err, size as u32, bin)
-//     }
-//     Ok(())
-// }
-
-pub(crate) fn free(raw: &mut *mut OCIRaw, env: *mut OCIEnv, err: *mut OCIError) {
+pub(crate) fn free(raw: &Ptr<OCIRaw>, env: *mut OCIEnv, err: *mut OCIError) {
     unsafe {
-        OCIRawResize(env, err, 0, raw);
+        OCIRawResize(env, err, 0, raw.as_ptr());
     }
 }
 
@@ -51,53 +89,6 @@ pub(crate) fn as_bytes<'a>(raw: *const OCIRaw, env: *mut OCIEnv) -> &'a [u8] {
     }
 }
 
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-4856A258-8883-4470-9881-51F27FA050F6
-    fn OCIRawAllocSize(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        raw:        *const OCIRaw,
-        size:       *mut u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-3BB4239F-8579-4CC1-B76F-0786BDBAEF9A
-    fn OCIRawAssignBytes(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        rhs:        *const u8,
-        rhs_len:    u32,
-        lhs:        &*mut OCIRaw
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-27DBFBE0-4511-4B34-8476-B9AC720E3F51
-    fn OCIRawAssignRaw(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        rhs:        *const OCIRaw,
-        lhs:        &*mut OCIRaw
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-B05C44C5-7168-438B-AC2A-BD3AD309AAEA
-    fn OCIRawPtr(
-        env:        *mut OCIEnv,
-        raw:        *const OCIRaw
-    ) -> *mut u8;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-7D757B00-DF25-4F61-A3DF-8C72F18FDC9E
-    fn OCIRawResize(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        size:       u32,
-        raw:        &mut *mut OCIRaw
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-D74E75FA-5985-4DDC-BC25-430B415B8837
-    fn OCIRawSize(
-        env:        *mut OCIEnv,
-        raw:        *const OCIRaw
-    ) -> u32;
-}
-
 /**
     Represents RAW and LONG RAW data types.
 
@@ -106,7 +97,7 @@ extern "C" {
     The LONG RAW datatype is similar to the RAW datatype, except that it stores raw data with a length up to two gigabytes.
 */
 pub struct Raw<'a> {
-    raw: *mut OCIRaw,
+    raw: Ptr<OCIRaw>,
     env: &'a dyn Env,
 }
 
@@ -134,9 +125,9 @@ impl<'a> Raw<'a> {
         ```
     */
     pub fn from_bytes(data: &[u8], env: &'a dyn Env) -> Result<Self> {
-        let mut raw = ptr::null_mut::<OCIRaw>();
+        let raw = Ptr::null();
         catch!{env.err_ptr() =>
-            OCIRawAssignBytes(env.env_ptr(), env.err_ptr(), data.as_ptr(), data.len() as u32, &mut raw)
+            OCIRawAssignBytes(env.env_ptr(), env.err_ptr(), data.as_ptr(), data.len() as u32, raw.as_ptr())
         }
         Ok( Self { env, raw } )
     }
@@ -159,9 +150,9 @@ impl<'a> Raw<'a> {
     */
     pub fn from_raw(other: &Raw<'a>) -> Result<Self> {
         let env = other.env;
-        let mut raw = ptr::null_mut::<OCIRaw>();
+        let raw = Ptr::null();
         catch!{env.err_ptr() =>
-            OCIRawAssignRaw(env.env_ptr(), env.err_ptr(), other.as_ptr(), &mut raw)
+            OCIRawAssignRaw(env.env_ptr(), env.err_ptr(), other.as_ptr(), raw.as_ptr())
         }
         Ok( Self { env, raw } )
     }
@@ -201,11 +192,11 @@ impl<'a> Raw<'a> {
         ```
     */
     pub fn capacity(&self) -> Result<usize> {
-        let mut size = mem::MaybeUninit::<u32>::uninit();
+        let mut size = 0u32;
         catch!{self.env.err_ptr() =>
-            OCIRawAllocSize(self.env.env_ptr(), self.env.err_ptr(), self.as_ptr(), size.as_mut_ptr())
+            OCIRawAllocSize(self.env.env_ptr(), self.env.err_ptr(), self.as_ptr(), &mut size)
         }
-        Ok( unsafe { size.assume_init() } as usize )
+        Ok( size as usize )
     }
 
     /**
@@ -233,17 +224,17 @@ impl<'a> Raw<'a> {
     */
     pub fn resize(&mut self, new_size: usize) -> Result<()> {
         catch!{self.env.err_ptr() =>
-            OCIRawResize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, &mut self.raw)
+            OCIRawResize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, self.raw.as_ptr())
         }
         Ok(())
     }
 
     pub(crate) fn as_ptr(&self) -> *const OCIRaw {
-        self.raw
+        self.raw.get()
     }
 
     pub(crate) fn as_mut_ptr(&self) -> *mut OCIRaw {
-        self.raw
+        self.raw.get()
     }
 
     /**

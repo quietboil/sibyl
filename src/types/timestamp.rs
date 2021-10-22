@@ -2,10 +2,15 @@
 
 mod tosql;
 
-use super::Ctx;
-use super::interval::Interval;
-use crate::*;
-use crate::desc::{ Descriptor, DescriptorType };
+use super::{ 
+    Ctx,
+    interval::Interval,
+};
+use crate::{
+    Result,
+    oci::*,
+    desc::{ Descriptor, DescriptorType },
+};
 use libc::{ c_void, size_t };
 use std::{ mem, ptr, cmp::Ordering };
 
@@ -235,10 +240,6 @@ pub struct Timestamp<'e, T>
 impl<'e, T> Timestamp<'e, T>
     where T: DescriptorType<OCIType=OCIDateTime>
 {
-    pub fn get_type(&self) -> u32 {
-        self.datetime.get_type()
-    }
-
     /**
         Creates an uninitialized timestamp.
 

@@ -18,11 +18,11 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
         SELECT first_name, last_name, hire_date
           FROM (
                 SELECT first_name, last_name, hire_date
-                     , row_number() OVER (ORDER BY hire_date) ord
+                     , Row_Number() OVER (ORDER BY hire_date) hire_date_rank
                   FROM hr.employees
                  WHERE hire_date >= :hire_date
                )
-         WHERE ord = 1
+         WHERE hire_date_rank = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
     let mut rows = stmt.query(&[ &date ])?;
@@ -468,7 +468,7 @@ if let Some( cursor ) = stmt.next_result()? {
 ```
 */
 
-mod defs;
+mod oci;
 #[macro_use] mod err;
 mod handle;
 mod desc;
@@ -546,33 +546,35 @@ pub fn env() -> Result<Environment> {
     Environment::new()
 }
 
-pub(crate) use crate::defs::*;
-pub(crate) use crate::handle::Handle;
-
-pub use crate::err::Error;
-pub use crate::env::{Environment, Env};
-pub use crate::conn::Connection;
-pub use crate::stmt::{
+pub use crate::{
+    err::Error,
+    env::Environment,
+    conn::Connection,
+    stmt::{
     Statement,
     cols::ColumnType,
     args::{ SqlInArg, SqlOutArg },
     rows::{ Rows, Row },
     cursor::Cursor
+   },
+    types::{
+        number::Number, 
+        date::Date, 
+        raw::Raw, 
+        varchar::Varchar
+    },
+    tosql::ToSql,
+    tosqlout::ToSqlOut,
+    fromsql::FromSql
 };
-pub use crate::types::{
-    Ctx, number::Number, date::Date, raw::Raw, varchar::Varchar
-};
-pub use crate::tosql::ToSql;
-pub use crate::tosqlout::ToSqlOut;
-pub use crate::fromsql::FromSql;
 
 pub type Result<T>          = std::result::Result<T, Error>;
-pub type Timestamp<'a>      = crate::types::timestamp::Timestamp<'a, OCITimestamp>;
-pub type TimestampTZ<'a>    = crate::types::timestamp::Timestamp<'a, OCITimestampTZ>;
-pub type TimestampLTZ<'a>   = crate::types::timestamp::Timestamp<'a, OCITimestampLTZ>;
-pub type IntervalYM<'a>     = crate::types::interval::Interval<'a, OCIIntervalYearToMonth>;
-pub type IntervalDS<'a>     = crate::types::interval::Interval<'a, OCIIntervalDayToSecond>;
-pub type CLOB<'a>           = crate::lob::LOB<'a,OCICLobLocator>;
-pub type BLOB<'a>           = crate::lob::LOB<'a,OCIBLobLocator>;
-pub type BFile<'a>          = crate::lob::LOB<'a,OCIBFileLocator>;
-pub type RowID              = crate::desc::Descriptor<OCIRowid>;
+pub type Timestamp<'a>      = types::timestamp::Timestamp<'a, oci::OCITimestamp>;
+pub type TimestampTZ<'a>    = types::timestamp::Timestamp<'a, oci::OCITimestampTZ>;
+pub type TimestampLTZ<'a>   = types::timestamp::Timestamp<'a, oci::OCITimestampLTZ>;
+pub type IntervalYM<'a>     = types::interval::Interval<'a, oci::OCIIntervalYearToMonth>;
+pub type IntervalDS<'a>     = types::interval::Interval<'a, oci::OCIIntervalDayToSecond>;
+pub type CLOB<'a>           = lob::LOB<'a,oci::OCICLobLocator>;
+pub type BLOB<'a>           = lob::LOB<'a,oci::OCIBLobLocator>;
+pub type BFile<'a>          = lob::LOB<'a,oci::OCIBFileLocator>;
+pub type RowID              = desc::Descriptor<oci::OCIRowid>;

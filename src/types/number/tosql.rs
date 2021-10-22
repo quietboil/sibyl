@@ -1,6 +1,8 @@
 /// Implementation of traits that allow Numbers to be used as SQL parameters
 
-use super::*;
+use libc::c_void;
+use crate::{ oci::*, tosql::ToSql, tosqlout::ToSqlOut };
+use super::{ Number, OCINumber };
 
 impl ToSql for Number<'_> {
     fn to_sql(&self) -> (u16, *const c_void, usize) {
