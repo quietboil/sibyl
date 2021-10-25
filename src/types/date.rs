@@ -113,8 +113,11 @@ pub struct OCIDate {
 
 /// Returns unitinialized date to be used as a row's column buffer or an output variable
 pub(crate) fn new() -> OCIDate {
-    let date = mem::MaybeUninit::<OCIDate>::uninit();
-    unsafe { date.assume_init() }
+    // let date = mem::MaybeUninit::<OCIDate>::uninit();
+    // unsafe { date.assume_init() }
+    OCIDate {
+        year: 0, month: 1, day: 1, hour: 0, min: 0, sec: 0
+    }
 }
 
 pub(crate) fn to_string(fmt: &str, date: *const OCIDate, err: *mut OCIError) -> Result<String> {
