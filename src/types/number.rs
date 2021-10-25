@@ -55,9 +55,21 @@ pub(crate) fn from_number<'a>(from_num: &OCINumber, ctx: &'a dyn Ctx) -> Result<
     Ok( Number { ctx, num: unsafe { num.assume_init() } } )
 }
 
+/**
+    Creates an OCI number initialized as zero. This simplified version of `u128_into_number`
+    is used to create an output variable buffer.
+
+    **Note** that we cannot always pass `uninit` version of `OCINumber` to be used for output.
+    While `uninit` variant works on Windows, it fails with ORA-01458 on Linux.
+*/
 pub(crate) fn new() -> OCINumber {
-    // only used as a returned column buffer
-    unsafe { mem::MaybeUninit::<OCINumber>::uninit().assume_init() }
+    let mut num = mem::MaybeUninit::<OCINumber>::uninit();
+    let ptr = num.as_mut_ptr();
+    unsafe {
+        (*ptr)._private[0] = 1;
+        (*ptr)._private[1] = 128;
+        num.assume_init()
+    }
 }
 
 pub(crate) fn new_number<'a>(num: OCINumber, ctx: &'a dyn Ctx) -> Number<'a> {

@@ -266,7 +266,7 @@ impl<'a> Statement<'a> {
                 }
                 self.data_sizes[out_idx].set(in_size as u32);
                 self.bind_by_pos(
-                    out_idx, sql_type, data as *mut c_void, data_buffer_size,
+                    out_idx, sql_type, data, data_buffer_size,
                     self.data_sizes[out_idx].as_ptr(),
                     self.indicators[out_idx].as_ptr()
                 )?;
