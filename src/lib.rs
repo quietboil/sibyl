@@ -52,7 +52,7 @@ the `lib` directory with `libclntsh.so`. For example,
 you might build sibyl's example as:
 
 ```bash
-LIBRARY_PATH=/usr/lib/oracle/21/client64/lib cargo build --examples
+LIBRARY_PATH=/usr/lib/oracle/19.13/client64/lib cargo build --examples
 ```
 
 In Windows the process is similar if the target environment is `gnu`. There the `OCI_LIB_DIR` would point to the
