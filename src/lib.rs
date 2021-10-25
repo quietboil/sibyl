@@ -47,14 +47,15 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
 
 Sibyl needs an installed Oracle client in order to link either to `OCI.DLL` on Windows or to `libclntsh.so`
 on Linux. The cargo build needs to know where that library is. You can provide that information via environment
-variable `OCI_LIB_DIR`. On Linux it would be the path to the `lib` directory with `libclntsh.so`. For example,
+variable `OCI_LIB_DIR` in Windows or `LIBRARY_PATH` in Linux. In Linux `LIBRARY_PATH` would include the path to
+the `lib` directory with `libclntsh.so`. For example,
 you might build sibyl's example as:
 
 ```bash
-OCI_LIB_DIR=/usr/lib/oracle/19.12/client64/lib cargo build --examples
+LIBRARY_PATH=/usr/lib/oracle/21/client64/lib cargo build --examples
 ```
 
-On Windows the process is similar if the target environment is `gnu`. There the `OCI_LIB_DIR` would point to the
+In Windows the process is similar if the target environment is `gnu`. There the `OCI_LIB_DIR` would point to the
 directory with `oci.dll`:
 
 ```bat

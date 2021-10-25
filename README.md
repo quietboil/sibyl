@@ -45,12 +45,12 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
 
 ## Notes on Building
 
-Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can supply that information via environment variable `OCI_LIB_DIR`. On Linux it would be the path to the `lib` directory with `libclntsh.so`. For example, you might build sibyl's example as:
+Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can supply that information via environment variable `OCI_LIB_DIR` in Windows or `LIBRARY_PATH` in Linux. In Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build sibyl's example as:
 ```bash
-OCI_LIB_DIR=/usr/lib/oracle/19.12/client64/lib cargo build --examples
+LIBRARY_PATH=/usr/lib/oracle/21/client64/lib cargo build --examples
 ```
 
-On Windows the process is similar if the target environment is `gnu`. The `OCI_LIB_DIR` would point to the directory with `oci.dll`:
+In Windows the process is similar if the target environment is `gnu`. The `OCI_LIB_DIR` would point to the directory with `oci.dll`:
 ```bat
 set OCI_LIB_DIR=%ORACLE_HOME%\bin
 cargo build --examples
