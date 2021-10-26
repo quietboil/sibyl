@@ -442,12 +442,11 @@ pub(crate) fn to_real<T:Real>(num: &OCINumber, err: *mut OCIError) -> Result<T> 
 }
 
 fn compare(num1: &OCINumber, num2: &OCINumber, err: *mut OCIError) -> Result<Ordering> {
-    let mut res = mem::MaybeUninit::<i32>::uninit();
+    let mut cmp = 0i32;
     catch!{err =>
-        OCINumberCmp(err, num1 as *const OCINumber, num2 as *const OCINumber, res.as_mut_ptr())
+        OCINumberCmp(err, num1 as *const OCINumber, num2 as *const OCINumber, &mut cmp)
     }
-    let res = unsafe { res.assume_init() };
-    let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
+    let ordering = if cmp < 0 { Ordering::Less } else if cmp == 0 { Ordering::Equal } else { Ordering::Greater };
     Ok( ordering )
 }
 
@@ -857,11 +856,10 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn sign(&self) -> Result<Ordering> {
-        let mut res = mem::MaybeUninit::<i32>::uninit();
+        let mut res = 0i32;
         catch!{self.ctx.err_ptr() =>
-            OCINumberSign(self.ctx.err_ptr(), self.as_ptr(), res.as_mut_ptr())
+            OCINumberSign(self.ctx.err_ptr(), self.as_ptr(), &mut res)
         }
-        let res = unsafe { res.assume_init() };
         let ordering = if res == 0 { Ordering::Equal } else if res < 0 { Ordering::Less } else { Ordering::Greater };
         Ok( ordering )
     }

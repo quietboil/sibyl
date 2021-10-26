@@ -168,7 +168,8 @@ pub(crate) fn to_string(lfprec: u8, fsprec: u8, int: *const OCIInterval, ctx: &d
             name.as_mut_ptr(), name.len(), size.as_mut_ptr()
         )
     }
-    let txt = &name[0.. unsafe { size.assume_init() } as usize];
+    let size = unsafe { size.assume_init() } as usize;
+    let txt = &name[0..size];
     Ok( String::from_utf8_lossy(txt).to_string() )
 }
 
@@ -369,14 +370,13 @@ impl<'a, T> Interval<'a, T>
         ```
     */
     pub fn compare(&self, other: &Self) -> Result<Ordering> {
-        let mut res = mem::MaybeUninit::<i32>::uninit();
+        let mut res = 0i32;
         catch!{self.ctx.err_ptr() =>
             OCIIntervalCompare(
                 self.ctx.as_ptr(), self.ctx.err_ptr(),
-                self.as_ptr(), other.as_ptr(), res.as_mut_ptr()
+                self.as_ptr(), other.as_ptr(), &mut res
             )
         }
-        let res = unsafe { res.assume_init() };
         let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
         Ok( ordering )
     }
@@ -579,19 +579,19 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
         ```
     */
     pub fn get_duration(&self) -> Result<(i32,i32,i32,i32,i32)> {
-        let mut day  = mem::MaybeUninit::<i32>::uninit();
-        let mut hour = mem::MaybeUninit::<i32>::uninit();
-        let mut min  = mem::MaybeUninit::<i32>::uninit();
-        let mut sec  = mem::MaybeUninit::<i32>::uninit();
-        let mut fsec = mem::MaybeUninit::<i32>::uninit();
+        let mut day  = 0i32;
+        let mut hour = 0i32;
+        let mut min  = 0i32;
+        let mut sec  = 0i32;
+        let mut fsec = 0i32;
         catch!{self.ctx.err_ptr() =>
             OCIIntervalGetDaySecond(
                 self.ctx.as_ptr(), self.ctx.err_ptr(),
-                day.as_mut_ptr(), hour.as_mut_ptr(), min.as_mut_ptr(), sec.as_mut_ptr(), fsec.as_mut_ptr(),
+                &mut day, &mut hour, &mut min, &mut sec, &mut fsec,
                 self.as_ptr()
             )
         }
-        Ok( unsafe { (day.assume_init(), hour.assume_init(), min.assume_init(), sec.assume_init(), fsec.assume_init()) } )
+        Ok( (day, hour, min, sec, fsec) )
     }
 
     /**
@@ -666,16 +666,16 @@ impl<'a> Interval<'a, OCIIntervalYearToMonth> {
         ```
     */
     pub fn get_duration(&self) -> Result<(i32,i32)> {
-        let mut year  = mem::MaybeUninit::<i32>::uninit();
-        let mut month = mem::MaybeUninit::<i32>::uninit();
+        let mut year  = 0i32;
+        let mut month = 0i32;
         catch!{self.ctx.err_ptr() =>
             OCIIntervalGetYearMonth(
                 self.ctx.as_ptr(), self.ctx.err_ptr(),
-                year.as_mut_ptr(), month.as_mut_ptr(),
+                &mut year, &mut month,
                 self.as_ptr()
             )
         }
-        Ok( unsafe { (year.assume_init(), month.assume_init()) } )
+        Ok( (year, month) )
     }
 
     /**

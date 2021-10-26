@@ -113,8 +113,6 @@ pub struct OCIDate {
 
 /// Returns unitinialized date to be used as a row's column buffer or an output variable
 pub(crate) fn new() -> OCIDate {
-    // let date = mem::MaybeUninit::<OCIDate>::uninit();
-    // unsafe { date.assume_init() }
     OCIDate {
         year: 0, month: 1, day: 1, hour: 0, min: 0, sec: 0
     }
@@ -532,12 +530,11 @@ impl<'a> Date<'a> {
         ```
     */
     pub fn compare(&self, other: &Date) -> Result<Ordering> {
-        let mut res = mem::MaybeUninit::<i32>::uninit();
+        let mut cmp = 0i32;
         catch!{self.env.err_ptr() =>
-            OCIDateCompare(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), res.as_mut_ptr())
+            OCIDateCompare(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), &mut cmp)
         }
-        let res = unsafe { res.assume_init() };
-        let ordering = if res == 0 { Ordering::Equal } else if res < 0 { Ordering::Less } else { Ordering::Greater };
+        let ordering = if cmp == 0 { Ordering::Equal } else if cmp < 0 { Ordering::Less } else { Ordering::Greater };
         Ok( ordering )
     }
 
@@ -560,11 +557,11 @@ impl<'a> Date<'a> {
         ```
     */
     pub fn days_from(&self, other: &Date) -> Result<i32> {
-        let mut res = mem::MaybeUninit::<i32>::uninit();
+        let mut res = 0i32;
         catch!{self.env.err_ptr() =>
-            OCIDateDaysBetween(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), res.as_mut_ptr())
+            OCIDateDaysBetween(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), &mut res)
         }
-        Ok( unsafe { res.assume_init() } )
+        Ok( res )
     }
 
     /**

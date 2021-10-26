@@ -7,15 +7,15 @@ use std::mem;
 
 pub(crate) fn get<T: AttrGet>(attr_type: u32, obj_type: u32, obj: *const c_void, err: *mut OCIError) -> Result<T> {
     let mut attr_val  = mem::MaybeUninit::<T::ValueType>::uninit();
-    let mut attr_size = mem::MaybeUninit::<u32>::uninit();
+    let mut attr_size = 0u32;
     catch!{err =>
         OCIAttrGet(
             obj, obj_type,
-            attr_val.as_mut_ptr() as *mut c_void, attr_size.as_mut_ptr(), attr_type,
+            attr_val.as_mut_ptr() as *mut c_void, &mut attr_size, attr_type,
             err
         )
     }
-    Ok( AttrGet::new( unsafe { attr_val.assume_init() }, unsafe { attr_size.assume_init() } as usize) )
+    Ok( AttrGet::new( unsafe { attr_val.assume_init() }, attr_size as usize) )
 }
 
 pub(crate) fn get_into<T: AttrGetInto>(attr_type: u32, into: &mut T, obj_type: u32, obj: *const c_void, err: *mut OCIError) -> Result<()> {

@@ -517,16 +517,15 @@ impl<'e, T> Timestamp<'e, T>
     pub fn compare<U>(&self, other: &Timestamp<U>) -> Result<Ordering>
         where U: DescriptorType<OCIType=OCIDateTime>
     {
-        let mut res = mem::MaybeUninit::<i32>::uninit();
+        let mut cmp = 0i32;
         catch!{self.ctx.err_ptr() =>
             OCIDateTimeCompare(
                 self.ctx.as_ptr(), self.ctx.err_ptr(),
                 self.as_ptr(), other.as_ptr(),
-                res.as_mut_ptr()
+                &mut cmp
             )
         }
-        let res = unsafe { res.assume_init() };
-        let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
+        let ordering = if cmp < 0 { Ordering::Less } else if cmp == 0 { Ordering::Equal } else { Ordering::Greater };
         Ok( ordering )
     }
 
@@ -545,16 +544,16 @@ impl<'e, T> Timestamp<'e, T>
         ```
     */
     pub fn get_date(&self) -> Result<(i16, u8, u8)> {
-        let mut year  = mem::MaybeUninit::<i16>::uninit();
-        let mut month = mem::MaybeUninit::<u8>::uninit();
-        let mut day   = mem::MaybeUninit::<u8>::uninit();
+        let mut year  = 0i16;
+        let mut month = 0u8;
+        let mut day   = 0u8;
         catch!{self.ctx.err_ptr() =>
             OCIDateTimeGetDate(
                 self.ctx.as_ptr(), self.ctx.err_ptr(), self.as_ptr(),
-                year.as_mut_ptr(), month.as_mut_ptr(), day.as_mut_ptr()
+                &mut year, &mut month, &mut day
             )
         }
-        Ok( unsafe { (year.assume_init(), month.assume_init(), day.assume_init()) } )
+        Ok( (year, month, day) )
     }
 
     /**
@@ -572,17 +571,17 @@ impl<'e, T> Timestamp<'e, T>
         ```
     */
     pub fn get_time(&self) -> Result<(u8, u8, u8, u32)> {
-        let mut hour = mem::MaybeUninit::<u8>::uninit();
-        let mut min  = mem::MaybeUninit::<u8>::uninit();
-        let mut sec  = mem::MaybeUninit::<u8>::uninit();
-        let mut fsec = mem::MaybeUninit::<u32>::uninit();
+        let mut hour = 0u8;
+        let mut min  = 0u8;
+        let mut sec  = 0u8;
+        let mut fsec = 0u32;
         catch!{self.ctx.err_ptr() =>
             OCIDateTimeGetTime(
                 self.ctx.as_ptr(), self.ctx.err_ptr(), self.as_ptr(),
-                hour.as_mut_ptr(), min.as_mut_ptr(), sec.as_mut_ptr(), fsec.as_mut_ptr()
+                &mut hour, &mut min, &mut sec, &mut fsec
             )
         }
-        Ok( unsafe { (hour.assume_init(), min.assume_init(), sec.assume_init(), fsec.assume_init()) } )
+        Ok( (hour, min, sec, fsec) )
     }
 
     /**
@@ -654,15 +653,15 @@ impl<'e, T> Timestamp<'e, T>
         ```
     */
     pub fn get_tz_offset(&self) -> Result<(i8, i8)> {
-        let mut hours = mem::MaybeUninit::<i8>::uninit();
-        let mut min   = mem::MaybeUninit::<i8>::uninit();
+        let mut hours = 0i8;
+        let mut min   = 0i8;
         catch!{self.ctx.err_ptr() =>
             OCIDateTimeGetTimeZoneOffset(
                 self.ctx.as_ptr(), self.ctx.err_ptr(), self.as_ptr(),
-                hours.as_mut_ptr(), min.as_mut_ptr()
+                &mut hours, &mut min
             )
         }
-        Ok( unsafe { (hours.assume_init(), min.assume_init()) } )
+        Ok( (hours, min) )
     }
 
     /**

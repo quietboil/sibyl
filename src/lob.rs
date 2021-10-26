@@ -11,7 +11,7 @@ use crate::{
     tosqlout::ToSqlOut,
 };
 use libc::c_void;
-use std::{ cmp, mem, ptr, cell::Cell };
+use std::{ cmp, ptr, cell::Cell };
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
 pub trait InternalLob {}
@@ -42,20 +42,20 @@ impl<T> Drop for LOB<'_,T>
     where T: DescriptorType<OCIType=OCILobLocator>
 {
     fn drop(&mut self) {
-        let mut is_open = mem::MaybeUninit::<u8>::uninit();
+        let mut is_open = 0u8;
         let res = unsafe {
-            OCILobIsOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), is_open.as_mut_ptr())
+            OCILobIsOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut is_open)
         };
-        if res == OCI_SUCCESS && unsafe { is_open.assume_init() } != 0 {
+        if res == OCI_SUCCESS && is_open != 0 {
             unsafe {
                 OCILobClose(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr());
             }
         }
-        let mut is_temp = mem::MaybeUninit::<u8>::uninit();
+        let mut is_temp = 0u8;
         let res = unsafe {
-            OCILobIsTemporary(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), is_temp.as_mut_ptr())
+            OCILobIsTemporary(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut is_temp)
         };
-        if res == OCI_SUCCESS && unsafe { is_temp.assume_init() } != 0 {
+        if res == OCI_SUCCESS && is_temp != 0 {
             unsafe {
                 OCILobFreeTemporary(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr());
             }
@@ -321,11 +321,11 @@ impl<'a,T> LOB<'a,T>
           included in the length count.
     */
     pub fn len(&self) -> Result<usize> {
-        let mut len = mem::MaybeUninit::<u64>::uninit();
+        let mut len = 0u64;
         catch!{self.conn.err_ptr() =>
-            OCILobGetLength2(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), len.as_mut_ptr())
+            OCILobGetLength2(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut len)
         }
-        Ok( unsafe { len.assume_init() } as usize )
+        Ok( len as usize )
     }
 
     /**
@@ -398,11 +398,10 @@ impl<'a,T> LOB<'a,T>
     pub fn is_equal<U>(&self, other: &LOB<'a,U>) -> Result<bool>
         where U: DescriptorType<OCIType=OCILobLocator>
     {
-        let mut flag = mem::MaybeUninit::<u8>::uninit();
+        let mut flag = 0u8;
         catch!{self.conn.err_ptr() =>
-            OCILobIsEqual(self.conn.env_ptr(), self.as_mut_ptr(), other.as_mut_ptr(), flag.as_mut_ptr())
+            OCILobIsEqual(self.conn.env_ptr(), self.as_mut_ptr(), other.as_mut_ptr(), &mut flag)
         }
-        let flag = unsafe { flag.assume_init() };
         Ok( flag != 0 )
     }
 
@@ -422,11 +421,11 @@ impl<'a,T> LOB<'a,T>
         because the operating system file on the server side must be checked to see if it is open.
     */
     pub fn is_open(&self) -> Result<bool> {
-        let mut flag = mem::MaybeUninit::<u8>::uninit();
+        let mut flag = 0u8;
         catch!{self.conn.err_ptr() =>
-            OCILobIsOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), flag.as_mut_ptr())
+            OCILobIsOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut flag)
         }
-        Ok( unsafe { flag.assume_init() } != 0 )
+        Ok( flag != 0 )
     }
 
     /**
@@ -470,16 +469,16 @@ impl<'a,T> LOB<'a,T>
         LOBs or binary files.
     */
     pub fn charset_form(&self) -> Result<CharSetForm> {
-        let mut csform = mem::MaybeUninit::<u8>::uninit();
+        let mut csform = 0u8;
         catch!{self.conn.err_ptr() =>
-            OCILobCharSetForm(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), csform.as_mut_ptr())
+            OCILobCharSetForm(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), &mut csform)
         }
-        let res = match unsafe { csform.assume_init() } {
+        let csform = match csform {
             SQLCS_IMPLICIT => CharSetForm::Implicit,
             SQLCS_NCHAR    => CharSetForm::NChar,
             _              => CharSetForm::Undefined
         };
-        Ok( res )
+        Ok( csform )
     }
 
     /**
@@ -487,11 +486,11 @@ impl<'a,T> LOB<'a,T>
         it returns 0 because there is no concept of a character set for binary LOBs or binary files.
     */
     pub fn charset_id(&self) -> Result<u16> {
-        let mut csid = mem::MaybeUninit::<u16>::uninit();
+        let mut csid = 0u16;
         catch!{self.conn.err_ptr() =>
-            OCILobCharSetId(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), csid.as_mut_ptr())
+            OCILobCharSetId(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), &mut csid)
         }
-        Ok( unsafe { csid.assume_init() } )
+        Ok( csid )
     }
 
     /**
@@ -1746,14 +1745,11 @@ impl LOB<'_,OCIBFileLocator> {
         ```
     */
     pub fn file_exists(&self) -> Result<bool> {
-        let mut exists = mem::MaybeUninit::<u8>::uninit();
+        let mut exists = 0u8;
         catch!{self.conn.err_ptr() =>
-            OCILobFileExists(
-                self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
-                exists.as_mut_ptr()
-            )
+            OCILobFileExists(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut exists)
         }
-        Ok( unsafe { exists.assume_init() } != 0 )
+        Ok( exists != 0 )
     }
 
     /**
@@ -1825,14 +1821,11 @@ impl LOB<'_,OCIBFileLocator> {
         ```
     */
     pub fn is_file_open(&self) -> Result<bool> {
-        let mut is_open = mem::MaybeUninit::<u8>::uninit();
+        let mut is_open = 0u8;
         catch!{self.conn.err_ptr() =>
-            OCILobFileIsOpen(
-                self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
-                is_open.as_mut_ptr()
-            )
+            OCILobFileIsOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut is_open)
         }
-        Ok( unsafe { is_open.assume_init() } != 0 )
+        Ok( is_open != 0 )
     }
 
     /**
