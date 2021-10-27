@@ -1,13 +1,6 @@
 //! OCI environment
 
-use crate::{
-    Result,
-    err::Error,
-    conn::Connection,
-    oci::*,
-    handle::Handle,
-    types::Ctx
-};
+use crate::{Result, Error, Connection, oci::*, types::Ctx};
 use libc::c_void;
 use std::ptr;
 
@@ -39,9 +32,7 @@ impl Environment {
         let err = Handle::<OCIError>::new(env.get())?;
         Ok( Environment { env, err } )
     }
-}
 
-impl Environment {
     /**
         Returns the maximum size (high watermark) for the client-side object cache
         as a percentage of the optimal size.
@@ -201,7 +192,10 @@ impl Environment {
     pub fn set_nls_territory(&self, territory: &str) -> Result<()> {
         self.env.set_attr(OCI_ATTR_ENV_NLS_TERRITORY, territory, self.err_ptr())
     }
+}
 
+#[cfg(not(feature="nonblocking"))]
+impl Environment {
     /**
         Creates and begins a user session for a given server.
         # Example
@@ -231,10 +225,6 @@ impl Environment {
     pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Connection> {
         Connection::new(self, dbname, username, password)
     }
-
-    // pub async fn connect_async<'a>(&'a self, dbname: &str, username: &str, password: &str) -> Result<AsyncConnection<'a>> {
-    //     spawn_blocking(|| AsyncConnection::new(self, dbname, username, password)).await?
-    // }
 }
 
 pub trait Env {

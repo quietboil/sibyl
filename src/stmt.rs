@@ -1,26 +1,17 @@
-//! SQL or PL/SQL statement handling
+//! SQL or PL/SQL statement
 
-mod defs;
 pub mod args;
+pub mod fromsql;
 pub mod cols;
 pub mod cursor;
 pub mod rows;
 
-use self::{
-    defs::*, args::*,
-    cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE},
-    cursor::Cursor,
-    rows::{Rows, ResultSetProvider}
-};
-use crate::{
-    Position, Result,
-    attr,
-    oci::{ *, ptr::Ptr },
-    err::Error,
-    env::Env,
-    conn::Connection,
-    types::Ctx,
-};
+pub use rows::{Rows, Row};
+pub use cursor::Cursor;
+pub use args::{ToSql, ToSqlOut, SqlInArg, SqlOutArg};
+use rows::ResultSetProvider;
+use cols::{Columns, Position, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE};
+use crate::{Result, catch, Error, Connection, oci::*, env::Env, types::Ctx};
 use libc::c_void;
 use std::{cell::Cell, collections::{HashMap, HashSet}, ptr};
 use once_cell::unsync::OnceCell;
@@ -660,7 +651,7 @@ impl<'a> Statement<'a> {
           ORDER BY employee_id
         ")?;
         stmt.set_prefetch_rows(5)?;
-        let mut rows = stmt.query(&[ &103 ])?;
+        let mut rows = stmt.query(&[ &103 ])?; // Alexander Hunold
         let mut subs = HashMap::new();
         while let Some( row ) = rows.next()? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
@@ -678,8 +669,12 @@ impl<'a> Statement<'a> {
             );
             subs.insert(id, name);
         }
-        assert_eq!(stmt.get_row_count()?, 3);
-        assert_eq!(subs.len(), 3);
+        assert_eq!(stmt.get_row_count()?, 4);
+        assert_eq!(subs.len(), 4);
+        assert!(subs.contains_key(&104), "Bruce Ernst");
+        assert!(subs.contains_key(&105), "David Austin");
+        assert!(subs.contains_key(&106), "Valli Pataballa");
+        assert!(subs.contains_key(&107), "Diana Lorentz");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -794,9 +789,9 @@ impl<'a> Statement<'a> {
             let id : u32 = row.get(0)?.unwrap();
             ids.push(id);
         }
-        assert_eq!(stmt.get_row_count()?, 3);
-        assert_eq!(ids.len(), 3);
-        assert_eq!(ids.as_slice(), &[104 as u32, 105, 106]);
+        assert_eq!(stmt.get_row_count()?, 4);
+        assert_eq!(ids.len(), 4);
+        assert_eq!(ids.as_slice(), &[104 as u32, 105, 106, 107]);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */

@@ -2,19 +2,11 @@
 
 use super::{
     Stmt, Statement,
+    args::ToSqlOut,
     cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE},
     rows::{Rows, ResultSetProvider}
 };
-use crate::{
-    Result,
-    attr,
-    oci::{ *, ptr::Ptr },
-    env::Env,
-    conn::Connection,
-    handle::Handle,
-    types::Ctx,
-    tosqlout::ToSqlOut,
-};
+use crate::{Result, oci::*, env::Env, conn::Connection, types::Ctx};
 use libc::c_void;
 use std::cell::Cell;
 use once_cell::unsync::OnceCell;
@@ -360,9 +352,9 @@ impl<'a> Cursor<'a> {
             let id : usize = row.get(0)?.unwrap();
             ids.push(id);
         }
-        assert_eq!(subordinates.get_row_count()?, 3);
-        assert_eq!(ids.len(), 3);
-        assert_eq!(ids.as_slice(), &[104 as usize, 105, 106]);
+        assert_eq!(subordinates.get_row_count()?, 4);
+        assert_eq!(ids.len(), 4);
+        assert_eq!(ids.as_slice(), &[104 as usize, 105, 106, 107]);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */

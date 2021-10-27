@@ -590,8 +590,8 @@ fn rowid_datatype() -> Result<()> {
     assert_eq!(str_rowid, implicit_rowid.to_string(&conn)?);
     let explicit_rowid : RowID = row.get(0)?.expect("ROWID pseudo-column");
     assert_eq!(explicit_rowid.to_string(&conn)?, implicit_rowid.to_string(&conn)?);
-    let manager_id: u32 = row.get(1)?.expect("menager ID");
-    assert_eq!(manager_id, 102);
+    let manager_id: u32 = row.get(1)?.expect("manager ID");
+    assert_eq!(manager_id, 103, "employee ID of Alexander Hunold");
 
     let stmt = conn.prepare("
         UPDATE hr.employees
@@ -599,7 +599,7 @@ fn rowid_datatype() -> Result<()> {
          WHERE rowid = :RID
     ")?;
     let num_updated = stmt.execute(&[
-        &( ":MID", 102 ),
+        &( ":MID", 103 ),
         &( ":RID", &implicit_rowid ),
     ])?;
     assert_eq!(num_updated, 1);

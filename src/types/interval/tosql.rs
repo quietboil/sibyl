@@ -1,7 +1,7 @@
 /// Implementation of traits that allow Intervals to be used as SQL parameters
 
 use libc::c_void;
-use crate::{ oci::*, tosql::ToSql, tosqlout::ToSqlOut, desc::Descriptor };
+use crate::{ oci::*, stmt::args::{ ToSql, ToSqlOut } };
 use super::Interval;
 
 macro_rules! impl_int_to_sql {

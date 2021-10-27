@@ -1,7 +1,7 @@
 /// Implementation of traits that allow Varchars to be used as SQL parameters
 
 use libc::c_void;
-use crate::{ oci::*, tosql::ToSql, tosqlout::ToSqlOut };
+use crate::{ oci::*, stmt::args::{ ToSql, ToSqlOut } };
 use super::Varchar;
 
 impl ToSql for Varchar<'_> {

@@ -6,6 +6,12 @@ pub(crate) mod number;
 pub(crate) mod varchar;
 pub(crate) mod timestamp;
 pub(crate) mod interval;
+pub(crate) mod rowid;
+
+pub use date::Date;
+pub use number::Number;
+pub use raw::Raw;
+pub use varchar::Varchar;
 
 use crate::env::Env;
 use libc::c_void;

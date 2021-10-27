@@ -1,6 +1,7 @@
+//! Errors returned by Sibyl
 
 use crate::oci::*;
-use std::{ ptr, cmp, fmt, error, io, ffi::CStr };
+use std::{ptr, cmp, fmt, error, io, ffi::CStr};
 use libc::c_void;
 
 fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
@@ -24,6 +25,7 @@ fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
     (errcode, msg)
 }
 
+#[macro_export]
 macro_rules! catch {
     ( $err:expr => $( $stmt:stmt );+ ) => {{
         let res = unsafe { $($stmt)+ };

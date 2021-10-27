@@ -1,59 +1,8 @@
-//! OCI Raw functions to manipulate variable-length RAW
+//! Variable-length RAW data
 
 mod tosql;
 
-use crate::{
-    Result,
-    oci::{ *, ptr::Ptr },
-    env::Env,
-};
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-4856A258-8883-4470-9881-51F27FA050F6
-    fn OCIRawAllocSize(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        raw:        *const OCIRaw,
-        size:       *mut u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-3BB4239F-8579-4CC1-B76F-0786BDBAEF9A
-    fn OCIRawAssignBytes(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        rhs:        *const u8,
-        rhs_len:    u32,
-        lhs:        *mut *mut OCIRaw
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-27DBFBE0-4511-4B34-8476-B9AC720E3F51
-    fn OCIRawAssignRaw(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        rhs:        *const OCIRaw,
-        lhs:        *mut *mut OCIRaw
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-B05C44C5-7168-438B-AC2A-BD3AD309AAEA
-    fn OCIRawPtr(
-        env:        *mut OCIEnv,
-        raw:        *const OCIRaw
-    ) -> *mut u8;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-7D757B00-DF25-4F61-A3DF-8C72F18FDC9E
-    fn OCIRawResize(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        size:       u32,
-        raw:        *mut *mut OCIRaw
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-D74E75FA-5985-4DDC-BC25-430B415B8837
-    fn OCIRawSize(
-        env:        *mut OCIEnv,
-        raw:        *const OCIRaw
-    ) -> u32;
-}
+use crate::{ Result, catch, oci::*, env::Env };
 
 pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Ptr<OCIRaw>> {
     let bin = Ptr::null();

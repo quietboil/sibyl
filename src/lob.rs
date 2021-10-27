@@ -1,17 +1,14 @@
 //! Functions for performing operations on large objects (LOBs).
 
 use crate::{
-    Result, BFile, CharSetForm, Cache,
-    err::Error,
-    env::Env,
+    Result, Error, catch, BFile,
     oci::*, 
-    desc::{ Descriptor, DescriptorType },
+    env::Env,
     conn::Connection,
-    tosql::ToSql,
-    tosqlout::ToSqlOut,
+    stmt::args::{ToSql, ToSqlOut},
 };
 use libc::c_void;
-use std::{ cmp, ptr, cell::Cell };
+use std::{cmp, ptr, cell::Cell};
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
 pub trait InternalLob {}

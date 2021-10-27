@@ -1,7 +1,7 @@
 //! Send-able pointers to OCI handles and descriptors
 
 use std::{cell::UnsafeCell, ptr};
-use super::*;
+use super::OCIStruct;
 
 /// Send-able cell-like wrapper around a pointer to OCI handle or descriptor.
 pub struct Ptr<T: OCIStruct> {

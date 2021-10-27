@@ -2,15 +2,15 @@
 
 use std::mem;
 use crate::{ Result, err::Error, oci::* };
-use super::{ OCINumber, real_into_number, to_real };
+use super::{ real_into_number, to_real };
 
 fn u128_into_number(mut val: u128) -> OCINumber {
     let mut num = mem::MaybeUninit::<OCINumber>::uninit();
     let ptr = num.as_mut_ptr();
     if val == 0 {
         unsafe {
-            (*ptr)._private[0] = 1;
-            (*ptr)._private[1]= 128;
+            (*ptr).bytes[0] = 1;
+            (*ptr).bytes[1]= 128;
         }
     } else {
         let mut digits = [0u8;20];
@@ -27,9 +27,9 @@ fn u128_into_number(mut val: u128) -> OCINumber {
         }
         let len = digits.len() - idx;
         unsafe {
-            (*ptr)._private[0] = len as u8 + 1;
-            (*ptr)._private[1] = exp;
-            (*ptr)._private[2..2 + len].copy_from_slice(&digits[idx..]);
+            (*ptr).bytes[0] = len as u8 + 1;
+            (*ptr).bytes[1] = exp;
+            (*ptr).bytes[2..2 + len].copy_from_slice(&digits[idx..]);
         }
     }
     unsafe { num.assume_init() }
@@ -57,18 +57,18 @@ fn i128_into_number(mut val: i128) -> OCINumber {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
         let ptr = num.as_mut_ptr();
         unsafe {
-            (*ptr)._private[0] = len as u8 + 1;
-            (*ptr)._private[1] = exp;
-            (*ptr)._private[2..2 + len].copy_from_slice(&digits[idx..idx + len]);
+            (*ptr).bytes[0] = len as u8 + 1;
+            (*ptr).bytes[1] = exp;
+            (*ptr).bytes[2..2 + len].copy_from_slice(&digits[idx..idx + len]);
             num.assume_init()
         }
     }
 }
 
 fn u128_from_number(num: &OCINumber) -> Result<u128> {
-    let len = num._private[0] as usize;
-    let exp = num._private[1];
-    if len == 0 || len >= num._private.len() {
+    let len = num.bytes[0] as usize;
+    let exp = num.bytes[1];
+    if len == 0 || len >= num.bytes.len() {
         Err( Error::new("uninitialized number") )
     } else if len == 1 || 62 < exp && exp < 193 {
         Ok( 0 )
@@ -78,10 +78,10 @@ fn u128_from_number(num: &OCINumber) -> Result<u128> {
         Err( Error::new("overflow") )
     } else {
         let mut exp = exp - 193;
-        let mut val = (num._private[2] - 1) as u128;
+        let mut val = (num.bytes[2] - 1) as u128;
         let mut idx = 3;
         while idx <= len && exp > 0 {
-            let digit = (num._private[idx] - 1) as u128;
+            let digit = (num.bytes[idx] - 1) as u128;
             val = val * 100 + digit;
             idx += 1;
             exp -= 1;
@@ -89,7 +89,7 @@ fn u128_from_number(num: &OCINumber) -> Result<u128> {
         if exp > 0 {
             val *= 100u128.pow(exp as u32);
         } else if idx <= len {
-            let digit = num._private[idx];
+            let digit = num.bytes[idx];
             if digit >= 50 {
                 val += 1;
             }
@@ -99,12 +99,12 @@ fn u128_from_number(num: &OCINumber) -> Result<u128> {
 }
 
 fn i128_from_number(num: &OCINumber) -> Result<i128> {
-    let len = num._private[0] as usize;
-    let exp = num._private[1];
+    let len = num.bytes[0] as usize;
+    let exp = num.bytes[1];
     if exp >= 193 {
         let val = u128_from_number(num)?;
         Ok( val as i128 )
-    } else if len == 0 || len >= num._private.len() {
+    } else if len == 0 || len >= num.bytes.len() {
         Err( Error::new("uninitialized number") )
     } else if len == 1 || 62 < exp && exp < 193 {
         Ok( 0 )
@@ -112,18 +112,18 @@ fn i128_from_number(num: &OCINumber) -> Result<i128> {
         Err( Error::new("overflow") )
     } else {
         let mut exp = 62 - exp;
-        let mut val = (101 - num._private[2]) as i128;
+        let mut val = (101 - num.bytes[2]) as i128;
         let mut idx = 3;
-        while idx <= len && exp > 0 && num._private[idx] <= 101 {
-            let digit = (101 - num._private[idx]) as i128;
+        while idx <= len && exp > 0 && num.bytes[idx] <= 101 {
+            let digit = (101 - num.bytes[idx]) as i128;
             val = val * 100 + digit;
             idx += 1;
             exp -= 1;
         }
         if exp > 0 {
             val *= 100i128.pow(exp as u32);
-        } else if idx <= len && num._private[idx] <= 101 {
-            let digit = num._private[idx];
+        } else if idx <= len && num.bytes[idx] <= 101 {
+            let digit = num.bytes[idx];
             if digit <= 52 {
                 val += 1;
             }

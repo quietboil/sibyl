@@ -1,8 +1,7 @@
-use crate::{
-    Result,
-    oci::*,
-    desc::{ Descriptor, DescriptorType }
-};
+//! OCI Parameter descriptor functions
+
+use crate::{Result, catch};
+use super::*;
 use std::ptr;
 use libc::c_void;
 

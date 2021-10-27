@@ -1,18 +1,25 @@
-use super::{defs::*, rows::ResultSetProvider, Stmt};
-use crate::{
-    attr,
-    desc::Descriptor,
-    fromsql::FromSql,
-    handle::Handle,
-    oci::{ *, ptr::Ptr },
-    param,
-    types::{date, date::OCIDate, number, number::OCINumber, raw, varchar},
-    Result, RowID,
-};
+use super::{Stmt, rows::ResultSetProvider, fromsql::FromSql};
+use crate::{Result, catch, RowID, oci:: *, types::{date, number, raw, varchar}};
 use libc::c_void;
-use std::{ collections::HashMap, ptr };
+use std::{collections::HashMap, ptr};
 
 pub(crate) const DEFAULT_LONG_BUFFER_SIZE: u32 = 32768;
+
+/// Allows column identification by either its numeric position or its name
+pub trait Position {
+    fn index(&self) -> Option<usize>;
+    fn name(&self)  -> Option<&str>;
+}
+
+impl Position for usize {
+    fn index(&self) -> Option<usize> { Some(*self) }
+    fn name(&self)  -> Option<&str>  { None }
+}
+
+impl Position for &str {
+    fn index(&self) -> Option<usize> { None }
+    fn name(&self)  -> Option<&str>  { Some(*self) }
+}
 
 /// Column data type.
 #[derive(Debug, PartialEq)]

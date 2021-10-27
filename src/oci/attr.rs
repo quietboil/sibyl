@@ -1,7 +1,5 @@
-use crate::{
-    RowID, Result,
-    oci::*,
-};
+use crate::{Result, catch};
+use super::*;
 use libc::c_void;
 use std::mem;
 
@@ -115,12 +113,6 @@ impl AttrSet for &str {
     fn len(&self) -> usize {
         (*self).len()
     }
-}
-
-impl AttrGetInto for RowID {
-    fn as_val_ptr(&mut self) -> *mut c_void { self.get() as *mut c_void }
-    fn capacity(&self) -> usize             { 0 }
-    fn set_len(&mut self, _new_len: usize)  { }
 }
 
 impl AttrGetInto for String {

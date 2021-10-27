@@ -3,57 +3,10 @@
 mod tosql;
 
 use crate::{
-    Result,
+    Result, catch,
     oci::{ *, ptr::Ptr },
     env::Env,
 };
-
-extern "C" {
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-3F336010-D8C8-4B50-89CB-ABCCA98905DA
-    fn OCIStringAllocSize(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        txt:        *const OCIString,
-        size:       *mut u32
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-58BC140A-900C-4409-B3D2-C2DC8FB643FF
-    fn OCIStringAssign(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        rhs:        *const OCIString,
-        lhs:        *mut *mut OCIString
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-96E8375B-9017-4E06-BF85-09C12DF286F4
-    fn OCIStringAssignText(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        rhs:        *const u8,
-        rhs_len:    u32,
-        lhs:        *mut *mut OCIString
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-0E1302F7-A32C-46F1-93D7-FB33CF60C24F
-    fn OCIStringPtr(
-        env:        *mut OCIEnv,
-        txt:        *const OCIString
-    ) -> *mut u8;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-CA52A8A4-08BA-4F08-A4A3-79F841F6AE9E
-    fn OCIStringResize(
-        env:        *mut OCIEnv,
-        err:        *mut OCIError,
-        size:       u32,
-        txt:        *mut *mut OCIString
-    ) -> i32;
-
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-DBDAB2D9-4E78-4752-85B6-55D30CA6AF30
-    fn OCIStringSize(
-        env:        *mut OCIEnv,
-        txt:        *const OCIString
-    ) -> u32;
-}
 
 pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Ptr<OCIString>> {
     let txt = Ptr::null();

@@ -1,6 +1,6 @@
 /*!
 Sibyl is an [OCI](https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html)-based
-driver for Rust applications to interface with Oracle databases.
+interface between Rust applications and Oracle databases.
 
 ## Example
 
@@ -152,7 +152,7 @@ let stmt = conn.prepare("
 A prepared statement can be executed either with the `query` or `execute` or `execute_into` methods:
 - `query` is used for `SELECT` statements. In fact, it will complain if you try to `query` any other statement.
 - `execute` is used for all other, non-SELECT, DML and DDL that do not have OUT parameters.
-- `execute_into` is used with DML and DDL that have OUT parameters.
+- `execute_into` is used with DML that have OUT parameters.
 
 `query` and `execute` take a slice of IN arguments, which can be specified as positional
 arguments or as name-value tuples. For example, to execute the above SELECT we can call
@@ -222,7 +222,7 @@ let mut department_id: u32 = 0;
 let num_rows = stmt.execute_into(&[
     &( ":DEPARTMENT_NAME", "Security" ),
     &( ":MANAGER_ID",      ""         ),
-    &( ":LOCATION_ID",     1700      ),
+    &( ":LOCATION_ID",     1700       ),
 ], &mut [
     &mut ( ":DEPARTMENT_ID", &mut department_id )
 ])?;
@@ -267,7 +267,7 @@ while let Some( row ) = rows.next()? {
 
 There are a few notable points of interest in the last example:
 - Sibyl uses 0-based column indexing in a projection.
-- Column values are returned as an `Option`. However, if a column is declared as NOT NULL,
+- Column value is returned as an `Option`. However, if a column is declared as NOT NULL,
 like EMPLOYEE_ID and LAST_NAME, the result will always be `Some` and therefore can be safely
 unwrapped.
 - LAST_NAME and FIRST_NAME are retrieved as `&str`. This is fast as they are borrowed directly
@@ -379,8 +379,8 @@ assert_eq!(duration.to_string(1,3)?, "+8 03:18:35.000");
 ### RowID
 
 Oracle ROWID can be selected and retrieved explicitly into an instance of the `RowID`.
-However, one interesting case is SELECT FOR UPDATE queries where Oracle returns ROWIDs
-implicitly. Those can be retrieved using `Row::get_rowid` method.
+However, one interesting case is SELECT FOR UPDATE queries for which where Oracle
+returns ROWIDs implicitly. Those can be retrieved using `Row::get_rowid` method.
 
 ```
 # let dbname = std::env::var("DBNAME")?;
@@ -399,7 +399,7 @@ if let Some( row ) = rows.next()? {
     let rowid = row.get_rowid()?;
 
     let manager_id: u32 = row.get(0)?.unwrap();
-    assert_eq!(manager_id, 102);
+    assert_eq!(manager_id, 103);
 
     let stmt = conn.prepare("
         UPDATE hr.employees
@@ -412,6 +412,7 @@ if let Some( row ) = rows.next()? {
     ])?;
     assert_eq!(num_updated, 1);
 }
+# conn.rollback()?;
 # Ok::<(),Box<dyn std::error::Error>>(())
 ```
 
@@ -470,52 +471,30 @@ if let Some( cursor ) = stmt.next_result()? {
 */
 
 mod oci;
-#[macro_use] mod err;
-mod handle;
-mod desc;
-mod attr;
-mod param;
+mod err;
 mod env;
 mod types;
-mod tosql;
-mod tosqlout;
-mod fromsql;
+mod lob;
 mod conn;
 mod stmt;
-mod rowid;
-mod lob;
 
-/**
-    Allows parameter or column identification by either
-    its numeric position or its name
-*/
-pub trait Position {
-    fn index(&self) -> Option<usize>;
-    fn name(&self)  -> Option<&str>;
-}
+pub use err::Error;
+pub use env::Environment;
+pub use conn::Connection;
+pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ToSqlOut, SqlInArg, SqlOutArg, cols::ColumnType};
+pub use types::{Date, Number, Raw, Varchar};
+pub use oci::{Cache, CharSetForm};
 
-impl Position for usize {
-    fn index(&self) -> Option<usize> { Some(*self) }
-    fn name(&self)  -> Option<&str>  { None }
-}
-
-impl Position for &str {
-    fn index(&self) -> Option<usize> { None }
-    fn name(&self)  -> Option<&str>  { Some(*self) }
-}
-
-/// Character set form
-pub enum CharSetForm {
-    Undefined = 0,
-    Implicit = 1,
-    NChar = 2
-}
-
-/// LOB cache control flags
-pub enum Cache {
-    No  = 0,
-    Yes = 1,
-}
+pub type Result<T>        = std::result::Result<T, Error>;
+pub type RowID            = oci::Descriptor<oci::OCIRowid>;
+pub type Timestamp<'a>    = types::timestamp::Timestamp<'a, oci::OCITimestamp>;
+pub type TimestampTZ<'a>  = types::timestamp::Timestamp<'a, oci::OCITimestampTZ>;
+pub type TimestampLTZ<'a> = types::timestamp::Timestamp<'a, oci::OCITimestampLTZ>;
+pub type IntervalYM<'a>   = types::interval::Interval<'a, oci::OCIIntervalYearToMonth>;
+pub type IntervalDS<'a>   = types::interval::Interval<'a, oci::OCIIntervalDayToSecond>;
+pub type CLOB<'a>         = lob::LOB<'a,oci::OCICLobLocator>;
+pub type BLOB<'a>         = lob::LOB<'a,oci::OCIBLobLocator>;
+pub type BFile<'a>        = lob::LOB<'a,oci::OCIBFileLocator>;
 
 /**
     Returns a new environment handle, which is then used by the OCI functions.
@@ -537,45 +516,12 @@ pub enum Cache {
     and passed around, or it might be created statically:
 
     ```ignore
-    use sibyl::Environment;
+    use sibyl as oracle;
     lazy_static! {
-        pub static ref ORACLE : Environment = sibyl::env().expect("Oracle OCI environment");
+        pub static ref ORACLE : oracle::Environment = oracle::env().expect("Oracle OCI environment");
     }
     ```
 */
 pub fn env() -> Result<Environment> {
     Environment::new()
 }
-
-pub use crate::{
-    err::Error,
-    env::Environment,
-    conn::Connection,
-    stmt::{
-    Statement,
-    cols::ColumnType,
-    args::{ SqlInArg, SqlOutArg },
-    rows::{ Rows, Row },
-    cursor::Cursor
-   },
-    types::{
-        number::Number, 
-        date::Date, 
-        raw::Raw, 
-        varchar::Varchar
-    },
-    tosql::ToSql,
-    tosqlout::ToSqlOut,
-    fromsql::FromSql
-};
-
-pub type Result<T>          = std::result::Result<T, Error>;
-pub type Timestamp<'a>      = types::timestamp::Timestamp<'a, oci::OCITimestamp>;
-pub type TimestampTZ<'a>    = types::timestamp::Timestamp<'a, oci::OCITimestampTZ>;
-pub type TimestampLTZ<'a>   = types::timestamp::Timestamp<'a, oci::OCITimestampLTZ>;
-pub type IntervalYM<'a>     = types::interval::Interval<'a, oci::OCIIntervalYearToMonth>;
-pub type IntervalDS<'a>     = types::interval::Interval<'a, oci::OCIIntervalDayToSecond>;
-pub type CLOB<'a>           = lob::LOB<'a,oci::OCICLobLocator>;
-pub type BLOB<'a>           = lob::LOB<'a,oci::OCIBLobLocator>;
-pub type BFile<'a>          = lob::LOB<'a,oci::OCIBFileLocator>;
-pub type RowID              = desc::Descriptor<oci::OCIRowid>;

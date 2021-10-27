@@ -1,21 +1,15 @@
 /// The ROWID data type identifies a particular row in a database table.
 
-use crate::{Result, RowID, env::Env, oci::*, tosql::ToSql, tosqlout::ToSqlOut};
+use crate::{Result, catch, RowID, env::Env, oci::{*, attr::AttrGetInto}, stmt::args::{ToSql, ToSqlOut}};
 use libc::c_void;
 
-impl ToSql for &RowID {
-    fn to_sql(&self) -> (u16, *const c_void, usize) {
-        ( SQLT_RDD, self.as_ptr() as *const c_void, std::mem::size_of::<*mut OCIRowid>() )
-    }
-}
-
-impl ToSqlOut for RowID {
-    fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
-        (SQLT_RDD, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCIRowid>(), std::mem::size_of::<*mut OCIRowid>())
-    }
-}
-
 impl RowID  {
+    /**
+        Returns character representation of a ROWID.
+
+        The returned string can then be used as an argument in SQL statements
+        to query a row at the given ROWID.
+    */
     pub fn to_string(&self, env: &dyn Env) -> Result<String> {
         let mut text = String::with_capacity(20);
         let txt = unsafe { text.as_mut_vec() };
@@ -38,4 +32,22 @@ impl RowID  {
         let mem = unsafe { &*mem };
         mem[16..26].iter().any(|&b| b != 0)
     }
+}
+
+impl ToSql for &RowID {
+    fn to_sql(&self) -> (u16, *const c_void, usize) {
+        ( SQLT_RDD, self.as_ptr() as *const c_void, std::mem::size_of::<*mut OCIRowid>() )
+    }
+}
+
+impl ToSqlOut for RowID {
+    fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
+        (SQLT_RDD, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCIRowid>(), std::mem::size_of::<*mut OCIRowid>())
+    }
+}
+
+impl AttrGetInto for RowID {
+    fn as_val_ptr(&mut self) -> *mut c_void { self.get() as *mut c_void }
+    fn capacity(&self) -> usize             { 0 }
+    fn set_len(&mut self, _new_len: usize)  { }
 }

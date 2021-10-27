@@ -1,7 +1,7 @@
 /// Implementation of traits that allow Timestamps to be used as SQL parameters
 
 use libc::c_void;
-use crate::{ oci::*, tosql::ToSql, tosqlout::ToSqlOut, desc::Descriptor };
+use crate::{ oci::*, stmt::args::{ ToSql, ToSqlOut } };
 use super::Timestamp;
 
 macro_rules! impl_ts_to_sql {

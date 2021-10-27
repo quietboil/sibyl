@@ -1,8 +1,8 @@
 /// Implementation of traits that allow Dates to be used as SQL parameters
 
 use libc::c_void;
-use crate::{ oci::*, tosql::ToSql, tosqlout::ToSqlOut };
-use super::{ Date, OCIDate };
+use crate::{ oci::*, stmt::args::{ ToSql, ToSqlOut } };
+use super::Date;
 
 impl ToSql for Date<'_> {
     fn to_sql(&self) -> (u16, *const c_void, usize) {

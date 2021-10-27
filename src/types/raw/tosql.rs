@@ -1,7 +1,7 @@
 /// Implementation of traits that allow Raw values to be used as SQL parameters
 
 use libc::c_void;
-use crate::{ oci::*, tosql::ToSql, tosqlout::ToSqlOut };
+use crate::{ oci::*, stmt::args::{ ToSql, ToSqlOut } };
 use super::Raw;
 
 impl ToSql for Raw<'_> {

@@ -1,9 +1,7 @@
-use crate::{
-    Result,
-    oci::{ *, ptr::Ptr },
-    err::Error,
-    attr,
-};
+//! OCI handles.
+
+use crate::{Result, Error};
+use super::*;
 use libc::c_void;
 use std::ptr;
 
@@ -79,10 +77,6 @@ impl<T: HandleType> Handle<T> {
     pub(crate) fn as_ptr(&self) -> *mut *mut T {
         self.ptr.as_ptr()
     }
-
-    // pub(crate) fn get_type() -> u32 {
-    //     T::get_type()
-    // }
 
     pub(crate) fn swap(&self, other: &Self) {
         self.ptr.swap(&other.ptr);

@@ -1,9 +1,7 @@
-use crate::{
-    Result,
-    oci::{ *, ptr::Ptr },
-    err::Error,
-    attr,
-};
+//! OCI descriptors
+
+use crate::{Result, Error};
+use super::*;
 use libc::c_void;
 use std::ptr;
 

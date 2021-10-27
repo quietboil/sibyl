@@ -1,6 +1,20 @@
+//! Oracle OCI
+
 #![allow(dead_code)]
 
-pub(crate) mod ptr;
+use libc::{size_t, c_void};
+
+pub mod ptr;
+pub mod attr;
+pub mod param;
+pub mod handle;
+pub mod desc;
+
+pub use ptr::Ptr;
+pub use handle::Handle;
+pub use desc::Descriptor;
+
+pub(crate) use desc::DescriptorType;
 
 pub(crate) const OCI_DEFAULT                : u32 = 0;
 
@@ -95,6 +109,23 @@ macro_rules! mark_as_oci {
 mark_as_oci!(OCIEnv, OCIError, OCISvcCtx, OCIStmt, OCIBind, OCIDefine, OCIDescribe, OCIServer, OCISession, OCIRaw);
 mark_as_oci!(OCIResult, OCILobLocator, OCILobRegion, OCIParam, OCIRowid, OCIDateTime, OCIInterval, OCIString);
 mark_as_oci!(OCICLobLocator, OCIBLobLocator, OCIBFileLocator, OCITimestamp, OCITimestampTZ, OCITimestampLTZ, OCIIntervalYearToMonth, OCIIntervalDayToSecond);
+
+/// C mapping of the Oracle NUMBER
+#[repr(C)] pub struct OCINumber {
+    pub(crate) bytes: [u8; 22]
+}
+
+/// C mapping of the Oracle DATE type (SQLT_ODT)
+#[derive(Debug)]
+#[repr(C)]
+pub struct OCIDate {
+    pub(crate) year: i16, // gregorian year: range is -4712 <= year <= 9999
+    pub(crate) month: u8, // month: range is 1 <= month <= 12
+    pub(crate) day:   u8, // day: range is 1 <= day <= 31
+    pub(crate) hour:  u8, // hours: range is 0 <= hours <= 23
+    pub(crate) min:   u8, // minutes: range is 0 <= minutes <= 59
+    pub(crate) sec:   u8  // seconds: range is 0 <= seconds <= 59
+}
 
 // Data types
 pub(crate) const SQLT_CHR               : u16 = 1;   // (ORANET TYPE) character string
@@ -225,9 +256,57 @@ pub(crate) const OCI_LAST_PIECE             : u8 = 3;
 
 pub(crate) const OCI_LOB_CONTENTTYPE_MAXSIZE    : usize = 128;
 
+// Parsing Syntax Types
+pub(crate) const OCI_NTV_SYNTAX   : u32 = 1;
 
-use libc::{ size_t, c_void };
+// Statement Types
+// pub(crate) const OCI_STMT_UNKNOWN : u16 = 0;
+pub(crate) const OCI_STMT_SELECT  : u16 = 1;
+// pub(crate) const OCI_STMT_UPDATE  : u16 = 2;
+// pub(crate) const OCI_STMT_DELETE  : u16 = 3;
+// pub(crate) const OCI_STMT_INSERT  : u16 = 4;
+// pub(crate) const OCI_STMT_CREATE  : u16 = 5;
+// pub(crate) const OCI_STMT_DROP    : u16 = 6;
+// pub(crate) const OCI_STMT_ALTER   : u16 = 7;
+// pub(crate) const OCI_STMT_BEGIN   : u16 = 8;
+// pub(crate) const OCI_STMT_DECLARE : u16 = 9;
+// pub(crate) const OCI_STMT_CALL    : u16 = 10;
+// pub(crate) const OCI_STMT_MERGE   : u16 = 16;
 
+// Attributes common to Columns and Stored Procs
+pub(crate) const OCI_ATTR_DATA_SIZE         : u32 =  1; // maximum size of the data
+pub(crate) const OCI_ATTR_DATA_TYPE         : u32 =  2; // the SQL type of the column/argument
+// pub(crate) const OCI_ATTR_DISP_SIZE         : u32 =  3; // the display size
+pub(crate) const OCI_ATTR_NAME              : u32 =  4; // the name of the column/argument
+pub(crate) const OCI_ATTR_PRECISION         : u32 =  5; // precision if number type
+pub(crate) const OCI_ATTR_SCALE             : u32 =  6; // scale if number type
+pub(crate) const OCI_ATTR_IS_NULL           : u32 =  7; // is it null ?
+pub(crate) const OCI_ATTR_TYPE_NAME         : u32 =  8; // name of the named data type or a package name for package private types
+pub(crate) const OCI_ATTR_SCHEMA_NAME       : u32 =  9; // the schema name
+// pub(crate) const OCI_ATTR_SUB_NAME          : u32 = 10; // type name if package private type
+// pub(crate) const OCI_ATTR_POSITION          : u32 = 11; // relative position of col/arg in the list of cols/args
+// pub(crate) const OCI_ATTR_PACKAGE_NAME      : u32 = 12; // package name of package type
+pub(crate) const OCI_ATTR_CHARSET_FORM      : u32 = 32;
+pub(crate) const OCI_ATTR_COL_PROPERTIES    : u32 = 104;
+pub(crate) const OCI_ATTR_CHAR_SIZE         : u32 = 286;
+
+// Flags coresponding to the column properties
+pub(crate) const OCI_ATTR_COL_PROPERTY_IS_IDENTITY             : u8 = 0x01;
+pub(crate) const OCI_ATTR_COL_PROPERTY_IS_GEN_ALWAYS           : u8 = 0x02;
+pub(crate) const OCI_ATTR_COL_PROPERTY_IS_GEN_BY_DEF_ON_NULL   : u8 = 0x04;
+
+/// Character set form
+pub enum CharSetForm {
+    Undefined = 0,
+    Implicit = 1,
+    NChar = 2
+}
+
+/// LOB cache control flags
+pub enum Cache {
+    No  = 0,
+    Yes = 1,
+}
 
 extern "C" {
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/handle-and-descriptor-functions.html#GUID-C5BF55F7-A110-4CB5-9663-5056590F12B5
@@ -829,3 +908,862 @@ extern "C" {
         csfrm:      u8,
     ) -> i32;
 }
+
+extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-E0890180-8714-4243-A585-0FD21EB05CA9
+    pub(crate) fn OCIDateAddDays(
+        env:        *mut OCIError,
+        date:       *const OCIDate,
+        num_days:   i32,
+        result:     *mut OCIDate
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-CE37ECF1-622A-49A9-A9FD-40E1BD67C941
+    pub(crate) fn OCIDateAddMonths(
+        env:        *mut OCIError,
+        date:       *const OCIDate,
+        num_months: i32,
+        result:     *mut OCIDate
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-2251373B-4F7B-4680-BB90-F9013216465A
+    pub(crate) fn OCIDateAssign(
+        env:        *mut OCIError,
+        date:       *const OCIDate,
+        result:     *mut OCIDate
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-067F7EB4-419B-4A5B-B1C4-B4C650B874A3
+    // fn OCIDateCheck(
+    //     env:        *mut OCIError,
+    //     date:       *const OCIDate,
+    //     result:     *mut u32
+    // ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-282C5B79-64AA-4B34-BFC6-292144B1AD16
+    pub(crate) fn OCIDateCompare(
+        env:        *mut OCIError,
+        date1:      *const OCIDate,
+        date2:      *const OCIDate,
+        result:     *mut i32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-42422C47-805F-4EAA-BF44-E6DE6164082E
+    pub(crate) fn OCIDateDaysBetween(
+        env:        *mut OCIError,
+        date1:      *const OCIDate,
+        date2:      *const OCIDate,
+        result:     *mut i32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-EA8FEB07-401C-477E-805B-CC9E89FB13F4
+    pub(crate) fn OCIDateFromText(
+        env:        *mut OCIError,
+        txt:        *const u8,
+        txt_len:    u32,
+        fmt:        *const u8,
+        fmt_len:    u8,
+        lang:       *const u8,
+        lang_len:   u32,
+        result:     *mut OCIDate
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-14FB323E-BAEB-4FC7-81DA-6AF243C0D7D6
+    pub(crate) fn OCIDateLastDay(
+        env:        *mut OCIError,
+        date:       *const OCIDate,
+        result:     *mut OCIDate
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-A16AB88E-A3BF-4B50-8FEF-6427926198F4
+    pub(crate) fn OCIDateNextDay(
+        env:        *mut OCIError,
+        date:       *const OCIDate,
+        day:        *const u8,
+        day_len:    u32,
+        result:     *mut OCIDate
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-123DD789-48A2-4AD7-8B1E-5E454DFE3F1E
+    pub(crate) fn OCIDateToText(
+        env:        *mut OCIError,
+        date:       *const OCIDate,
+        fmt:        *const u8,
+        fmt_len:    u8,
+        lang:       *const u8,
+        lang_len:   u32,
+        buf_size:   *mut u32,
+        buf:        *mut u8
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-751D4F33-E593-4845-9D5E-8761A19BD243
+    pub(crate) fn OCIDateSysDate(
+        env:        *mut OCIError,
+        result:     *mut OCIDate
+    ) -> i32;
+}
+
+extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-0E4AF4DD-5EEB-434D-BA3A-F4EDE7038FF5
+    pub(crate) fn OCIIntervalAdd(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        addend1:    *const OCIInterval,
+        addend2:    *const OCIInterval,
+        result:     *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-A218E261-3D40-4B69-AD64-41B697A18C98
+    pub(crate) fn OCIIntervalAssign(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        inpinter:   *const OCIInterval,
+        outinter:   *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-90BA159E-79AE-47C6-844C-41BB5ADFEBD3
+    // fn OCIIntervalCheck(
+    //     hndl:       *mut c_void,
+    //     err:        *mut OCIError,
+    //     interval:   *const OCIInterval,
+    //     valid:      *mut u32,
+    // ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-CCE310E5-C75E-4EDD-9B52-9CED37BDFEFF
+    pub(crate) fn OCIIntervalCompare(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        inter1:     *const OCIInterval,
+        inter2:     *const OCIInterval,
+        result:     *mut i32,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-16880D01-45BE-43A3-9CF2-AEAE07B64A6B
+    pub(crate) fn OCIIntervalDivide(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        dividend:   *const OCIInterval,
+        divisor:    *const OCINumber,
+        result:     *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-1F8A4B39-9EA5-4CEF-9468-079E4203B68D
+    pub(crate) fn OCIIntervalFromNumber(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        interval:   *mut OCIInterval,
+        number:     *const OCINumber,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-247BB9B8-307B-4132-A1ED-5CA658B0DAA6
+    pub(crate) fn OCIIntervalFromText(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        inpstring:  *const u8,
+        str_len:    size_t,
+        result:     *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-12B19818-0001-42F1-8B2C-FD96B7C3231C
+    pub(crate) fn OCIIntervalFromTZ(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        inpstring:  *const u8,
+        str_len:    size_t,
+        result:     *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-210C4C25-3E8D-4F6D-9502-20B258DACA60
+    pub(crate) fn OCIIntervalGetDaySecond(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        dy:         *mut i32,
+        hr:         *mut i32,
+        mm:         *mut i32,
+        ss:         *mut i32,
+        fsec:       *mut i32,
+        interval:   *const OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-665EFBF6-5032-4BD3-B7A3-1C35C2D5A6B7
+    pub(crate) fn OCIIntervalGetYearMonth(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        yr:         *mut i32,
+        mnth:       *mut i32,
+        interval:   *const OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-4DBA1745-E675-4774-99AB-DEE2A1FC3788
+    pub(crate) fn OCIIntervalMultiply(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        inter:      *const OCIInterval,
+        nfactor:    *const OCINumber,
+        result:     *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-303A876B-E1EA-4AF8-8BD1-FC133C5F3F84
+    pub(crate) fn OCIIntervalSetDaySecond(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        dy:         i32,
+        hr:         i32,
+        mm:         i32,
+        ss:         i32,
+        fsec:       i32,
+        result:     *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-07D8A23E-58E2-420B-B4CA-EF37420F7549
+    pub(crate) fn OCIIntervalSetYearMonth(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        yr:         i32,
+        mnth:       i32,
+        result:     *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-2D0465BC-B8EA-4F41-B200-587F49D0B2CB
+    pub(crate) fn OCIIntervalSubtract(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        minuend:    *const OCIInterval,
+        subtrahend: *const OCIInterval,
+        result:     *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-7B403C69-F618-42A6-94F3-41FB17F7F0AD
+    pub(crate) fn OCIIntervalToNumber(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        interval:   *const OCIInterval,
+        number:     *mut OCINumber,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-DC306081-C4C3-48F5-818D-4C02DD945192
+    pub(crate) fn OCIIntervalToText(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        interval:   *const OCIInterval,
+        lfprec:     u8,
+        fsprec:     u8,
+        buffer:     *mut u8,
+        buflen:     size_t,
+        resultlen:  *mut size_t,
+    ) -> i32;
+}
+
+extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-61FB0D0F-6EA7-45DD-AF40-310D86FB8BAE
+    pub(crate) fn OCINumberAbs(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-F3DC6DF6-9110-4BAC-AB97-DC604CA04BCD
+    pub(crate) fn OCINumberAdd(
+        err:      *mut OCIError,
+        number1:  *const OCINumber,
+        number2:  *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-E7A8B43C-F8B0-4009-A770-94CD7E13EE75
+    pub(crate) fn OCINumberArcCos(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-3956D4AC-62E5-41FD-BA48-2DA89E207259
+    pub(crate) fn OCINumberArcSin(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-43E9438C-AA74-4392-889D-171F411EBBE2
+    pub(crate) fn OCINumberArcTan(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-62C977EF-DB7E-457F-847A-BF0D46E36CD5
+    pub(crate) fn OCINumberArcTan2(
+        err:      *mut OCIError,
+        number1:  *const OCINumber,
+        number2:  *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-0C78F351-550E-48F0-8D4C-A9AD8A28DA66
+    pub(crate) fn OCINumberAssign(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-48974097-47D4-4757-A627-4E09406AAFD5
+    pub(crate) fn OCINumberCeil(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-554A4409-946B-47E9-B239-4140B8F3D1F9
+    pub(crate) fn OCINumberCmp(
+        err:      *mut OCIError,
+        number1:  *const OCINumber,
+        number2:  *const OCINumber,
+        result:   *mut i32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-150F3245-ECFC-4352-AA73-AAF29BC6A74C
+    pub(crate) fn OCINumberCos(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-370FD18E-47D3-4110-817C-658A2F059361
+    pub(crate) fn OCINumberDec(
+        err:      *mut OCIError,
+        number:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-36A6C0EA-85A4-44EE-8489-FB7DB4257513
+    pub(crate) fn OCINumberDiv(
+        err:      *mut OCIError,
+        number1:  *const OCINumber,
+        number2:  *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-B56F44FC-158A-420B-830E-FB82894A62C8
+    pub(crate) fn OCINumberExp(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-CF35CBDF-DC88-4E86-B586-0EEFD35C0458
+    pub(crate) fn OCINumberFloor(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-E8940E06-F4EF-4172-AEE5-AF8E4F6B3AEE
+    // fn OCINumberFromInt(
+    //     err:      *mut OCIError,
+    //     inum:     *const c_void,
+    //     inum_len: u32,
+    //     sign_typ: u32,
+    //     number:   *mut OCINumber
+    // ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-EC8E2C9E-BCD2-4D1E-A052-3E657B552461
+    pub(crate) fn OCINumberFromReal(
+        err:      *mut OCIError,
+        rnum:     *const c_void,
+        rnum_len: u32,              // sizeof(float | double | long double)
+        number:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-F2E458B5-BECC-482E-9223-B92BC696CA17
+    pub(crate) fn OCINumberFromText(
+        err:      *mut OCIError,
+        txt:      *const u8,
+        txt_len:  u32,
+        fmt:      *const u8,
+        fmt_len:  u32,
+        nls_par:  *const u8,
+        nls_len:  u32,
+        number:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-08CCC2C4-5AB3-45EB-9E0D-28186A2AA234
+    pub(crate) fn OCINumberHypCos(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-E7391F43-2DFB-4146-9AB7-816D009F31E5
+    pub(crate) fn OCINumberHypSin(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-4254930A-DCDC-4590-8710-AC46EC4F3473
+    pub(crate) fn OCINumberHypTan(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-A3B07A3A-7E18-421E-9085-BE4B3E742C83
+    pub(crate) fn OCINumberInc(
+        err:      *mut OCIError,
+        number:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-D5CF4199-D6D2-4D31-A914-FB74F5BC5412
+    pub(crate) fn OCINumberIntPower(
+        err:      *mut OCIError,
+        base:     *const OCINumber,
+        exp:      i32,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-F1254BAD-7236-4728-A9DA-B8701D8BAA14
+    pub(crate) fn OCINumberIsInt(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut i32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-40F344FC-3ED0-4893-AFB1-0853D02D79C9
+    pub(crate) fn OCINumberIsZero(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut i32          // set to TRUE if equal to zero else FALSE
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-C1E572F2-F68D-4AF4-831A-2095BFEDDBC3
+    pub(crate) fn OCINumberLn(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-561769B0-B559-44AA-8012-985EA7ADFB47
+    pub(crate) fn OCINumberLog(
+        err:      *mut OCIError,
+        base:     *const OCINumber,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-B5DAB7F2-6AC6-4693-8F04-8C13F9538CE9
+    pub(crate) fn OCINumberMod(
+        err:      *mut OCIError,
+        number1:  *const OCINumber,
+        number2:  *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-8AAAC840-3776-4283-9DC5-5764CAC2359A
+    pub(crate) fn OCINumberMul(
+        err:      *mut OCIError,
+        number1:  *const OCINumber,
+        number2:  *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-8810FFCB-51E7-4890-B551-61BE85624764
+    pub(crate) fn OCINumberNeg(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-E755AD46-4285-4DAF-B2A5-886333A2395D
+    pub(crate) fn OCINumberPower(
+        err:      *mut OCIError,
+        base:     *const OCINumber,
+        exp:      *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-BE4B0E6D-75B6-4256-A355-9DFAFEC477C9
+    pub(crate) fn OCINumberPrec(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        num_dig:  i32,              // number of decimal digits desired in the result
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-F3B89623-73E3-428F-A677-5526AC5F4622
+    pub(crate) fn OCINumberRound(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        num_dig:  i32,              // number of decimal digits to the right of the decimal point to round to. Negative values are allowed.
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-FA067559-D0F7-426D-940A-1D24F4C60C70
+    pub(crate) fn OCINumberSetPi(
+        err:      *mut OCIError,
+        number:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-8152D558-61D9-49F4-9113-DA1455BB5C72
+    pub(crate) fn OCINumberSetZero(
+        err:      *mut OCIError,
+        number:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-EA7D0DA0-A154-4A87-8215-E5B5A7D091E3
+    pub(crate) fn OCINumberShift(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        num_dec:  i32,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-A535F6F1-0689-4FE1-9C07-C8D341582622
+    pub(crate) fn OCINumberSign(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut i32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-65293408-5AF2-4A0C-9C51-82C1C929EE54
+    pub(crate) fn OCINumberSin(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-9D68D274-B18C-43F4-AB37-BB99C9062B3E
+    pub(crate) fn OCINumberSqrt(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-192725C3-8F5C-4D0A-848E-4EE9690F4A4E
+    pub(crate) fn OCINumberSub(
+        err:      *mut OCIError,
+        number1:  *const OCINumber,
+        number2:  *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-1EB45341-6026-47AD-A2EF-D92A20A46ECF
+    pub(crate) fn OCINumberTan(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        result:   *mut OCINumber
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-067F138E-E689-4922-9ED7-4A7B0E46447E
+    // fn OCINumberToInt(
+    //     err:      *mut OCIError,
+    //     number:   *const OCINumber,
+    //     res_len:  u32,
+    //     sign_typ: u32,
+    //     result:   *mut c_void
+    // ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-76C4BC1E-EC64-4CF6-82A4-94D5DC242649
+    pub(crate) fn OCINumberToReal(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        res_len:  u32,              // sizeof( float | double | long double)
+        result:   *mut c_void
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-A850D4E3-2B7B-4DFE-A3E9-618515DACA9E
+    // fn OCINumberToRealArray(
+    //     err:      *mut OCIError,
+    //     numbers:  &*const OCINumber,
+    //     elems:    u32,
+    //     res_len:  u32,              // sizeof( float | double | long double)
+    //     result:   *mut c_void
+    // ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-129A5433-6927-43B7-A10F-5FE6AA354232
+    pub(crate) fn OCINumberToText(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        fmt:      *const u8,
+        fmt_len:  u32,
+        nls_par:  *const u8,
+        nls_len:  u32,
+        buf_size: *mut u32,
+        buf:      *mut u8
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-FD8D2A9A-222B-4A0E-B4E3-99588FF19BCA
+    pub(crate) fn OCINumberTrunc(
+        err:      *mut OCIError,
+        number:   *const OCINumber,
+        num_dig:  i32,
+        result:   *mut OCINumber
+    ) -> i32;
+}
+
+extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-4856A258-8883-4470-9881-51F27FA050F6
+    pub(crate) fn OCIRawAllocSize(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        raw:        *const OCIRaw,
+        size:       *mut u32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-3BB4239F-8579-4CC1-B76F-0786BDBAEF9A
+    pub(crate) fn OCIRawAssignBytes(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        rhs:        *const u8,
+        rhs_len:    u32,
+        lhs:        *mut *mut OCIRaw
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-27DBFBE0-4511-4B34-8476-B9AC720E3F51
+    pub(crate) fn OCIRawAssignRaw(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        rhs:        *const OCIRaw,
+        lhs:        *mut *mut OCIRaw
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-B05C44C5-7168-438B-AC2A-BD3AD309AAEA
+    pub(crate) fn OCIRawPtr(
+        env:        *mut OCIEnv,
+        raw:        *const OCIRaw
+    ) -> *mut u8;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-7D757B00-DF25-4F61-A3DF-8C72F18FDC9E
+    pub(crate) fn OCIRawResize(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        size:       u32,
+        raw:        *mut *mut OCIRaw
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-D74E75FA-5985-4DDC-BC25-430B415B8837
+    pub(crate) fn OCIRawSize(
+        env:        *mut OCIEnv,
+        raw:        *const OCIRaw
+    ) -> u32;
+}
+
+extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-3B02C8CC-F35C-422F-B35C-47765C998E57
+    pub(crate) fn OCIDateTimeAssign (
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        from:       *const OCIDateTime,
+        to:         *mut OCIDateTime
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-5C2A63E3-85EC-4346-A636-33B9B4CCBA41
+    // fn OCIDateTimeCheck (
+    //     hndl:       *mut c_void,
+    //     err:        *mut OCIError,
+    //     date:       *const OCIDateTime,
+    //     result:     *mut u32
+    // ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-5FFD4B08-30E1-461E-8E55-940787D6D8EC
+    pub(crate) fn OCIDateTimeCompare (
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        date1:      *const OCIDateTime,
+        date2:      *const OCIDateTime,
+        result:     *mut i32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-FC053036-BE93-42D7-A82C-4DDB6843E167
+    pub(crate) fn OCIDateTimeConstruct (
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        datetime:   *mut OCIDateTime,
+        year:       i16,
+        month:      u8,
+        day:        u8,
+        hour:       u8,
+        min:        u8,
+        sec:        u8,
+        fsec:       u32,
+        timezone:   *const u8,
+        tz_len:     size_t
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-744793B2-CD2F-47AC-825A-6FF5BEE12BAB
+    pub(crate) fn OCIDateTimeConvert (
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        indate:     *const OCIDateTime,
+        outdate:    *mut OCIDateTime
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-16189076-75E9-4B46-B418-89CD8DDB42EA
+    // fn OCIDateTimeFromArray(
+    //     hndl:       *mut c_void,
+    //     err:        *mut OCIError,
+    //     inarray:    *const u8,
+    //     len:        u32,
+    //     dt_type:    u8,
+    //     datetime:   *mut OCIDateTime,
+    //     reftz:      *const OCIInterval,
+    //     fsprec:     u8
+    // ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-1A453A79-4EEF-462D-B4B3-45820F9EEA4C
+    pub(crate) fn OCIDateTimeFromText(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        date_str:   *const u8,
+        dstr_length: size_t,
+        fmt:        *const u8,
+        fmt_length: u8,
+        lang_name:  *const u8,
+        lang_length: size_t,
+        datetime:   *mut OCIDateTime,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-FE6F9482-913D-43FD-BE5A-FCD9FA7B83AD
+    pub(crate) fn OCIDateTimeGetDate(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        datetime:   *const OCIDateTime,
+        year:       *mut i16,
+        month:      *mut u8,
+        day:        *mut u8,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-D935ABA2-DEEA-4ABA-AA9C-C27E3E5AC1FD
+    pub(crate) fn OCIDateTimeGetTime(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        datetime:   *const OCIDateTime,
+        hour:       *mut u8,
+        min:        *mut u8,
+        sec:        *mut u8,
+        fsec:       *mut u32,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-489C51F6-43DB-43DB-980F-2A42AFAFB332
+    pub(crate) fn OCIDateTimeGetTimeZoneName(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        datetime:   *const OCIDateTime,
+        buf:        *mut u8,
+        buflen:     *mut u32,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-B8DA860B-FD7D-481B-8347-156969B6EE04
+    pub(crate) fn OCIDateTimeGetTimeZoneOffset(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        datetime:   *const OCIDateTime,
+        hour:       *mut i8,
+        min:        *mut i8,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-810C6FB3-9B81-4A7C-9B5B-5D2D93B781FA
+    pub(crate) fn OCIDateTimeIntervalAdd(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        datetime:   *const OCIDateTime,
+        inter:      *const OCIInterval,
+        outdatetime: *mut OCIDateTime,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-DEDBFEF5-52DD-4036-93FE-C21B6ED4E8A5
+    pub(crate) fn OCIDateTimeIntervalSub(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        datetime:   *const OCIDateTime,
+        inter:      *const OCIInterval,
+        outdatetime: *mut OCIDateTime,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-BD2F6432-81FF-4CD6-9C3D-85E401894528
+    pub(crate) fn OCIDateTimeSubtract(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        indate1:    *const OCIDateTime,
+        indate2:    *const OCIDateTime,
+        inter:      *mut OCIInterval,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-086776F8-1153-417D-ABC6-A864A2A62788
+    pub(crate) fn OCIDateTimeSysTimeStamp(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        sys_date:   *mut OCIDateTime,
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-DCA1CF9E-AF92-42E1-B784-8BFC0C9FF8BE
+    // fn OCIDateTimeToArray(
+    //     hndl:       *mut c_void,
+    //     err:        *mut OCIError,
+    //     datetime:   *const OCIDateTime,
+    //     reftz:      *const OCIInterval,
+    //     outarray:   *mut u8,
+    //     len:        *mut u32,
+    //     fsprec:     u8
+    // ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-828401C8-8E88-4C53-A66A-24901CCF93C6
+    pub(crate) fn OCIDateTimeToText(
+        hndl:       *mut c_void,
+        err:        *mut OCIError,
+        date:       *const OCIDateTime,
+        fmt:        *const u8,
+        fmt_length: u8,
+        fsprec:     u8,
+        lang_name:  *const u8,
+        lang_length: size_t,
+        buf_size:   *mut u32,
+        buf:        *mut u8,
+    ) -> i32;
+}
+
+extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-3F336010-D8C8-4B50-89CB-ABCCA98905DA
+    pub(crate) fn OCIStringAllocSize(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        txt:        *const OCIString,
+        size:       *mut u32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-58BC140A-900C-4409-B3D2-C2DC8FB643FF
+    pub(crate) fn OCIStringAssign(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        rhs:        *const OCIString,
+        lhs:        *mut *mut OCIString
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-96E8375B-9017-4E06-BF85-09C12DF286F4
+    pub(crate) fn OCIStringAssignText(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        rhs:        *const u8,
+        rhs_len:    u32,
+        lhs:        *mut *mut OCIString
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-0E1302F7-A32C-46F1-93D7-FB33CF60C24F
+    pub(crate) fn OCIStringPtr(
+        env:        *mut OCIEnv,
+        txt:        *const OCIString
+    ) -> *mut u8;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-CA52A8A4-08BA-4F08-A4A3-79F841F6AE9E
+    pub(crate) fn OCIStringResize(
+        env:        *mut OCIEnv,
+        err:        *mut OCIError,
+        size:       u32,
+        txt:        *mut *mut OCIString
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-DBDAB2D9-4E78-4752-85B6-55D30CA6AF30
+    pub(crate) fn OCIStringSize(
+        env:        *mut OCIEnv,
+        txt:        *const OCIString
+    ) -> u32;
+}
+

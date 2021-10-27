@@ -1,16 +1,14 @@
+use super::{cursor::Cursor, cols::ColumnBuffer, rows::ResultSetProvider};
 use crate::{
+    Error, 
     IntervalDS, IntervalYM, Result, RowID, Timestamp, TimestampLTZ, TimestampTZ, 
-    desc::Descriptor, err::Error, handle::Handle, 
-    lob::{self, LOB}, oci::*, 
-    stmt::cursor::Cursor, 
+    oci::*, 
     types::{
         date, interval, number, raw, timestamp, varchar,
-        number::OCINumber, 
-        date::{ Date, OCIDate },
-        varchar::Varchar,
-    }
+        Date, Varchar
+    },
+    lob::{ self, LOB },
 };
-use crate::stmt::{cols::ColumnBuffer, rows::ResultSetProvider};
 
 /// A trait for types which instances can be created from the returned Oracle values.
 pub trait FromSql<'a> : Sized {
@@ -234,24 +232,6 @@ impl_from_lob!{ ColumnBuffer::CLOB  => OCICLobLocator  }
 impl_from_lob!{ ColumnBuffer::BLOB  => OCIBLobLocator  }
 impl_from_lob!{ ColumnBuffer::BFile => OCIBFileLocator }
 
-// impl<'a> FromSql<'a> for LOB<'a,OCICLobLocator> {
-//     fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
-//         match val {
-//             ColumnBuffer::CLOB ( lob ) => {
-//                 if lob::is_initialized(lob, stmt.env_ptr(), stmt.err_ptr())? {
-//                     let loc : Descriptor<OCICLobLocator> = Descriptor::new(stmt.env_ptr())?;
-//                     lob.swap(&loc);
-//                     Ok( LOB::<OCICLobLocator>::make(loc, stmt.conn()) )
-//                 } else {
-//                     Err(Error::new("already consumed"))
-//                 }
-//             },
-//             _ => Err( Error::new("cannot convert") )
-//         }
-//     }
-// }
-
-
 impl<'a> FromSql<'a> for RowID {
     fn value(val: &ColumnBuffer, stmt: &'a dyn ResultSetProvider) -> Result<Self> {
         match val {
@@ -367,8 +347,8 @@ mod tests {
         let strid : String = row.get(0)?.expect("ROWID as text");
         let rowid : RowID = row.get(0)?.expect("ROWID");
         assert_eq!(rowid.to_string(&conn)?, strid);
-        let manager_id: u32 = row.get(1)?.expect("menager ID");
-        assert_eq!(manager_id, 102);
+        let manager_id: u32 = row.get(1)?.expect("manager ID");
+        assert_eq!(manager_id, 103, "employee ID of Alexander Hunold");
 
         match get_rowid(&row) {
             Ok(_) => panic!("unexpected duplicate ROWID descriptor"),

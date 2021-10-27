@@ -1,14 +1,5 @@
-use super::{ Stmt, cols::Columns };
-use crate::{ 
-    Position, RowID, Result,
-    attr,
-    oci::*,
-    err::Error,
-    env::Env,
-    conn::Connection,
-    types::Ctx,
-    fromsql::FromSql,
-};
+use super::{Stmt, cols::{ Columns, Position }, fromsql::FromSql}; 
+use crate::{Result, Error, RowID, oci::{*, attr}, env::Env, conn::Connection, types::Ctx};
 use libc::c_void;
 
 /// Methods that the provider of the returned results (`Statement` or `Cursor`) must implement.
@@ -150,12 +141,12 @@ impl<'a> Row<'a> {
         // Either a 0-based column position...
         let manager_id: Option<u32> = row.get(0)?;
         assert!(manager_id.is_some());
-        assert_eq!(manager_id.unwrap(), 102);
+        assert_eq!(manager_id.unwrap(), 103);
 
-        // Or a column name can be used to get the data
+        // Or the column name can be used to get the data
         let manager_id: Option<u32> = row.get("MANAGER_ID")?;
         assert!(manager_id.is_some());
-        assert_eq!(manager_id.unwrap(), 102);
+        assert_eq!(manager_id.unwrap(), 103);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
@@ -199,7 +190,7 @@ impl<'a> Row<'a> {
         let mut rows = stmt.query(&[ &107 ])?;
         let row = rows.next()?.expect("first (and only) row");
         let manager_id: u32 = row.get(0)?.unwrap();
-        assert_eq!(manager_id, 102);
+        assert_eq!(manager_id, 103);
 
         let rowid = row.get_rowid()?;
 
@@ -209,7 +200,7 @@ impl<'a> Row<'a> {
              WHERE rowid = :row_id
         ")?;
         let num_updated = stmt.execute(&[
-            &( ":MGR_ID", 102 ),
+            &( ":MGR_ID", 103 ),
             &( ":ROW_ID", &rowid )
         ])?;
         assert_eq!(num_updated, 1);

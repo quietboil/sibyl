@@ -124,7 +124,7 @@ let stmt = conn.prepare("
 A prepared statement can be executed either with the `query` or `execute` or `execute_into` methods:
 - `query` is used for `SELECT` statements. In fact, sibyl will complain if you try to `query` any other statement.
 - `execute` is used for all other, non-SELECT, DML and DDL that do not have OUT parameters.
-- `execute_into` is used with DML and DDL that have OUT parameters.
+- `execute_into` is used with DML that have OUT parameters.
 
 `query` and `execute` take a slice of IN arguments, which can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call `query` using a positional argument as:
 
@@ -185,7 +185,7 @@ while let Some( row ) = rows.next()? {
 ```
 There are a few notable points of interest in the last example:
 - Sibyl uses 0-based column indexing in a projection.
-- Column value are returned as `Option`s. However, if a column is declared as `NOT NULL`, like `EMPLOYEE_ID` and `LAST_NAME`, the result will always be `Some` and therefore can be safely unwrapped.
+- Column value is returned as an `Option`. However, if a column is declared as `NOT NULL`, like `EMPLOYEE_ID` and `LAST_NAME`, the result will always be `Some` and therefore can be safely unwrapped.
 - `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they are borrowed directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
 
 **Note** that instead of column indexes sibyl also accepts column names. The row processing loop of the previous example can be written as:
