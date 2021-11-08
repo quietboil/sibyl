@@ -201,7 +201,7 @@ impl<'a> Cursor<'a> {
         assert!(row.is_none());
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
-        See also `Statement::next_result` for another method to return REF CURSORs.
+        See also [`Statement::next_result`] for another method to return REF CURSORs.
     */
     pub fn new(stmt: &'a Statement) -> Result<Self> {
         let handle = Handle::<OCIStmt>::new(stmt.env_ptr())?;
@@ -239,9 +239,11 @@ impl<'a> Cursor<'a> {
 
         # Example
 
+        Blocking variant:
         ```
         use sibyl::Cursor;
 
+        # if cfg!(feature="blocking") {
         # let dbname = std::env::var("DBNAME")?;
         # let dbuser = std::env::var("DBUSER")?;
         # let dbpass = std::env::var("DBPASS")?;
@@ -261,6 +263,7 @@ impl<'a> Cursor<'a> {
             &mut (":SUBORDINATES", &mut subordinates),
         ])?;
         assert_eq!(subordinates.get_column_count()?, 3);
+        # }
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */

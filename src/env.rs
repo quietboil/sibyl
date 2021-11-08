@@ -1,6 +1,14 @@
 //! OCI environment
 
-use crate::{Result, Error, Connection, oci::*, types::Ctx};
+#[cfg(feature="blocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
+pub mod blocking;
+
+#[cfg(feature="nonblocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+pub mod nonblocking;
+
+use crate::{Result, Error, oci::*, types::Ctx};
 use libc::c_void;
 use std::ptr;
 
@@ -191,39 +199,6 @@ impl Environment {
     */
     pub fn set_nls_territory(&self, territory: &str) -> Result<()> {
         self.env.set_attr(OCI_ATTR_ENV_NLS_TERRITORY, territory, self.err_ptr())
-    }
-}
-
-#[cfg(not(feature="nonblocking"))]
-impl Environment {
-    /**
-        Creates and begins a user session for a given server.
-        # Example
-        ```
-        let oracle = sibyl::env()?;
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
-        assert!(!conn.is_async()?);
-        assert!(conn.is_connected()?);
-        assert!(conn.ping().is_ok());
-
-        let stmt = conn.prepare("
-            SELECT DISTINCT client_driver
-              FROM v$session_connect_info
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ")?;
-        let mut rows = stmt.query(&[])?;
-        let row = rows.next()?.unwrap();
-        let client_driver : &str = row.get(0)?.unwrap();
-        assert_eq!(client_driver, "sibyl");
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Connection> {
-        Connection::new(self, dbname, username, password)
     }
 }
 

@@ -256,7 +256,7 @@ impl<'a> FromSql<'a> for RowID {
 //     println!("{}: {:?}", pfx, mem);
 // }
 
-#[cfg(test)]
+#[cfg(all(test,feature="blocking"))]
 mod tests {
     use crate::*;
 

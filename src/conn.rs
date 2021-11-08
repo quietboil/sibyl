@@ -1,7 +1,56 @@
 //! User Session
 
-use crate::{Result, catch, Environment, Statement, env::Env, types::Ctx, oci::*};
+#[cfg(feature="blocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
+pub mod blocking;
+
+#[cfg(feature="nonblocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+pub mod nonblocking;
+
+use crate::{Environment, Result, catch, env::Env, oci::*, types::Ctx};
 use libc::c_void;
+
+/**
+    Connects to the speficied server and starts new user session.
+
+    As nonblocking mode can only be set after the `OCISessionBegin()`,
+    this function is always blocking.
+*/ 
+fn connect<'a>(env: &'a Environment, addr: &str, user: &str, pass: &str) -> Result<Connection<'a>> {
+    let err = Handle::<OCIError>::new(env.env_ptr())?;
+    let srv = Handle::<OCIServer>::new(env.env_ptr())?;
+    let svc = Handle::<OCISvcCtx>::new(env.env_ptr())?;
+    let usr = Handle::<OCISession>::new(env.env_ptr())?;
+    usr.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", err.get())?;
+    catch!{err.get() =>
+        OCIServerAttach(srv.get(), err.get(), addr.as_ptr(), addr.len() as u32, OCI_DEFAULT)
+    }
+    if let Err(set_attr_err) = svc.set_attr(OCI_ATTR_SERVER, srv.get(), err.get()) {
+        unsafe {
+            OCIServerDetach(srv.get(), err.get(), OCI_DEFAULT);
+        }
+        return Err(set_attr_err);
+    }
+
+    let conn = Connection { env, usr, svc, srv, err };
+    conn.usr.set_attr(OCI_ATTR_USERNAME, user, conn.err_ptr())?;
+    conn.usr.set_attr(OCI_ATTR_PASSWORD, pass, conn.err_ptr())?;
+    catch!{conn.err_ptr() =>
+        OCISessionBegin(
+            conn.svc_ptr(), conn.err_ptr(), conn.usr_ptr(),
+            if user.len() == 0 && pass.len() == 0 { OCI_CRED_EXT } else { OCI_CRED_RDBMS },
+            OCI_DEFAULT
+        )
+    }
+    if let Err(set_attr_err) = conn.svc.set_attr(OCI_ATTR_SESSION, conn.usr_ptr(), conn.err_ptr()) {
+        unsafe {
+            OCISessionEnd(conn.svc_ptr(), conn.err_ptr(), conn.usr_ptr(), OCI_DEFAULT);
+        }
+        return Err(set_attr_err);
+    }
+    Ok(conn)
+}
 
 /// Represents a user session
 pub struct Connection<'a> {
@@ -10,26 +59,6 @@ pub struct Connection<'a> {
     svc: Handle<OCISvcCtx>,
     srv: Handle<OCIServer>,
     err: Handle<OCIError>,
-}
-
-#[cfg(not(feature="nonblocking"))]
-impl Drop for Connection<'_> {
-    fn drop(&mut self) {
-        if let Ok(ptr) = self.svc.get_attr::<*mut c_void>(OCI_ATTR_SESSION, self.err_ptr()) {
-            if !ptr.is_null() {
-                unsafe {
-                    OCISessionEnd(self.svc_ptr(), self.err_ptr(), self.usr_ptr(), OCI_DEFAULT);
-                }
-            }
-        }
-        if let Ok(ptr) = self.svc.get_attr::<*mut c_void>(OCI_ATTR_SERVER, self.err_ptr()) {
-            if !ptr.is_null() {
-                unsafe {
-                    OCIServerDetach(self.srv_ptr(), self.err_ptr(), OCI_DEFAULT);
-                }
-            }
-        }
-    }
 }
 
 impl Env for Connection<'_> {
@@ -277,148 +306,5 @@ impl<'a> Connection<'a> {
     */
     pub fn set_lob_prefetch_size(&self, size: u32) -> Result<()> {
         self.usr.set_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE, size, self.err_ptr())
-    }
-}
-
-#[cfg(not(feature="nonblocking"))]
-impl<'a> Connection<'a> {
-    pub(crate) fn new(env: &'a Environment, addr: &str, user: &str, pass: &str) -> Result<Self> {
-        let err = Handle::<OCIError>::new(env.env_ptr())?;
-        let srv = Handle::<OCIServer>::new(env.env_ptr())?;
-        let svc = Handle::<OCISvcCtx>::new(env.env_ptr())?;
-        let usr = Handle::<OCISession>::new(env.env_ptr())?;
-        usr.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", err.get())?;
-        catch!{err.get() =>
-            OCIServerAttach(srv.get(), err.get(), addr.as_ptr(), addr.len() as u32, OCI_DEFAULT)
-        }
-        if let Err(set_attr_err) = svc.set_attr(OCI_ATTR_SERVER, srv.get(), err.get()) {
-            unsafe {
-                OCIServerDetach(srv.get(), err.get(), OCI_DEFAULT);
-            }
-            return Err(set_attr_err);
-        }
-
-        let conn = Self { env, usr, svc, srv, err };
-        conn.usr.set_attr(OCI_ATTR_USERNAME, user, conn.err_ptr())?;
-        conn.usr.set_attr(OCI_ATTR_PASSWORD, pass, conn.err_ptr())?;
-        catch!{conn.err_ptr() =>
-            OCISessionBegin(
-                conn.svc_ptr(), conn.err_ptr(), conn.usr_ptr(),
-                if user.len() == 0 && pass.len() == 0 { OCI_CRED_EXT } else { OCI_CRED_RDBMS },
-                OCI_DEFAULT
-            )
-        }
-        if let Err(set_attr_err) = conn.svc.set_attr(OCI_ATTR_SESSION, conn.usr_ptr(), conn.err_ptr()) {
-            unsafe {
-                OCISessionEnd(conn.svc_ptr(), conn.err_ptr(), conn.usr_ptr(), OCI_DEFAULT);
-            }
-            return Err(set_attr_err);
-        }
-        Ok(conn)
-    }
-
-    /// Confirms that the connection and the server are active.
-    pub fn ping(&self) -> Result<()> {
-        catch!{self.err_ptr() =>
-            OCIPing(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
-        }
-        Ok(())
-    }
-
-    /**
-        Prepares SQL or PL/SQL statement for execution.
-
-        ## Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            SELECT employee_id
-              FROM (
-                    SELECT employee_id
-                         , row_number() OVER (ORDER BY hire_date) AS hire_date_rank
-                      FROM hr.employees
-                   )
-             WHERE hire_date_rank = 1
-        ")?;
-        let mut rows = stmt.query(&[])?;
-        let row = rows.next()?.expect("first (and only) row");
-        // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
-        let id : u32 = row.get(0)?.unwrap();
-        assert_eq!(id, 102);
-        assert!(rows.next()?.is_none());
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn prepare(&self, sql: &str) -> Result<Statement> {
-        Statement::new(sql, self)
-    }
-
-    /**
-        Commits the current transaction.
-
-        Current transaction is defined as the set of statements executed since
-        the last commit or since the beginning of the user session.
-
-        ## Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            UPDATE hr.employees
-               SET salary = :new_salary
-             WHERE employee_id = :emp_id
-        ")?;
-        let num_updated_rows = stmt.execute(&[
-            &( ":EMP_ID",     107  ),
-            &( ":NEW_SALARY", 4200 ),
-        ])?;
-        assert_eq!(num_updated_rows, 1);
-
-        conn.commit()?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn commit(&self) -> Result<()> {
-        catch!{self.err_ptr() =>
-            OCITransCommit(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
-        }
-        Ok(())
-    }
-
-    /**
-        Rolls back the current transaction. The modified or updated objects in
-        the object cache for this transaction are also rolled back.
-
-        ## Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            UPDATE hr.employees
-               SET salary = ROUND(salary * 1.1)
-             WHERE employee_id = :emp_id
-        ")?;
-        let num_updated_rows = stmt.execute(&[ &107 ])?;
-        assert_eq!(num_updated_rows, 1);
-
-        conn.rollback()?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn rollback(&self) -> Result<()> {
-        catch!{self.err_ptr() =>
-            OCITransRollback(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
-        }
-        Ok(())
     }
 }

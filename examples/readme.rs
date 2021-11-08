@@ -1,5 +1,6 @@
 use sibyl as oracle;
 
+#[cfg(feature="blocking")]
 fn main() -> Result<(),Box<dyn std::error::Error>> {
     let dbname = std::env::var("DBNAME")?;
     let dbuser = std::env::var("DBUSER")?;
@@ -31,5 +32,16 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     } else {
         println!("No one was hired after {}", date.to_string("FMMonth DD, YYYY")?);
     }
+    Ok(())
+}
+
+#[cfg(feature="nonblocking")]
+fn main() -> Result<(),Box<dyn std::error::Error>> {
+    let _dbname = std::env::var("DBNAME")?;
+    let _dbuser = std::env::var("DBUSER")?;
+    let _dbpass = std::env::var("DBPASS")?;
+
+    let _oracle = oracle::env()?;
+
     Ok(())
 }

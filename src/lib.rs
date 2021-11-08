@@ -470,6 +470,15 @@ if let Some( cursor ) = stmt.next_result()? {
 ```
 */
 
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
+#[cfg(all(feature="blocking",feature="nonblocking",not(docsrs)))]
+compile_error!("'blocking' and 'nonblocking' features are exclusive");
+
+#[cfg(feature="nonblocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+mod task;
+
 mod oci;
 mod err;
 mod env;

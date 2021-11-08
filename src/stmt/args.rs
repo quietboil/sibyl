@@ -87,7 +87,7 @@ impl ToSqlOut for Vec<u8> {
     }
 }
 
-/// A trait for types that can be used as SQL statement IN arguments
+/// A trait for types that can be used as named or positional SQL IN arguments
 pub trait SqlInArg {
     /// Returns the parameter name or None for positional arguments.
     fn name(&self) -> Option<&str>;
@@ -105,7 +105,7 @@ impl<T: ToSql> SqlInArg for (&str, T) {
     fn as_to_sql(&self) -> &dyn ToSql   { &self.1        }
 }
 
-/// A trait for types that can be used as SQL statement OUT arguments
+/// A trait for types that can be used as named or positional SQL OUT arguments
 pub trait SqlOutArg {
     /// Returns the parameter name or None for positional arguments.
     fn name(&self) -> Option<&str>;

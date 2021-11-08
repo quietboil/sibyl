@@ -5,12 +5,15 @@ pub mod fromsql;
 pub mod cols;
 pub mod cursor;
 pub mod rows;
+#[cfg(feature="blocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
+pub mod blocking;
 
 pub use rows::{Rows, Row};
 pub use cursor::Cursor;
 pub use args::{ToSql, ToSqlOut, SqlInArg, SqlOutArg};
 use rows::ResultSetProvider;
-use cols::{Columns, Position, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE};
+use cols::{Columns, Position, ColumnInfo};
 use crate::{Result, catch, Error, Connection, oci::*, env::Env, types::Ctx};
 use libc::c_void;
 use std::{cell::Cell, collections::{HashMap, HashSet}, ptr};
@@ -115,7 +118,7 @@ impl ResultSetProvider for Statement<'_> {
     }
 }
 
-fn define_binds(stmt: *mut OCIStmt, err: *mut OCIError) -> Result<(HashMap<String,usize>, Vec<Ptr<OCIBind>>, Vec<Cell<i16>>, Vec<Cell<u32>>)> {
+fn get_bind_info(stmt: *mut OCIStmt, err: *mut OCIError) -> Result<(HashMap<String,usize>, Vec<Ptr<OCIBind>>, Vec<Cell<i16>>, Vec<Cell<u32>>)> {
     let num_binds = attr::get::<u32>(OCI_ATTR_BIND_COUNT, OCI_HTYPE_STMT, stmt as *const c_void, err)? as usize;
     let mut param_idxs = HashMap::with_capacity(num_binds);
     let mut args_binds = Vec::with_capacity(num_binds);
@@ -182,89 +185,62 @@ impl<'a> Statement<'a> {
         Ok(())
     }
 
-    /// Binds the argument to a named placeholder in the SQL statement
-    // fn bind_by_name(&self, name: &str, sql_type: u16, data: *mut c_void, buff_size: usize, data_size: *mut u32, null_ind: *mut i16) -> Result<()> {
-    //     let arg_idx;
-    //     if let Some( &idx ) = self.param_idxs.get(&name[1..]) {
-    //         arg_idx = idx;
-    //     } else if let Some( &idx ) = self.param_idxs.get(name[1..0].to_uppercase().as_str()) {
-    //         arg_idx = idx;
-    //     } else {
-    //         return Err( Error::new(&format!("Statement does not define {} parameter placeholder", name)) );
-    //     }
-    //     catch!{self.err_ptr() =>
-    //         OCIBindByName2(
-    //             self.stmt_ptr(), self.args_binds[arg_idx].as_ptr(), self.err_ptr(),
-    //             name.as_ptr(), name.len() as i32,
-    //             data, buff_size as i64, sql_type,
-    //             null_ind as *mut c_void,
-    //             data_size,
-    //             ptr::null_mut::<u16>(),
-    //             0,
-    //             ptr::null_mut::<u32>(),
-    //             OCI_DEFAULT
-    //         )
-    //     }
-    //     Ok(())
-    // }
+    /// Returns index of the parameter placeholder.
+    fn get_parameter_index(&self, name: &str) -> Result<usize> {
+        // Try uppercase version of the parameter name first.
+        // Explicitly convert to uppercase only if as-is search fails.
+        if let Some(&ix) = self.param_idxs.get(&name[1..]) {
+            Ok(ix)
+        } else if let Some(&ix) = self.param_idxs.get(name[1..].to_uppercase().as_str()) {
+            Ok(ix)
+        } else {
+            Err(Error::new(&format!("Statement does not define {} parameter placeholder", name)))
+        }
+    }
 
-    /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
-    fn exec(&self, stmt_type: u16, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<i32>{
+    /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
+    fn bind_args(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<Option<Vec<usize>>> {
         let mut args_idxs : HashSet<_> = self.param_idxs.values().cloned().collect();
 
         let mut idx = 0;
         for arg in in_args {
+            let param_idx = if let Some( name ) = arg.name() { self.get_parameter_index(name)? } else { idx };
             let (sql_type, data, size) = arg.as_to_sql().to_sql();
-            if let Some( name ) = arg.name() {
-                if let Some(&ix) = self.param_idxs.get(&name[1..]) {
-                    idx = ix;
-                } else if let Some(&ix) = self.param_idxs.get(name[1..].to_uppercase().as_str()) {
-                    idx = ix;
-                } else {
-                    return Err( Error::new(&format!("Statement does not define {} parameter placeholder", name)) );
-                }
-            }
-            self.bind_by_pos(idx, sql_type, data as *mut c_void, size, ptr::null_mut::<u32>(), ptr::null_mut::<i16>())?;
-            args_idxs.remove(&idx);
+            self.bind_by_pos(
+                param_idx, sql_type, data as *mut c_void, size,
+                ptr::null_mut::<u32>(),
+                ptr::null_mut::<i16>()
+            )?;
+            args_idxs.remove(&param_idx);
             idx += 1;
         }
 
         let out_idxs = if out_args.is_empty() {
             None
         } else {
-            let mut idxs = Vec::with_capacity(out_args.len());
+            let mut out_param_idxs = Vec::with_capacity(out_args.len());
             for arg in out_args {
-                let mut out_idx = idx;
-                if let Some( name ) = arg.name() {
-                    if let Some( &param_idx ) = self.param_idxs.get(&name[1..]) {
-                        out_idx = param_idx;
-                    } else if let Some( &param_idx ) = self.param_idxs.get(name[1..].to_uppercase().as_str()) {
-                        out_idx = param_idx;
-                    } else {
-                        return Err(Error::new(&format!("Statement does not define {} parameter placeholder", name)));
-                    }
-                } else {
-                    idx += 1;
-                }
+                let param_idx = if let Some( name ) = arg.name() { self.get_parameter_index(name)? } else { idx };
                 let (sql_type, data, data_buffer_size, in_size) = arg.as_to_sql_out().to_sql_output();
                 if data_buffer_size == 0 {
                     let msg = if let Some( name ) = arg.name() {
                         format!("Storage capacity of output variable {} is 0", name)
                     } else {
-                        format!("Storage capacity of output variable {} is 0", out_idx)
+                        format!("Storage capacity of output variable {} is 0", out_param_idxs.len())
                     };
                     return Err(Error::new(&msg));
                 }
-                self.data_sizes[out_idx].set(in_size as u32);
+                self.data_sizes[param_idx].set(in_size as u32);
                 self.bind_by_pos(
-                    out_idx, sql_type, data, data_buffer_size,
-                    self.data_sizes[out_idx].as_ptr(),
-                    self.indicators[out_idx].as_ptr()
+                    param_idx, sql_type, data, data_buffer_size,
+                    self.data_sizes[param_idx].as_ptr(),
+                    self.indicators[param_idx].as_ptr()
                 )?;
-                args_idxs.remove(&out_idx);
-                idxs.push((arg, out_idx));
+                args_idxs.remove(&param_idx);
+                out_param_idxs.push(param_idx);
+                idx += 1;
             }
-            Some(idxs)
+            Some(out_param_idxs)
         };
 
         // Check whether all placeholders are bound for this execution.
@@ -272,137 +248,10 @@ impl<'a> Statement<'a> {
         // execution of the same prepared statement might try to reuse previously bound
         // values, and those might already be gone. Hense the explicit check here.
         if !args_idxs.is_empty() {
-            return Err( Error::new("Not all parameters are bound") );
+            Err(Error::new("Not all parameters are bound"))
+        } else {
+            Ok(out_idxs)
         }
-
-        let iters: u32 = if stmt_type == OCI_STMT_SELECT { 0 } else { 1 };
-        let res = unsafe {
-            OCIStmtExecute(
-                self.conn.svc_ptr(), self.stmt_ptr(), self.err_ptr(),
-                iters, 0,
-                ptr::null::<c_void>(), ptr::null_mut::<c_void>(),
-                OCI_DEFAULT
-            )
-        };
-        match res {
-            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
-                if let Some(idxs) = out_idxs {
-                    for (arg,ix) in idxs {
-                        arg.as_to_sql_out().set_len(self.data_sizes[ix].get() as usize);
-                    }
-                }
-                Ok(res)
-            },
-            OCI_ERROR | OCI_INVALID_HANDLE => {
-                Err( Error::oci(self.err_ptr(), res) )
-            }
-            _ => Ok(res)
-        }
-    }
-}
-
-impl<'a> Statement<'a> {
-    pub(crate) fn new(sql: &str, conn: &'a Connection<'a>) -> Result<Self> {
-        let stmt = Ptr::null();
-        catch!{conn.err_ptr() =>
-            OCIStmtPrepare2(
-                conn.svc_ptr(), stmt.as_ptr(), conn.err_ptr(),
-                sql.as_ptr(), sql.len() as u32,
-                ptr::null(), 0,
-                OCI_NTV_SYNTAX, OCI_DEFAULT
-            )
-        }
-        let (param_idxs, args_binds, indicators, data_sizes) = define_binds(stmt.get(), conn.err_ptr())?;
-        Ok(Self {
-            conn, stmt, param_idxs, args_binds, indicators, data_sizes,
-            cols: OnceCell::new(), max_long: Cell::new(DEFAULT_LONG_BUFFER_SIZE)
-        })
-    }
-}
-
-impl<'a> Statement<'a> {
-    /**
-        Executes the prepared statement. Returns the number of rows affected.
-
-        # Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            UPDATE hr.departments
-               SET manager_id = :manager_id
-             WHERE department_id = :department_id
-        ")?;
-        let num_updated_rows = stmt.execute(&[
-            &( ":DEPARTMENT_ID", 120 ),
-            &( ":MANAGER_ID",    101 ),
-        ])?;
-        assert_eq!(num_updated_rows, 1);
-        # conn.rollback()?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn execute(&self, args: &[&dyn SqlInArg]) -> Result<usize> {
-        let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
-        if stmt_type == OCI_STMT_SELECT {
-            return Err( Error::new("Use `query` to execute SELECT") );
-        }
-        let is_returning: u8 = self.get_attr(OCI_ATTR_STMT_IS_RETURNING)?;
-        if is_returning != 0 {
-            return Err( Error::new("Use `execute_into` with output arguments to execute a RETURNING statement") );
-        }
-        self.exec(stmt_type, args, &mut [])?;
-        self.get_row_count()
-    }
-
-    /**
-        Executes a prepared RETURNING statement. Returns the number of rows affected.
-
-        # Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            INSERT INTO hr.departments
-                   ( department_id, department_name, manager_id, location_id )
-            VALUES ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
-         RETURNING department_id
-              INTO :department_id
-        ")?;
-        let mut department_id : usize = 0;
-        // In this case (no duplicates in the statement parameters and the OUT parameter follows
-        // the IN parameters) we could have used positional arguments. However, there are many
-        // cases when positional is too difficult to use correcty with `execute_into`. For example,
-        // OUT is used as an IN-OUT parameter, OUT precedes or in the middle of the IN parameter
-        // list, parameter list is very long, etc. This example shows the call with the named
-        // arguments as this might be a more typical use case for it.
-        let num_rows = stmt.execute_into(&[
-            &( ":DEPARTMENT_NAME", "Security" ),
-            &( ":MANAGER_ID",      ""         ),
-            &( ":LOCATION_ID",     1700       ),
-        ], &mut [
-            &mut ( ":DEPARTMENT_ID", &mut department_id )
-        ])?;
-        assert_eq!(num_rows, 1);
-        assert!(!stmt.is_null(":DEPARTMENT_ID")?);
-        assert!(department_id > 0);
-        # conn.rollback()?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn execute_into(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<usize> {
-        let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
-        if stmt_type == OCI_STMT_SELECT {
-            return Err( Error::new("Use `query` to execute SELECT") );
-        }
-        self.exec(stmt_type, in_args, out_args)?;
-        self.get_row_count()
     }
 
     /**
@@ -634,69 +483,6 @@ impl<'a> Statement<'a> {
     }
 
     /**
-        Executes the prepared statement. Returns "streaming iterator" over the returned rows.
-
-        # Example
-        ```
-        # use std::collections::HashMap;
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            SELECT employee_id, last_name, first_name
-              FROM hr.employees
-             WHERE manager_id = :id
-          ORDER BY employee_id
-        ")?;
-        stmt.set_prefetch_rows(5)?;
-        let mut rows = stmt.query(&[ &103 ])?; // Alexander Hunold
-        let mut subs = HashMap::new();
-        while let Some( row ) = rows.next()? {
-            // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-            let id : u32 = row.get(0)?.unwrap();
-            // Same for the LAST_NAME.
-            // Note that `last_name` is retrieved as a slice. This is fast as it
-            // borrows directly from the column buffer, but it can only live until
-            // the end of the current scope, i.e. only during the lifetime of the
-            // current row.
-            let last_name : &str = row.get(1)?.unwrap();
-            // FIRST_NAME is NULL-able...
-            let first_name : Option<&str> = row.get(2)?;
-            let name = first_name.map_or(last_name.to_string(),
-                |first_name| format!("{}, {}", last_name, first_name)
-            );
-            subs.insert(id, name);
-        }
-        assert_eq!(stmt.get_row_count()?, 4);
-        assert_eq!(subs.len(), 4);
-        assert!(subs.contains_key(&104), "Bruce Ernst");
-        assert!(subs.contains_key(&105), "David Austin");
-        assert!(subs.contains_key(&106), "Valli Pataballa");
-        assert!(subs.contains_key(&107), "Diana Lorentz");
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn query(&'a self, args: &[&dyn SqlInArg]) -> Result<Rows> {
-        let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
-        if stmt_type != OCI_STMT_SELECT {
-            return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
-        }
-        let res = self.exec(stmt_type, args, &mut [])?;
-        let _cols = self.cols.get_or_try_init(|| Columns::new(self, self.max_long.get()))?;
-        match res {
-            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
-                Ok( Rows::new(res, self) )
-            }
-            OCI_NO_DATA => {
-                Ok( Rows::new(res, self) )
-            }
-            _ => Err( Error::oci(self.err_ptr(), res) )
-        }
-    }
-
-    /**
         Returns he number of columns in the select-list of this statement.
 
         # Example
@@ -807,37 +593,4 @@ impl<'a> Statement<'a> {
     //     let num_rows = self.get_attr::<u32>(OCI_ATTR_ROWS_FETCHED)? as usize;
     //     Ok( num_rows )
     // }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::*;
-    #[test]
-    fn stmt_args() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let oracle = env()?;
-        let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            INSERT INTO hr.departments
-                   ( department_id, department_name, manager_id, location_id )
-            VALUES ( 9, :department_name, :manager_id, :location_id )
-         RETURNING department_id
-              INTO :department_id
-        ")?;
-        let mut department_id : i32 = 0;
-        let num_rows = stmt.execute_into(&[
-            &( ":department_name", "Security" ),
-            &( ":manager_id",      ""         ),
-            &( ":location_id",     1700       ),
-        ], &mut [
-            &mut ( ":department_id", &mut department_id )
-        ])?;
-        assert_eq!(num_rows, 1);
-        assert!(!stmt.is_null(":department_id")?);
-        assert_eq!(department_id, 9);
-        conn.rollback()?;
-        Ok(())
-    }
 }

@@ -17,27 +17,12 @@ impl<T: OCIStruct> Ptr<T> {
         Self{ value: UnsafeCell::new(ptr::null_mut()) }
     }
 
-    pub(crate) fn set(&self, mut ptr: *mut T) {
-        unsafe {
-            ptr::swap(self.value.get(), &mut ptr);
-        }
-        // drop(ptr)
-    }
-
     pub(crate) fn swap(&self, other: &Self) {
         if !ptr::eq(self, other) {
             unsafe {
                 ptr::swap(self.value.get(), other.value.get());
             }
         }
-    }
-
-    pub(crate) fn take(&self) -> *mut T {
-        let mut value = ptr::null_mut();
-        unsafe {
-            ptr::swap(self.value.get(), &mut value);
-        }
-        value
     }
 
     pub(crate) fn get(&self) -> *mut T {
