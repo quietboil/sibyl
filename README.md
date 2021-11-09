@@ -2,6 +2,10 @@
 
 Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databases.
 
+[![crates.io](https://img.shields.io/crates/v/sibyl)](https://crates.io/crates/sibyl)
+[![Documentation](https://docs.rs/sibyl/badge.svg)](https://docs.rs/sibyl)
+![MIT](https://img.shields.io/crates/l/sibyl.svg)
+
 ## Example
 
 ```rust
