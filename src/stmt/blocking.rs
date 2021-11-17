@@ -14,18 +14,19 @@ use once_cell::unsync::OnceCell;
 impl<'a> Statement<'a> {
     /// Creates a new statement
     pub(crate) fn new(sql: &str, conn: &'a Connection<'a>) -> Result<Self> {
+        let err = Handle::<OCIError>::new(conn.env_ptr())?;
         let stmt = Ptr::null();
-        catch!{conn.err_ptr() =>
+        catch!{err.get() =>
             OCIStmtPrepare2(
-                conn.svc_ptr(), stmt.as_ptr(), conn.err_ptr(),
+                conn.svc_ptr(), stmt.as_ptr(), err.get(),
                 sql.as_ptr(), sql.len() as u32,
                 ptr::null(), 0,
                 OCI_NTV_SYNTAX, OCI_DEFAULT
             )
         }
-        let (param_idxs, args_binds, indicators, data_sizes) = get_bind_info(stmt.get(), conn.err_ptr())?;
+        let (param_idxs, args_binds, indicators, data_sizes) = get_bind_info(stmt.get(), err.get())?;
         Ok(Self {
-            conn, stmt, param_idxs, args_binds, indicators, data_sizes,
+            err, conn, stmt, param_idxs, args_binds, indicators, data_sizes,
             cols: OnceCell::new(), max_long: Cell::new(DEFAULT_LONG_BUFFER_SIZE)
         })
     }

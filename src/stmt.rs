@@ -46,16 +46,17 @@ use once_cell::unsync::OnceCell;
 
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
-    conn:        &'a Connection<'a>,
-    stmt:        Ptr<OCIStmt>,
-    param_idxs:  HashMap<String,usize>,
-    args_binds:  Vec<Ptr<OCIBind>>,
+    conn:       &'a Connection<'a>,
+    stmt:       Ptr<OCIStmt>,
+    param_idxs: HashMap<String,usize>,
+    args_binds: Vec<Ptr<OCIBind>>,
 
-    indicators:  Vec<Cell<i16>>,
-    data_sizes:  Vec<Cell<u32>>,
-    cols:        OnceCell<Columns>,
+    indicators: Vec<Cell<i16>>,
+    data_sizes: Vec<Cell<u32>>,
+    cols:       OnceCell<Columns>,
 
-    max_long:    Cell<u32>,
+    max_long:   Cell<u32>,
+    err:        Handle<OCIError>,
 }
 
 impl Drop for Statement<'_> {
@@ -80,7 +81,7 @@ impl Env for Statement<'_> {
     }
 
     fn err_ptr(&self) -> *mut OCIError {
-        self.conn.err_ptr()
+        self.err.get()
     }
 }
 

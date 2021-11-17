@@ -35,6 +35,24 @@ pub struct Handle<T: HandleType> {
     ptr: Ptr<T>
 }
 
+/*
+    All but OCIStmt handles are read-only (as far as Rust is concerned).
+    They also do not use interior mutability. Most importantly, becuase
+    OCI environment is created by sibyl in OCI_THREADED mode, the internal
+    OCI structures are protected by OCI itself from concurrent access by
+    multiple threads.
+
+    `Handle<OCIStmt>` on the other hand needs to be mutable to allow FromSql
+    to swap cursor handles and thus it would have to be put behind a RwLock.
+    As long as we are locking OCIStmt we might as well lock the entire
+    Statement and thus keep Bind, Define and Describe as !Sync.
+*/
+unsafe impl Sync for Handle<OCIEnv> {}
+unsafe impl Sync for Handle<OCIError> {}
+unsafe impl Sync for Handle<OCIServer> {}
+unsafe impl Sync for Handle<OCISvcCtx> {}
+unsafe impl Sync for Handle<OCISession> {}
+
 impl<T: HandleType> Drop for Handle<T> {
     fn drop(&mut self) {
         let ptr = self.ptr.get();
