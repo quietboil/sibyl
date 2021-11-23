@@ -4,6 +4,8 @@
     to execute queries. The connection gets dropped once the work is done
     (i.e. when the closure exits)
 */
+#![allow(unused_imports)]
+
 use sibyl::*;
 use std::{env, thread, sync::Arc};
 
@@ -55,4 +57,9 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(feature="nonblocking")]
+fn main() {
+    unimplemented!()
 }

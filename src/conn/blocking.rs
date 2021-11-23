@@ -1,24 +1,13 @@
 //! Blocking mode User session (a.k.a. database connection) methods.
 
 use super::{connect, Connection};
-use crate::{Environment, Result, Statement, catch, env::Env, oci::*};
-use libc::c_void;
+use crate::{Environment, Result, Statement, oci::{self, *}, env::Env};
+// use libc::c_void;
 
 impl Drop for Connection<'_> {
     fn drop(&mut self) {
-        if let Ok(ptr) = self.svc.get_attr::<*mut c_void>(OCI_ATTR_SESSION, self.err_ptr()) {
-            if !ptr.is_null() {
-                unsafe {
-                    OCISessionEnd(self.svc_ptr(), self.err_ptr(), self.usr_ptr(), OCI_DEFAULT);
-                }
-            }
-        }
-        if let Ok(ptr) = self.svc.get_attr::<*mut c_void>(OCI_ATTR_SERVER, self.err_ptr()) {
-            if !ptr.is_null() {
-                unsafe {
-                    OCIServerDetach(self.srv_ptr(), self.err_ptr(), OCI_DEFAULT);
-                }
-            }
+        unsafe {
+            OCISessionRelease(self.svc.get(), self.err.get(), std::ptr::null(), 0, OCI_DEFAULT);
         }
     }
 }
@@ -30,10 +19,7 @@ impl<'a> Connection<'a> {
 
     /// Confirms that the connection and the server are active.
     pub fn ping(&self) -> Result<()> {
-        catch!{self.err_ptr() =>
-            OCIPing(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
-        }
-        Ok(())
+        oci::ping(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
     }
 
     /**
@@ -97,10 +83,7 @@ impl<'a> Connection<'a> {
         ```
     */
     pub fn commit(&self) -> Result<()> {
-        catch!{self.err_ptr() =>
-            OCITransCommit(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
-        }
-        Ok(())
+        oci::trans_commit(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
     }
 
     /**
@@ -127,9 +110,6 @@ impl<'a> Connection<'a> {
         ```
     */
     pub fn rollback(&self) -> Result<()> {
-        catch!{self.err_ptr() =>
-            OCITransRollback(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
-        }
-        Ok(())
+        oci::trans_rollback(self.svc_ptr(), self.err_ptr(), OCI_DEFAULT)
     }
 }

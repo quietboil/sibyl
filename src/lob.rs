@@ -5,14 +5,13 @@
 pub mod blocking;
 
 use crate::{
-    Result, catch,
-    oci::*,
+    Result,
+    oci::{self, *},
     env::Env,
     conn::Connection,
     stmt::args::{ToSql, ToSqlOut},
 };
 use libc::c_void;
-use std::cell::Cell;
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
 pub trait InternalLob {}
@@ -23,9 +22,7 @@ pub(crate) fn is_initialized<T>(locator: &Descriptor<T>, env: *mut OCIEnv, err: 
     where T: DescriptorType<OCIType=OCILobLocator>
 {
     let mut flag = 0u8;
-    catch!{err =>
-        OCILobLocatorIsInit(env, err, locator.get(), &mut flag)
-    }
+    oci::lob_locator_is_init(env, err, locator.get(), &mut flag)?;
     Ok( flag != 0 )
 }
 
@@ -35,7 +32,6 @@ pub struct LOB<'a,T>
 {
     locator: Descriptor<T>,
     conn: &'a Connection<'a>,
-    chunk_size: Cell<u32>,
 }
 
 impl<'a,T> LOB<'a,T>
@@ -50,7 +46,7 @@ impl<'a,T> LOB<'a,T>
     }
 
     pub(crate) fn make(locator: Descriptor<T>, conn: &'a Connection) -> Self {
-        Self { locator, conn, chunk_size: Cell::new(0) }
+        Self { locator, conn }
     }
 
     /**
@@ -140,9 +136,7 @@ impl<'a,T> LOB<'a,T>
         where U: DescriptorType<OCIType=OCILobLocator>
     {
         let mut flag = 0u8;
-        catch!{self.conn.err_ptr() =>
-            OCILobIsEqual(self.conn.env_ptr(), self.as_ptr(), other.as_ptr(), &mut flag)
-        }
+        oci::lob_is_equal(self.conn.env_ptr(), self.as_ptr(), other.as_ptr(), &mut flag)?;
         Ok( flag != 0 )
     }
 
@@ -170,9 +164,7 @@ impl<'a,T> LOB<'a,T>
     */
     pub fn charset_form(&self) -> Result<CharSetForm> {
         let mut csform = 0u8;
-        catch!{self.conn.err_ptr() =>
-            OCILobCharSetForm(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), &mut csform)
-        }
+        oci::lob_char_set_form(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), &mut csform)?;
         let csform = match csform {
             SQLCS_IMPLICIT => CharSetForm::Implicit,
             SQLCS_NCHAR    => CharSetForm::NChar,
@@ -187,9 +179,7 @@ impl<'a,T> LOB<'a,T>
     */
     pub fn charset_id(&self) -> Result<u16> {
         let mut csid = 0u16;
-        catch!{self.conn.err_ptr() =>
-            OCILobCharSetId(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), &mut csid)
-        }
+        oci::lob_char_set_id(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), &mut csid)?;
         Ok( csid )
     }
 }
@@ -248,7 +238,7 @@ impl<'a, T> LOB<'a,T>
     pub fn empty(conn: &'a Connection) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
         locator.set_attr(OCI_ATTR_LOBEMPTY, 0u32, conn.err_ptr())?;
-        Ok( Self { locator, conn, chunk_size: Cell::new(0) } )
+        Ok( Self { locator, conn } )
     }
 
     /**
@@ -293,7 +283,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     /// Creates a new uninitialized BFILE.
     pub fn new(conn: &'a Connection) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
-        Ok( Self { locator, conn, chunk_size: Cell::new(0) } )
+        Ok( Self { locator, conn } )
     }
 
     /**
@@ -322,18 +312,16 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         let mut name = String::with_capacity(255);
         let mut dir_len  = dir.capacity() as u16;
         let mut name_len = name.capacity() as u16;
-        catch!{self.conn.err_ptr() =>
+        unsafe {
             let dir  = dir.as_mut_vec();
             let name = name.as_mut_vec();
-            OCILobFileGetName(
+            oci::lob_file_get_name(
                 self.conn.env_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
                 dir.as_mut_ptr(),  &mut dir_len  as *mut u16,
                 name.as_mut_ptr(), &mut name_len as *mut u16
-            )
-        }
-        unsafe {
-            dir.as_mut_vec().set_len(dir_len as usize);
-            name.as_mut_vec().set_len(name_len as usize);
+            )?;    
+            dir.set_len(dir_len as usize);
+            name.set_len(name_len as usize);
         }
         Ok( ( dir, name ) )
     }
@@ -358,15 +346,12 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         ```
     */
     pub fn set_file_name(&self, dir: &str, name: &str) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobFileSetName(
-                self.conn.env_ptr(), self.conn.err_ptr(),
-                self.locator.as_ptr(),
-                dir.as_ptr(),  dir.len() as u16,
-                name.as_ptr(), name.len() as u16
-            )
-        }
-        Ok(())
+        oci::lob_file_set_name(
+            self.conn.env_ptr(), self.conn.err_ptr(),
+            self.locator.as_ptr(),
+            dir.as_ptr(),  dir.len() as u16,
+            name.as_ptr(), name.len() as u16
+        )
     }
 }
 

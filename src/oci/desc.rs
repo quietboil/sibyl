@@ -1,6 +1,6 @@
 //! OCI descriptors
 
-use crate::{Result, Error};
+use crate::{Result, Error, oci};
 use super::*;
 use libc::c_void;
 use std::ptr;
@@ -52,12 +52,8 @@ impl<T: DescriptorType> Drop for Descriptor<T> {
 impl<T: DescriptorType> Descriptor<T> {
     fn alloc(env: *mut OCIEnv) -> Result<*mut T> {
         let mut desc = ptr::null_mut::<T>();
-        let res = unsafe {
-            OCIDescriptorAlloc(env, &mut desc as *mut *mut T as *mut *mut c_void, T::get_type(), 0, ptr::null())
-        };
-        if res != OCI_SUCCESS {
-            Err( Error::env(env, res) )
-        } else if desc.is_null() {
+        oci::descriptor_alloc(env, &mut desc as *mut *mut T as *mut *mut c_void, T::get_type(), 0, ptr::null())?;
+        if desc.is_null() {
             Err( Error::new("OCIDescriptorAlloc returned NULL") )
         } else {
             Ok( desc )
@@ -77,12 +73,16 @@ impl<T: DescriptorType> Descriptor<T> {
         self.ptr.get() as *mut T::OCIType
     }
 
-    pub(crate) fn as_ptr(&self) -> *mut *mut T::OCIType {
+    pub(crate) fn as_ptr(&self) -> *const *mut T::OCIType {
+        self.ptr.as_ptr() as *const *mut T::OCIType
+    }
+
+    pub(crate) fn as_mut_ptr(&self) -> *mut *mut T::OCIType {
         self.ptr.as_ptr() as *mut *mut T::OCIType
     }
 
-    pub(crate) fn swap(&self, other: &Self) {
-        self.ptr.swap(&other.ptr);
+    pub(crate) fn swap(&mut self, other: &mut Self) {
+        self.ptr.swap(&mut other.ptr);
     }
 
     pub(crate) fn get_attr<V: attr::AttrGet>(&self, attr_type: u32, err: *mut OCIError) -> Result<V> {

@@ -1,6 +1,7 @@
 //! SQL or PL/SQL statement
 
 pub mod args;
+pub mod bind;
 pub mod fromsql;
 pub mod cols;
 pub mod cursor;
@@ -9,68 +10,35 @@ pub mod rows;
 #[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
 pub mod blocking;
 
+use once_cell::sync::OnceCell;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use libc::c_void;
 pub use rows::{Rows, Row};
 pub use cursor::Cursor;
 pub use args::{ToSql, ToSqlOut, SqlInArg, SqlOutArg};
-use rows::ResultSetProvider;
+use bind::Params;
 use cols::{Columns, Position, ColumnInfo};
-use crate::{Result, catch, Error, Connection, oci::*, env::Env, types::Ctx};
-use libc::c_void;
-use std::{cell::Cell, collections::{HashMap, HashSet}, ptr};
-use once_cell::unsync::OnceCell;
-
-// type OCICallbackInBindFn = extern "C" fn(
-//     ictxp:  *mut c_void,
-//     bindp:  *mut OCIBind,
-//     iter:   u32,
-//     index:  u32,
-//     bufpp:  &*mut c_void,
-//     alenp:  *mut u32,
-//     piecep: &mut u8,
-//     indp:   &*mut c_void
-// ) -> i32;
-// type OCICallbackInBind = Option<OCICallbackInBindFn>;
-
-// type OCICallbackOutBindFn = extern "C" fn(
-//     octxp:  *mut c_void,
-//     bindp:  *mut OCIBind,
-//     iter:   u32,
-//     index:  u32,
-//     bufpp:  &*mut c_void,
-//     alenp:  &*mut u32,
-//     piecep: &mut u8,
-//     indp:   &*mut c_void,
-//     rcodep: &*mut u16
-// ) -> i32;
-// type OCICallbackOutBind = Option<OCICallbackOutBindFn>;
+use crate::{Result, Error, Connection, oci::*, env::Env, types::Ctx};
+use std::ptr;
 
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
-    conn:       &'a Connection<'a>,
-    stmt:       Ptr<OCIStmt>,
-    param_idxs: HashMap<String,usize>,
-    args_binds: Vec<Ptr<OCIBind>>,
-
-    indicators: Vec<Cell<i16>>,
-    data_sizes: Vec<Cell<u32>>,
-    cols:       OnceCell<Columns>,
-
-    max_long:   Cell<u32>,
-    err:        Handle<OCIError>,
+    conn:     &'a Connection<'a>,
+    stmt:     Ptr<OCIStmt>,
+    params:   Option<RwLock<Params>>,
+    cols:     OnceCell<RwLock<Columns>>,
+    err:      Handle<OCIError>,
+    max_long: u32,
 }
 
 impl Drop for Statement<'_> {
     fn drop(&mut self) {
-        let env = self.env_ptr();
-        let err = self.err_ptr();
-        if let Some(cols) = self.cols.get_mut() {
-            cols.drop_output_buffers(env, err);
-        }
-        let ocistmt = self.stmt.get();
+        let ocistmt = self.stmt_ptr();
         if !ocistmt.is_null() {
-            unsafe {
-                OCIStmtRelease(ocistmt, err, ptr::null(), 0, OCI_DEFAULT);
-            }
+            let res = unsafe {
+                OCIStmtRelease(ocistmt, self.err_ptr(), ptr::null(), 0, OCI_DEFAULT)
+            };
+            assert_ne!(res, OCI_STILL_EXECUTING, "OCIStmtRelease is still executing");
         }
     }
 }
@@ -85,6 +53,12 @@ impl Env for Statement<'_> {
     }
 }
 
+impl Ctx for Statement<'_> {
+    fn ctx_ptr(&self) -> *mut c_void {
+        self.conn.usr_ptr() as *mut c_void
+    }
+}
+
 pub trait Stmt: Env {
     fn stmt_ptr(&self) -> *mut OCIStmt;
 }
@@ -95,66 +69,29 @@ impl Stmt for Statement<'_> {
     }
 }
 
-impl Ctx for Statement<'_> {
-    fn as_ptr(&self) -> *mut c_void {
-        self.conn.usr_ptr() as *mut c_void
+trait ResultSetColumns {
+    fn read_columns(&self) -> RwLockReadGuard<Columns>;
+    fn write_columns(&self) -> RwLockWriteGuard<Columns>;
+}
+
+impl ResultSetColumns for Statement<'_> {
+    fn read_columns(&self) -> RwLockReadGuard<Columns> {
+        self.cols.get().expect("protected columns").read()
+    }
+
+    fn write_columns(&self) -> RwLockWriteGuard<Columns> {
+        self.cols.get().expect("protected columns").write()
     }
 }
 
-impl ResultSetProvider for Statement<'_> {
-    fn get_cols(&self) -> Option<&Columns> {
-        self.cols.get()
-    }
+trait ResultSetConnection {
+    fn conn(&self) -> &Connection;
+}
 
-    fn get_ctx(&self) -> &dyn Ctx {
-        self
-    }
-
-    fn get_env(&self) -> &dyn Env {
-        self
-    }
-
+impl ResultSetConnection for Statement<'_> {
     fn conn(&self) -> &Connection {
-        &self.conn
+        self.conn
     }
-}
-
-fn get_bind_info(stmt: *mut OCIStmt, err: *mut OCIError) -> Result<(HashMap<String,usize>, Vec<Ptr<OCIBind>>, Vec<Cell<i16>>, Vec<Cell<u32>>)> {
-    let num_binds = attr::get::<u32>(OCI_ATTR_BIND_COUNT, OCI_HTYPE_STMT, stmt as *const c_void, err)? as usize;
-    let mut param_idxs = HashMap::with_capacity(num_binds);
-    let mut args_binds = Vec::with_capacity(num_binds);
-    let mut indicators = Vec::with_capacity(num_binds);
-    let mut data_sizes = Vec::with_capacity(num_binds);
-    if num_binds > 0 {
-        let bind_names          = vec![ptr::null_mut::<u8>(); num_binds];
-        let mut bind_name_lens  = vec![0u8; num_binds];
-        let ind_names           = vec![ptr::null_mut::<u8>(); num_binds];
-        let mut ind_name_lens   = vec![0u8; num_binds];
-        let mut dups            = vec![0u8; num_binds];
-        let mut oci_binds       = vec![ptr::null_mut::<OCIBind>(); num_binds];
-        let mut found: i32      = 0;
-        catch!{err =>
-            OCIStmtGetBindInfo(
-                stmt, err,
-                num_binds as u32, 1, &mut found,
-                bind_names.as_ptr(), bind_name_lens.as_mut_ptr(),
-                ind_names.as_ptr(), ind_name_lens.as_mut_ptr(),
-                dups.as_mut_ptr(),
-                oci_binds.as_mut_ptr()
-            )
-        }
-        for i in 0..found as usize {
-            if dups[i] == 0 {
-                let name = unsafe { std::slice::from_raw_parts(bind_names[i], bind_name_lens[i] as usize) };
-                let name = String::from_utf8_lossy(name).to_string();
-                param_idxs.insert(name, i);
-            }
-            args_binds.push(Ptr::new(oci_binds[i]));
-            indicators.push(Cell::new(OCI_IND_NOTNULL));
-            data_sizes.push(Cell::new(0u32));
-        }
-    }
-    Ok((param_idxs, args_binds, indicators, data_sizes))
 }
 
 impl<'a> Statement<'a> {
@@ -167,108 +104,11 @@ impl<'a> Statement<'a> {
         attr::set::<V>(attr_type, attr_val, OCI_HTYPE_STMT, self.stmt_ptr() as *mut c_void, self.err_ptr())
     }
 
-    /// Binds the argument to a parameter placeholder at the specified position in the SQL statement
-    fn bind_by_pos(&self, idx: usize, sql_type: u16, data: *mut c_void, buff_size: usize, data_size: *mut u32, null_ind: *mut i16) -> Result<()> {
-        let pos = idx + 1;
-        catch!{self.err_ptr() =>
-            OCIBindByPos2(
-                self.stmt_ptr(), self.args_binds[idx].as_ptr(), self.err_ptr(),
-                pos as u32,
-                data, buff_size as i64, sql_type,
-                null_ind as *mut c_void,  // Pointer to an indicator variable or array
-                data_size,                // Pointer to an array of actual lengths of array elements
-                ptr::null_mut::<u16>(),   // Pointer to an array of column-level return codes
-                0,                        // Maximum array length
-                ptr::null_mut::<u32>(),   // Pointer to the actual number of elements in the array
-                OCI_DEFAULT
-            )
-        }
-        Ok(())
-    }
-
-    /// Returns index of the parameter placeholder.
-    fn get_parameter_index(&self, name: &str) -> Result<usize> {
-        // Try uppercase version of the parameter name first.
-        // Explicitly convert to uppercase only if as-is search fails.
-        if let Some(&ix) = self.param_idxs.get(&name[1..]) {
-            Ok(ix)
-        } else if let Some(&ix) = self.param_idxs.get(name[1..].to_uppercase().as_str()) {
-            Ok(ix)
-        } else {
-            Err(Error::new(&format!("Statement does not define {} parameter placeholder", name)))
-        }
-    }
-
-    /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
-    fn bind_args(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<Option<Vec<usize>>> {
-        let mut args_idxs : HashSet<_> = self.param_idxs.values().cloned().collect();
-
-        let mut idx = 0;
-        for arg in in_args {
-            let param_idx = if let Some( name ) = arg.name() { self.get_parameter_index(name)? } else { idx };
-            let (sql_type, data, size) = arg.as_to_sql().to_sql();
-            self.bind_by_pos(
-                param_idx, sql_type, data as *mut c_void, size,
-                ptr::null_mut::<u32>(),
-                ptr::null_mut::<i16>()
-            )?;
-            args_idxs.remove(&param_idx);
-            idx += 1;
-        }
-
-        let out_idxs = if out_args.is_empty() {
-            None
-        } else {
-            let mut out_param_idxs = Vec::with_capacity(out_args.len());
-            for arg in out_args {
-                let param_idx = if let Some( name ) = arg.name() { self.get_parameter_index(name)? } else { idx };
-                let (sql_type, data, data_buffer_size, in_size) = arg.as_to_sql_out().to_sql_output();
-                if data_buffer_size == 0 {
-                    let msg = if let Some( name ) = arg.name() {
-                        format!("Storage capacity of output variable {} is 0", name)
-                    } else {
-                        format!("Storage capacity of output variable {} is 0", out_param_idxs.len())
-                    };
-                    return Err(Error::new(&msg));
-                }
-                self.data_sizes[param_idx].set(in_size as u32);
-                self.bind_by_pos(
-                    param_idx, sql_type, data, data_buffer_size,
-                    self.data_sizes[param_idx].as_ptr(),
-                    self.indicators[param_idx].as_ptr()
-                )?;
-                args_idxs.remove(&param_idx);
-                out_param_idxs.push(param_idx);
-                idx += 1;
-            }
-            Some(out_param_idxs)
-        };
-
-        // Check whether all placeholders are bound for this execution.
-        // While OCIStmtExecute would see missing binds on the first run, the subsequent
-        // execution of the same prepared statement might try to reuse previously bound
-        // values, and those might already be gone. Hense the explicit check here.
-        if !args_idxs.is_empty() {
-            Err(Error::new("Not all parameters are bound"))
-        } else {
-            Ok(out_idxs)
-        }
-    }
-
     /**
         Checks whether the value returned for the output parameter is NULL.
     */
     pub fn is_null(&self, pos: impl Position) -> Result<bool> {
-        pos.name()
-            .and_then(|name|
-                self.param_idxs.get(&name[1..])
-                    .or(self.param_idxs.get(name[1..].to_uppercase().as_str()))
-            )
-            .map(|ix| *ix)
-            .or(pos.index())
-            .and_then(|ix| self.indicators.get(ix))
-            .map(|cell| cell.get() == OCI_IND_NULL)
-            .ok_or_else(|| Error::new("Parameter not found."))
+        self.params.as_ref().map(|params| params.read().is_null(pos)).unwrap_or(Ok(true))
     }
 
     /**
@@ -385,10 +225,10 @@ impl<'a> Statement<'a> {
         ```
     */
     pub fn next_result(&'a self) -> Result<Option<Cursor>> {
-        let stmt = Ptr::null();
+        let mut stmt = Ptr::null();
         let mut stmt_type = 0u32;
         let res = unsafe {
-            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), stmt.as_ptr(), &mut stmt_type, OCI_DEFAULT)
+            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), stmt.as_mut_ptr(), &mut stmt_type, OCI_DEFAULT)
         };
         match res {
             OCI_NO_DATA => Ok( None ),
@@ -466,7 +306,7 @@ impl<'a> Statement<'a> {
         #         &mut (":ID", &mut id),
         #     ]
         # )?;
-        let stmt = conn.prepare("
+        let mut stmt = conn.prepare("
             SELECT text
               FROM test_long_and_raw_data
              WHERE id = :id
@@ -479,8 +319,8 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn set_max_long_size(&self, size: u32) {
-        self.max_long.set(size);
+    pub fn set_max_long_size(&mut self, size: u32) {
+        self.max_long = size;
     }
 
     /**
@@ -542,7 +382,7 @@ impl<'a> Statement<'a> {
         ```
     */
     pub fn get_column(&self, pos: usize) -> Option<ColumnInfo> {
-        self.cols.get().and_then(|cols| cols.get_column_info(self, pos))
+        self.cols.get().and_then(|cols| cols.read().get_column_info(self, pos))
     }
 
     /**

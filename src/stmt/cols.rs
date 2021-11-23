@@ -1,5 +1,5 @@
-use super::{Stmt, rows::ResultSetProvider, fromsql::FromSql};
-use crate::{Result, catch, RowID, oci:: *, types::{date, number, raw, varchar}};
+use super::{Stmt, Row, fromsql::FromSql};
+use crate::{Result, RowID, oci::{self, *}, types::{date, number, raw, varchar}};
 use libc::c_void;
 use std::{collections::HashMap, ptr};
 
@@ -318,6 +318,16 @@ pub struct Columns {
     /// >0 : The length of the item is greater than the length of the output variable; the item has been truncated.
     ///      The positive value returned in the indicator variable is the actual length before truncation.
     inds: Vec<i16>,
+    env_ptr: Ptr<OCIEnv>,
+    err_ptr: Ptr<OCIError>,
+}
+
+impl Drop for Columns {
+    fn drop(&mut self) {
+        for buf in self.bufs.iter_mut() {
+            buf.drop(self.env_ptr.get(), self.err_ptr.get());
+        }
+    }
 }
 
 impl Columns {
@@ -350,8 +360,8 @@ impl Columns {
             // define the output buffers in OCI
 
             let (output_type, output_buff_ptr, output_buff_size) = bufs[i].get_output_buffer_def(data_size as usize);
-            catch! {stmt.err_ptr() =>
-                OCIDefineByPos2(
+            unsafe {
+                oci::define_by_pos(
                     stmt.stmt_ptr(), defs[i].as_ptr(), stmt.err_ptr(),
                     (i + 1) as u32,
                     output_buff_ptr, output_buff_size as i64, output_type,
@@ -359,20 +369,14 @@ impl Columns {
                     lens.get_unchecked_mut(i),
                     ptr::null_mut::<u16>(),
                     OCI_DEFAULT
-                )
+                )?;
             }
 
             let name = info[i].get_attr::<&str>(OCI_ATTR_NAME, stmt.err_ptr())?;
             let name = name.to_string();
             names.insert(name, i);
         }
-        Ok(Self { names, info, _defs: defs, bufs, _lens: lens, inds })
-    }
-
-    pub(crate) fn drop_output_buffers(&mut self, env: *mut OCIEnv, err: *mut OCIError) {
-        for buf in self.bufs.iter_mut() {
-            buf.drop(env, err);
-        }
+        Ok(Self { names, info, _defs: defs, bufs, _lens: lens, inds, env_ptr: Ptr::new(stmt.env_ptr()), err_ptr: Ptr::new(stmt.err_ptr()) })
     }
 
     pub(crate) fn col_index(&self, name: &str) -> Option<usize> {
@@ -387,7 +391,7 @@ impl Columns {
     pub(crate) fn get_column_info<'a>(&self, stmt: &'a dyn Stmt, pos: usize) -> Option<ColumnInfo<'a>> {
         self.info.get(pos).map(|desc| ColumnInfo::new(desc.get(), stmt)) }
 
-    pub(crate) fn get<'a, T: FromSql<'a>>(&self, rset: &'a dyn ResultSetProvider, pos: usize) -> Result<Option<T>> {
-        self.bufs.get(pos).map(|buf| FromSql::value(buf, rset)).transpose()
+    pub(crate) fn get<'a, T: FromSql<'a>>(&mut self, row: &'a Row<'a>, pos: usize) -> Result<Option<T>> {
+        self.bufs.get_mut(pos).map(|col| FromSql::value(row, col)).transpose()
     }
 }

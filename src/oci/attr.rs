@@ -1,4 +1,4 @@
-use crate::{Result, catch};
+use crate::{Result, oci};
 use super::*;
 use libc::c_void;
 use std::mem;
@@ -6,34 +6,19 @@ use std::mem;
 pub(crate) fn get<T: AttrGet>(attr_type: u32, obj_type: u32, obj: *const c_void, err: *mut OCIError) -> Result<T> {
     let mut attr_val  = mem::MaybeUninit::<T::ValueType>::uninit();
     let mut attr_size = 0u32;
-    catch!{err =>
-        OCIAttrGet(
-            obj, obj_type,
-            attr_val.as_mut_ptr() as *mut c_void, &mut attr_size, attr_type,
-            err
-        )
-    }
+    oci::attr_get(obj, obj_type, attr_val.as_mut_ptr() as *mut c_void, &mut attr_size, attr_type, err)?;
     Ok( AttrGet::new( unsafe { attr_val.assume_init() }, attr_size as usize) )
 }
 
 pub(crate) fn get_into<T: AttrGetInto>(attr_type: u32, into: &mut T, obj_type: u32, obj: *const c_void, err: *mut OCIError) -> Result<()> {
     let mut size = into.capacity() as u32;
-    catch!{err =>
-        OCIAttrGet(
-            obj, obj_type,
-            into.as_val_ptr(), &mut size, attr_type,
-            err
-        )
-    }
+    oci::attr_get(obj, obj_type, into.as_val_ptr(), &mut size, attr_type, err)?;
     into.set_len(size as usize);
     Ok(())
 }
 
 pub(crate) fn set<T: AttrSet>(attr_type: u32, attr_val: T, obj_type: u32, obj: *mut c_void, err: *mut OCIError) -> Result<()> {
-    catch!{err =>
-        OCIAttrSet(obj, obj_type, attr_val.as_ptr(), attr_val.len() as u32, attr_type, err)
-    }
-    Ok(())
+    oci::attr_set(obj, obj_type, attr_val.as_ptr(), attr_val.len() as u32, attr_type, err)
 }
 
 pub(crate) trait AttrGet {

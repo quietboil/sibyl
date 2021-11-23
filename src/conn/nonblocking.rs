@@ -1,34 +1,33 @@
 //! Nonblocking mode Connection methods.
  
 use super::{connect, Connection};
-use crate::{Environment, Error, Result, Statement, catch, env::Env, oci::*, task};
+use crate::{Environment, Result, env::Env, oci::{*, futures::*}, task};
 use libc::c_void;
 
 impl Drop for Connection<'_> {
     fn drop(&mut self) {
-        if let Ok(ptr) = self.svc.get_attr::<*mut c_void>(OCI_ATTR_SESSION, self.err_ptr()) {
-            if !ptr.is_null() {
-                unsafe {
-                    OCISessionEnd(self.svc_ptr(), self.err_ptr(), self.usr_ptr(), OCI_DEFAULT);
-                }
+        let usr = Handle::from_handle(&mut self.usr);
+        let svc = Handle::from_handle(&mut self.svc);
+        let srv = Handle::from_handle(&mut self.srv);
+        let err = Handle::from_handle(&mut self.err);
+        let session_ptr = svc.get_attr::<*mut c_void>(OCI_ATTR_SESSION, err.get()).unwrap_or(std::ptr::null_mut());
+        let server_ptr = svc.get_attr::<*mut c_void>(OCI_ATTR_SERVER, err.get()).unwrap_or(std::ptr::null_mut());
+
+        let async_drop = async move {
+            if !session_ptr.is_null() {
+                SessionEnd::new(svc.get(), err.get(), usr.get()).await;
             }
-        }
-        if let Ok(ptr) = self.svc.get_attr::<*mut c_void>(OCI_ATTR_SERVER, self.err_ptr()) {
-            if !ptr.is_null() {
-                unsafe {
-                    OCIServerDetach(self.srv_ptr(), self.err_ptr(), OCI_DEFAULT);
-                }
+            if !server_ptr.is_null() {
+                ServerDetach::new(srv.get(), err.get()).await;
             }
-        }
+        };
+        task::spawn(async_drop);
     }
 }
 
 impl<'a> Connection<'a> {
-    pub(crate) fn new(env: &'a Environment, addr: &str, user: &str, pass: &str) -> Result<Self> {
-        let _x = task::spawn_blocking(move || 
-            connect(env, addr, user,pass)
-        );
-        Err(Error::new("not implemented"))
+    pub(crate) async fn new(env: &'static Environment, addr: &'static str, user: &'static str, pass: &'static str) -> Result<Connection<'a>> {
+        task::spawn_blocking(move || connect(env, addr, user, pass)).await?
     }
 
 }

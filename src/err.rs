@@ -25,22 +25,13 @@ fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
     (errcode, msg)
 }
 
-#[macro_export]
-macro_rules! catch {
-    ( $err:expr => $( $stmt:stmt );+ ) => {{
-        let res = unsafe { $($stmt)+ };
-        match res {
-            OCI_ERROR | OCI_INVALID_HANDLE => { return Err( crate::Error::oci($err, res) ); },
-            _ => {}
-        }
-    }};
-}
-
 /// Represents possible errors returned from Sibyl
 #[derive(Debug)]
 pub enum Error {
     Interface(String),
-    Oracle(i32,String)
+    Oracle(i32,String),
+    #[cfg(feature="nonblocking")]
+    JoinError(JoinError),
 }
 
 impl fmt::Display for Error {
@@ -48,6 +39,8 @@ impl fmt::Display for Error {
         match self {
             Error::Oracle(errcode, errmsg) => write!(f, "ORA-{:05}: {}", errcode, errmsg),
             Error::Interface(errmsg) => write!(f, "{}", errmsg),
+            #[cfg(feature="nonblocking")]
+            Error::JoinError(src) => src.fmt(f)
         }
     }
 }
@@ -83,5 +76,15 @@ impl Error {
     pub(crate) fn oci(err: *mut OCIError, rc: i32) -> Self {
         let (code, msg) = get_oracle_error(rc, err as *mut c_void, OCI_HTYPE_ERROR);
         Error::Oracle(code, msg)
+    }
+}
+
+#[cfg(feature="nonblocking")]
+use crate::task::JoinError;
+
+#[cfg(feature="nonblocking")]
+impl From<JoinError> for Error {
+    fn from(err: JoinError) -> Self {
+        Error::JoinError(err)
     }
 }

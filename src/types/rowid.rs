@@ -1,6 +1,6 @@
 /// The ROWID data type identifies a particular row in a database table.
 
-use crate::{Result, catch, RowID, env::Env, oci::{*, attr::AttrGetInto}, stmt::args::{ToSql, ToSqlOut}};
+use crate::{Result, RowID, env::Env, oci::{self, *, attr::AttrGetInto}, stmt::args::{ToSql, ToSqlOut}};
 use libc::c_void;
 
 impl RowID  {
@@ -14,9 +14,7 @@ impl RowID  {
         let mut text = String::with_capacity(20);
         let txt = unsafe { text.as_mut_vec() };
         let mut len = txt.capacity() as u16;
-        catch!{env.err_ptr() =>
-            OCIRowidToChar(self.get(), txt.as_mut_ptr(), &mut len, env.err_ptr())
-        }
+        oci::rowid_to_char(self.get(), txt.as_mut_ptr(), &mut len, env.err_ptr())?;
         unsafe {
             txt.set_len(len as usize);
         }

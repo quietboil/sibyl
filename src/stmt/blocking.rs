@@ -1,34 +1,41 @@
 //! Blocking SQL statement methods
 
 use super::{
-    Statement, Stmt, get_bind_info,
-    args::{SqlInArg, SqlOutArg},
-    cols::{Columns, DEFAULT_LONG_BUFFER_SIZE},
-    rows::Rows,
+    Statement, Stmt, Params, SqlInArg, SqlOutArg, Columns, Rows,
+    cols::DEFAULT_LONG_BUFFER_SIZE,
 };
-use crate::{Result, catch, Error, Connection, oci::*, env::Env};
+use crate::{Connection, Error, Result, env::Env, oci::{self, *}};
 use libc::c_void;
-use std::{cell::Cell, ptr};
-use once_cell::unsync::OnceCell;
+use parking_lot::RwLock;
+use std::ptr;
+use once_cell::sync::OnceCell;
 
 impl<'a> Statement<'a> {
     /// Creates a new statement
     pub(crate) fn new(sql: &str, conn: &'a Connection<'a>) -> Result<Self> {
         let err = Handle::<OCIError>::new(conn.env_ptr())?;
-        let stmt = Ptr::null();
-        catch!{err.get() =>
-            OCIStmtPrepare2(
-                conn.svc_ptr(), stmt.as_ptr(), err.get(),
-                sql.as_ptr(), sql.len() as u32,
-                ptr::null(), 0,
-                OCI_NTV_SYNTAX, OCI_DEFAULT
+        let mut stmt = Ptr::null();
+        oci::stmt_prepare(
+            conn.svc_ptr(), stmt.as_mut_ptr(), err.get(),
+            sql.as_ptr(), sql.len() as u32,
+            ptr::null(), 0,
+            OCI_NTV_SYNTAX, OCI_DEFAULT
+        )?;
+        let params = Params::new(stmt.get(), err.get())?.map(|params| RwLock::new(params));
+        Ok(Self {conn, stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
+    }
+
+    /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
+    fn bind_args(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<Option<Vec<usize>>> {
+        self.params.as_ref()
+            .map(|params| params.write().bind_args(self.stmt_ptr(), self.err_ptr(), in_args, out_args))
+            .unwrap_or_else(|| 
+                if in_args.len() == 0 && out_args.len() == 0 {
+                    Ok(None)
+                } else {
+                    Err(Error::new("Statement has no parameters"))
+                }
             )
-        }
-        let (param_idxs, args_binds, indicators, data_sizes) = get_bind_info(stmt.get(), err.get())?;
-        Ok(Self {
-            err, conn, stmt, param_idxs, args_binds, indicators, data_sizes,
-            cols: OnceCell::new(), max_long: Cell::new(DEFAULT_LONG_BUFFER_SIZE)
-        })
     }
 
     /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
@@ -47,8 +54,11 @@ impl<'a> Statement<'a> {
         match res {
             OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
                 if let Some(idxs) = out_idxs {
-                    for (out_arg_ix, out_param_ix) in idxs.into_iter().enumerate() {
-                        out_args[out_arg_ix].as_to_sql_out().set_len(self.data_sizes[out_param_ix].get() as usize);
+                    if let Some(params) = self.params.as_ref() {
+                        let params = params.read();
+                        for (out_arg_ix, out_param_ix) in idxs.into_iter().enumerate() {
+                            out_args[out_arg_ix].as_to_sql_out().set_len(params.out_data_len(out_param_ix));
+                        }
                     }
                 }
                 Ok(res)
@@ -195,18 +205,18 @@ impl<'a> Statement<'a> {
             return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
         }
         let res = self.exec(stmt_type, args, &mut [])?;
-        let _cols = self.cols.get_or_try_init(|| Columns::new(self, self.max_long.get()))?;
+
+        if self.cols.get().is_none() {
+            let cols = Columns::new(self, self.max_long)?;
+            self.cols.get_or_init(|| RwLock::new(cols));
+        };
         match res {
-            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
-                Ok( Rows::new(res, self) )
-            }
-            OCI_NO_DATA => {
-                Ok( Rows::new(res, self) )
+            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO | OCI_NO_DATA => {
+                Ok( Rows::from_query(res, self) )
             }
             _ => Err( Error::oci(self.err_ptr(), res) )
         }
     }
-
 }
 
 #[cfg(test)]

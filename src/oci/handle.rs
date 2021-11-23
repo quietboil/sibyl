@@ -1,6 +1,6 @@
 //! OCI handles.
 
-use crate::{Result, Error};
+use crate::{Result, Error, oci};
 use super::*;
 use libc::c_void;
 use std::ptr;
@@ -25,6 +25,7 @@ impl_handle_type!{
     OCIServer   => OCI_HTYPE_SERVER,
     OCISvcCtx   => OCI_HTYPE_SVCCTX,
     OCISession  => OCI_HTYPE_SESSION,
+    OCIAuthInfo => OCI_HTYPE_AUTHINFO,
     OCIStmt     => OCI_HTYPE_STMT,
     OCIBind     => OCI_HTYPE_BIND,
     OCIDefine   => OCI_HTYPE_DEFINE,
@@ -37,7 +38,7 @@ pub struct Handle<T: HandleType> {
 
 /*
     All but OCIStmt handles are read-only (as far as Rust is concerned).
-    They also do not use interior mutability. Most importantly, becuase
+    They also do not use interior mutability. Most importantly, because
     OCI environment is created by sibyl in OCI_THREADED mode, the internal
     OCI structures are protected by OCI itself from concurrent access by
     multiple threads.
@@ -67,12 +68,8 @@ impl<T: HandleType> Drop for Handle<T> {
 impl<T: HandleType> Handle<T> {
     fn alloc(env: *mut OCIEnv) -> Result<*mut T> {
         let mut handle = ptr::null_mut::<T>();
-        let res = unsafe {
-            OCIHandleAlloc(env, &mut handle as *mut *mut T as *mut *mut c_void, T::get_type(), 0, ptr::null())
-        };
-        if res != OCI_SUCCESS {
-            Err( Error::env(env, res) )
-        } else if handle == ptr::null_mut() {
+        oci::handle_alloc(env, &mut handle as *mut *mut T as *mut *mut c_void, T::get_type(), 0, ptr::null())?;
+        if handle.is_null() {
             Err( Error::new(&format!("OCI returned NULL for handle {}", T::get_type())) )
         } else {
             Ok( handle )
@@ -88,16 +85,26 @@ impl<T: HandleType> Handle<T> {
         Self { ptr: Ptr::new(ptr) }
     }
 
+    pub(crate) fn from_handle(handle: &mut Self) -> Self {
+        let mut ptr = Ptr::null();
+        ptr.swap(&mut handle.ptr);
+        Self { ptr }
+    }
+
     pub(crate) fn get(&self) -> *mut T {
         self.ptr.get()
     }
 
-    pub(crate) fn as_ptr(&self) -> *mut *mut T {
+    pub(crate) fn as_ptr(&self) -> *const *mut T {
         self.ptr.as_ptr()
     }
 
-    pub(crate) fn swap(&self, other: &Self) {
-        self.ptr.swap(&other.ptr);
+    pub(crate) fn as_mut_ptr(&mut self) -> *mut *mut T {
+        self.ptr.as_mut_ptr()
+    }
+
+    pub(crate) fn swap(&mut self, other: &mut Self) {
+        self.ptr.swap(&mut other.ptr);
     }
 
     pub(crate) fn get_attr<V: attr::AttrGet>(&self, attr_type: u32, err: *mut OCIError) -> Result<V> {

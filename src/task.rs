@@ -1,5 +1,5 @@
-//! Abstraction over tokio or async-std task functions
+//! Abstraction over async task functions
 
 mod tokio;
 
-pub(crate) use self::tokio::spawn_blocking;
+pub(crate) use self::tokio::{spawn, spawn_blocking, JoinError};

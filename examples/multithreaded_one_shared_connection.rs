@@ -7,6 +7,8 @@
     Note, this is *not* how you want to do things :-) as this shared connection
     becomes a bottleneck. This is just an example of what is possible.
 */
+#![allow(unused_imports)]
+
 use sibyl::*;
 use std::{env, thread, sync::Arc};
 use once_cell::sync::OnceCell;
@@ -63,4 +65,9 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(feature="nonblocking")]
+fn main() {
+    unimplemented!()
 }

@@ -218,7 +218,7 @@ impl Env for Environment {
 }
 
 impl Ctx for Environment {
-    fn as_ptr(&self) -> *mut c_void {
+    fn ctx_ptr(&self) -> *mut c_void {
         self.env_ptr() as *mut c_void
     }
 }

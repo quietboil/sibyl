@@ -8,7 +8,8 @@ pub mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 pub mod nonblocking;
 
-use crate::{Environment, Result, catch, env::Env, oci::*, types::Ctx};
+use crate::{Environment, Result, env::Env, oci::{*, self, attr::{AttrGet, AttrSet}}, types::Ctx};
+use std::ptr;
 use libc::c_void;
 
 /**
@@ -16,49 +17,38 @@ use libc::c_void;
 
     As nonblocking mode can only be set after the `OCISessionBegin()`,
     this function is always blocking.
-*/ 
+*/
 fn connect<'a>(env: &'a Environment, addr: &str, user: &str, pass: &str) -> Result<Connection<'a>> {
     let err = Handle::<OCIError>::new(env.env_ptr())?;
-    let srv = Handle::<OCIServer>::new(env.env_ptr())?;
-    let svc = Handle::<OCISvcCtx>::new(env.env_ptr())?;
-    let usr = Handle::<OCISession>::new(env.env_ptr())?;
-    usr.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", err.get())?;
-    catch!{err.get() =>
-        OCIServerAttach(srv.get(), err.get(), addr.as_ptr(), addr.len() as u32, OCI_DEFAULT)
-    }
-    if let Err(set_attr_err) = svc.set_attr(OCI_ATTR_SERVER, srv.get(), err.get()) {
+    let inf = Handle::<OCIAuthInfo>::new(env.env_ptr())?;
+    inf.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", err.get())?;
+    inf.set_attr(OCI_ATTR_USERNAME, user, err.get())?;
+    inf.set_attr(OCI_ATTR_PASSWORD, pass, err.get())?;
+    let mut svc = Ptr::null();
+    let mut found = 0u8;
+    oci::session_get(
+        env.env_ptr(), err.get(), svc.as_mut_ptr(), inf.get(), addr.as_ptr(), addr.len() as u32,
+        ptr::null(), 0, ptr::null_mut(), ptr::null_mut(), &mut found, 
+        OCI_SESSGET_STMTCACHE
+    )?;    
+    attr::get::<Ptr<OCISession>>(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, svc.get() as *const c_void, err.get())
+    .or_else(|attr_err| {
         unsafe {
-            OCIServerDetach(srv.get(), err.get(), OCI_DEFAULT);
+            OCISessionRelease(svc.get(), err.get(), ptr::null(), 0, OCI_DEFAULT);
         }
-        return Err(set_attr_err);
-    }
-
-    let conn = Connection { env, usr, svc, srv, err };
-    conn.usr.set_attr(OCI_ATTR_USERNAME, user, conn.err_ptr())?;
-    conn.usr.set_attr(OCI_ATTR_PASSWORD, pass, conn.err_ptr())?;
-    catch!{conn.err_ptr() =>
-        OCISessionBegin(
-            conn.svc_ptr(), conn.err_ptr(), conn.usr_ptr(),
-            if user.len() == 0 && pass.len() == 0 { OCI_CRED_EXT } else { OCI_CRED_RDBMS },
-            OCI_DEFAULT
-        )
-    }
-    if let Err(set_attr_err) = conn.svc.set_attr(OCI_ATTR_SESSION, conn.usr_ptr(), conn.err_ptr()) {
-        unsafe {
-            OCISessionEnd(conn.svc_ptr(), conn.err_ptr(), conn.usr_ptr(), OCI_DEFAULT);
-        }
-        return Err(set_attr_err);
-    }
-    Ok(conn)
+        Err(attr_err)
+    })
+    .map(|usr| 
+        Connection { env, err, svc, usr }
+    )
 }
 
 /// Represents a user session
 pub struct Connection<'a> {
     env: &'a Environment,
-    usr: Handle<OCISession>,
-    svc: Handle<OCISvcCtx>,
-    srv: Handle<OCIServer>,
     err: Handle<OCIError>,
+    usr: Ptr<OCISession>,
+    svc: Ptr<OCISvcCtx>,
 }
 
 impl Env for Connection<'_> {
@@ -72,16 +62,12 @@ impl Env for Connection<'_> {
 }
 
 impl Ctx for Connection<'_> {
-    fn as_ptr(&self) -> *mut c_void {
-        self.usr.get() as *mut c_void
+    fn ctx_ptr(&self) -> *mut c_void {
+        self.usr_ptr() as *mut c_void
     }
 }
 
-impl<'a> Connection<'a> {
-    pub(crate) fn srv_ptr(&self) -> *mut OCIServer {
-        self.srv.get()
-    }
-
+impl Connection<'_> {
     pub(crate) fn svc_ptr(&self) -> *mut OCISvcCtx {
         self.svc.get()
     }
@@ -90,31 +76,49 @@ impl<'a> Connection<'a> {
         self.usr.get()
     }
 
+    fn set_session_attr<T: AttrSet>(&self, attr_type: u32, attr_val: T) -> Result<()> {
+        attr::set(attr_type, attr_val, OCI_HTYPE_SESSION, self.usr_ptr() as *mut c_void, self.err_ptr())        
+    }
+
+    fn get_session_attr<T: AttrGet>(&self, attr_type: u32) -> Result<T> {
+        attr::get(attr_type, OCI_HTYPE_SESSION, self.usr_ptr() as *const c_void, self.err_ptr())
+    }
+
     /// Reports whether self is connected to the server
     pub fn is_connected(&self) -> Result<bool> {
-        let status : u32 = self.srv.get_attr(OCI_ATTR_SERVER_STATUS, self.err_ptr())?;
-        Ok(status == OCI_SERVER_NORMAL)
+        attr::get::<Ptr<OCIServer>>(OCI_ATTR_SERVER, OCI_HTYPE_SVCCTX, self.svc_ptr() as *const c_void, self.err_ptr())
+        .and_then(|srv| 
+            attr::get::<u32>(OCI_ATTR_SERVER_STATUS, OCI_HTYPE_SERVER, srv.get() as *const c_void, self.err_ptr())
+        )
+        .map(|status| 
+            status == OCI_SERVER_NORMAL
+        )
     }
 
     /// Reports whether connection is established in non-blocking mode.
     pub fn is_async(&self) -> Result<bool> {
-        let mode : u8 = self.srv.get_attr(OCI_ATTR_NONBLOCKING_MODE, self.err_ptr())?;
-        Ok(mode != 0)
+        attr::get::<Ptr<OCIServer>>(OCI_ATTR_SERVER, OCI_HTYPE_SVCCTX, self.svc_ptr() as *const c_void, self.err_ptr())
+        .and_then(|srv| 
+            attr::get::<u8>(OCI_ATTR_NONBLOCKING_MODE, OCI_HTYPE_SERVER, srv.get() as *const c_void, self.err_ptr())
+        )
+        .map(|mode| 
+            mode != 0
+        )
     }
 
     /// Causes the server to measure call time, in milliseconds, for each subsequent OCI call.
     pub fn start_call_time_measurements(&self) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_COLLECT_CALL_TIME, 1u8, self.err_ptr())
+        self.set_session_attr(OCI_ATTR_COLLECT_CALL_TIME, 1u8)
     }
 
     /// Returns the server-side time for the preceding call in microseconds.
     pub fn get_call_time(&self) -> Result<u64> {
-        self.usr.get_attr::<u64>(OCI_ATTR_CALL_TIME, self.err_ptr())
+        self.get_session_attr(OCI_ATTR_CALL_TIME)
     }
 
     /// Terminates call time measurements.
     pub fn stop_call_time_measurements(&self) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_COLLECT_CALL_TIME, 0u8, self.err_ptr())
+        self.set_session_attr(OCI_ATTR_COLLECT_CALL_TIME, 0u8)
     }
 
     /**
@@ -144,7 +148,7 @@ impl<'a> Connection<'a> {
         ```
     */
     pub fn set_module(&self, name: &str) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_MODULE, name, self.err_ptr())
+        self.set_session_attr(OCI_ATTR_MODULE, name)
     }
 
     /**
@@ -174,7 +178,7 @@ impl<'a> Connection<'a> {
         ```
     */
     pub fn set_action(&self, action: &str) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_ACTION, action, self.err_ptr())
+        self.set_session_attr(OCI_ATTR_ACTION, action)
     }
 
     /**
@@ -203,7 +207,7 @@ impl<'a> Connection<'a> {
         ```
     */
     pub fn set_client_identifier(&self, id: &str) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_CLIENT_IDENTIFIER, id, self.err_ptr())
+        self.set_session_attr(OCI_ATTR_CLIENT_IDENTIFIER, id)
     }
 
     /**
@@ -232,7 +236,7 @@ impl<'a> Connection<'a> {
         ```
     */
     pub fn set_client_info(&self, info: &str) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_CLIENT_INFO, info, self.err_ptr())
+        self.set_session_attr(OCI_ATTR_CLIENT_INFO, info)
     }
 
     /**
@@ -256,7 +260,7 @@ impl<'a> Connection<'a> {
         ```
     */
     pub fn get_current_schema(&self) -> Result<&str> {
-        self.usr.get_attr::<&str>(OCI_ATTR_CURRENT_SCHEMA, self.err_ptr())
+        self.get_session_attr(OCI_ATTR_CURRENT_SCHEMA)
     }
 
     /**
@@ -293,7 +297,7 @@ impl<'a> Connection<'a> {
         ```
     */
     pub fn set_current_schema(&self, schema_name: &str) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_CURRENT_SCHEMA, schema_name, self.err_ptr())
+        self.set_session_attr(OCI_ATTR_CURRENT_SCHEMA, schema_name)
     }
 
     /**
@@ -305,6 +309,6 @@ impl<'a> Connection<'a> {
         in each prepared statement.
     */
     pub fn set_lob_prefetch_size(&self, size: u32) -> Result<()> {
-        self.usr.set_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE, size, self.err_ptr())
+        self.set_session_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE, size)
     }
 }

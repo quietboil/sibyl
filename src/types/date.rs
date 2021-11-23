@@ -2,7 +2,7 @@
 
 mod tosql;
 
-use crate::{ Result, catch, oci::*, env::Env };
+use crate::{ Result, oci::{self, *}, env::Env };
 use std::{ mem, ptr, cmp::Ordering };
 
 /// Returns unitinialized date to be used as a row's column buffer or an output variable
@@ -15,32 +15,26 @@ pub(crate) fn new() -> OCIDate {
 pub(crate) fn to_string(fmt: &str, date: *const OCIDate, err: *mut OCIError) -> Result<String> {
     let mut txt : [u8;128] = unsafe { mem::MaybeUninit::uninit().assume_init() };
     let mut txt_len = txt.len() as u32;
-    catch!{err =>
-        OCIDateToText(
-            err, date,
-            fmt.as_ptr(), fmt.len() as u8,
-            ptr::null(), 0,
-            &mut txt_len, txt.as_mut_ptr()
-        )
-    }
+    oci::date_to_text(
+        err, date,
+        fmt.as_ptr(), fmt.len() as u8,
+        ptr::null(), 0,
+        &mut txt_len, txt.as_mut_ptr()
+    )?;
     let txt = &txt[0..txt_len as usize];
     Ok( String::from_utf8_lossy(txt).to_string() )
 }
 
 pub(crate) fn from_date<'a>(from: *const OCIDate, env: &'a dyn Env) -> Result<Date<'a>> {
     let mut date = mem::MaybeUninit::<OCIDate>::uninit();
-    catch!{env.err_ptr() =>
-        OCIDateAssign(env.err_ptr(), from, date.as_mut_ptr())
-    }
+    oci::date_assign(env.err_ptr(), from, date.as_mut_ptr())?;
     let date = unsafe { date.assume_init() };
     Ok( Date { date, env } )
 }
 
 // fn check_date(date: &OCIDate, env: & dyn Env) -> Result<()> {
 //     let mut res = 0;
-//     catch!{env.err_ptr() =>
-//         OCIDateCheck(env.err_ptr(), date, &mut res)
-//     };
+//     oci::date_check(env.err_ptr(), date, &mut res)?;
 //     if res == 0 {
 //         Ok(())
 //     } else {
@@ -144,15 +138,13 @@ impl<'a> Date<'a> {
     */
     pub fn from_string(txt: &str, fmt: &str, env: &'a dyn Env) -> Result<Self> {
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
-        catch!{env.err_ptr() =>
-            OCIDateFromText(
-                env.err_ptr(),
-                txt.as_ptr(), txt.len() as u32,
-                fmt.as_ptr(), fmt.len() as u8,
-                ptr::null(), 0,
-                date.as_mut_ptr()
-            )
-        }
+        oci::date_from_text(
+            env.err_ptr(),
+            txt.as_ptr(), txt.len() as u32,
+            fmt.as_ptr(), fmt.len() as u8,
+            ptr::null(), 0,
+            date.as_mut_ptr()
+        )?;
         let date = unsafe { date.assume_init() };
         Ok( Self { date, env } )
     }
@@ -174,9 +166,7 @@ impl<'a> Date<'a> {
     */
     pub fn from_sysdate(env: &'a dyn Env) -> Result<Self> {
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
-        catch!{env.err_ptr() =>
-            OCIDateSysDate(env.err_ptr(), date.as_mut_ptr())
-        }
+        oci::date_sys_date(env.err_ptr(), date.as_mut_ptr())?;
         let date = unsafe { date.assume_init() };
         Ok( Self { env, date } )
     }
@@ -363,9 +353,7 @@ impl<'a> Date<'a> {
     pub fn add_days(&self, num: i32) -> Result<Self> {
         let env = self.env;
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
-        catch!{env.err_ptr() =>
-            OCIDateAddDays(env.err_ptr(), self.as_ptr(), num, date.as_mut_ptr())
-        }
+        oci::date_add_days(env.err_ptr(), self.as_ptr(), num, date.as_mut_ptr())?;
         let date = unsafe { date.assume_init() };
         Ok( Self { env, date } )
     }
@@ -399,9 +387,7 @@ impl<'a> Date<'a> {
     pub fn add_months(&self, num: i32) -> Result<Self> {
         let env = self.env;
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
-        catch!{env.err_ptr() =>
-            OCIDateAddMonths(env.err_ptr(), self.as_ptr(), num, date.as_mut_ptr())
-        }
+        oci::date_add_months(env.err_ptr(), self.as_ptr(), num, date.as_mut_ptr())?;
         let date = unsafe { date.assume_init() };
         Ok( Self { env, date } )
     }
@@ -425,9 +411,7 @@ impl<'a> Date<'a> {
     */
     pub fn compare(&self, other: &Date) -> Result<Ordering> {
         let mut cmp = 0i32;
-        catch!{self.env.err_ptr() =>
-            OCIDateCompare(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), &mut cmp)
-        }
+        oci::date_compare(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), &mut cmp)?;
         let ordering = if cmp == 0 { Ordering::Equal } else if cmp < 0 { Ordering::Less } else { Ordering::Greater };
         Ok( ordering )
     }
@@ -452,9 +436,7 @@ impl<'a> Date<'a> {
     */
     pub fn days_from(&self, other: &Date) -> Result<i32> {
         let mut res = 0i32;
-        catch!{self.env.err_ptr() =>
-            OCIDateDaysBetween(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), &mut res)
-        }
+        oci::date_days_between(self.env.err_ptr(), self.as_ptr(), other.as_ptr(), &mut res)?;
         Ok( res )
     }
 
@@ -476,9 +458,7 @@ impl<'a> Date<'a> {
     pub fn month_last_day(&self) -> Result<Self> {
         let env = self.env;
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
-        catch!{env.err_ptr() =>
-            OCIDateLastDay(env.err_ptr(), self.as_ptr(), date.as_mut_ptr())
-        }
+        oci::date_last_day(env.err_ptr(), self.as_ptr(), date.as_mut_ptr())?;
         let date = unsafe { date.assume_init() };
         Ok( Self { env, date } )
     }
@@ -502,13 +482,11 @@ impl<'a> Date<'a> {
     pub fn next_week_day(&self, weekday: &str) -> Result<Self> {
         let env = self.env;
         let mut date = mem::MaybeUninit::<OCIDate>::uninit();
-        catch!{env.err_ptr() =>
-            OCIDateNextDay(
-                env.err_ptr(), self.as_ptr(),
-                weekday.as_ptr(), weekday.len() as u32,
-                date.as_mut_ptr()
-            )
-        }
+        oci::date_next_day(
+            env.err_ptr(), self.as_ptr(),
+            weekday.as_ptr(), weekday.len() as u32,
+            date.as_mut_ptr()
+        )?;
         let date = unsafe { date.assume_init() };
         Ok( Self { env, date } )
     }

@@ -1,15 +1,10 @@
 //! REF CURSOR
 
-use super::{
-    Stmt, Statement,
-    args::ToSqlOut,
-    cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE},
-    rows::{Rows, ResultSetProvider}
-};
-use crate::{Result, oci::*, env::Env, conn::Connection, types::Ctx};
+use super::{ResultSetColumns, ResultSetConnection, Statement, Stmt, args::ToSqlOut, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::{Rows, Row}};
+use crate::{Connection, Result, env::Env, oci::*, types::Ctx};
 use libc::c_void;
-use std::cell::Cell;
-use once_cell::unsync::OnceCell;
+use once_cell::sync::OnceCell;
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 impl ToSqlOut for Handle<OCIStmt> {
     fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
@@ -23,82 +18,109 @@ pub(crate) enum RefCursor {
 }
 
 impl RefCursor {
-    fn get(&self) -> *mut OCIStmt {
+    fn get_ptr(&self) -> *mut OCIStmt {
         match self {
             RefCursor::Handle( handle ) => handle.get(),
             RefCursor::Ptr( ptr )       => ptr.get(),
         }
     }
 
-    fn as_ptr(&mut self) -> *mut *mut OCIStmt {
+    fn as_mut_ptr(&mut self) -> *mut *mut OCIStmt {
         match self {
-            RefCursor::Handle( handle ) => handle.as_ptr(),
-            RefCursor::Ptr( ptr )       => ptr.as_ptr(),
+            RefCursor::Handle( handle ) => handle.as_mut_ptr(),
+            RefCursor::Ptr( ptr )       => ptr.as_mut_ptr(),
+        }
+    }
+}
+
+enum CursorParent<'a> {
+    Statement(&'a Statement<'a>),
+    Row(&'a Row<'a>)
+}
+
+impl CursorParent<'_> {
+    fn conn(&self) -> &Connection {
+        match self {
+            Self::Statement(stmt) => stmt.conn,
+            Self::Row(row) => row.conn(),
+        }
+    }
+}
+
+impl Env for CursorParent<'_> {
+    fn env_ptr(&self) -> *mut OCIEnv {
+        match self {
+            Self::Statement(stmt) => stmt.env_ptr(),
+            Self::Row(row) => row.get_ctx().env_ptr(),
+        }
+    }
+
+    fn err_ptr(&self) -> *mut OCIError {
+        match self {
+            Self::Statement(stmt) => stmt.err_ptr(),
+            Self::Row(row) => row.err_ptr(),
+        }
+    }
+}
+
+impl Ctx for CursorParent<'_> {
+    fn ctx_ptr(&self) -> *mut c_void {
+        match self {
+            Self::Statement(stmt) => stmt.ctx_ptr(),
+            Self::Row(row) => row.get_ctx().ctx_ptr(),
         }
     }
 }
 
 /// Cursors - implicit results and REF CURSOR - from an executed PL/SQL statement
 pub struct Cursor<'a> {
-    stmt:     &'a dyn ResultSetProvider,
-    cursor:   RefCursor,
-    cols:     OnceCell<Columns>,
-    max_long: Cell<u32>,
-}
-
-impl Drop for Cursor<'_> {
-    fn drop(&mut self) {
-        let env = self.env_ptr();
-        let err = self.err_ptr();
-        if let Some(cols) = self.cols.get_mut() {
-            cols.drop_output_buffers(env, err);
-        }
-    }
+    parent: CursorParent<'a>,
+    cursor: RefCursor,
+    cols:   OnceCell<RwLock<Columns>>,
+    max_long: u32,
 }
 
 impl Env for Cursor<'_> {
     fn env_ptr(&self) -> *mut OCIEnv {
-        self.stmt.env_ptr()
+        self.parent.env_ptr()
     }
 
     fn err_ptr(&self) -> *mut OCIError {
-        self.stmt.err_ptr()
+        self.parent.err_ptr()
+    }
+}
+
+impl Ctx for Cursor<'_> {
+    fn ctx_ptr(&self) -> *mut c_void {
+        self.parent.ctx_ptr()
     }
 }
 
 impl Stmt for Cursor<'_> {
     fn stmt_ptr(&self) -> *mut OCIStmt {
-        self.cursor.get()
+        self.cursor.get_ptr()
     }
 }
 
-impl Ctx for Cursor<'_> {
-    fn as_ptr(&self) -> *mut c_void {
-        self.stmt.get_ctx().as_ptr()
+impl ResultSetColumns for Cursor<'_> {
+    fn read_columns(&self) -> RwLockReadGuard<Columns> {
+        self.cols.get().expect("protected columns").read()
+    }
+
+    fn write_columns(&self) -> RwLockWriteGuard<Columns> {
+        self.cols.get().expect("protected columns").write()
     }
 }
 
-impl<'a> ResultSetProvider for Cursor<'a> {
-    fn get_cols(&self) -> Option<&Columns> {
-        self.cols.get()
-    }
-
-    fn get_ctx(&self) -> &dyn Ctx {
-        self
-    }
-
-    fn get_env(&self) -> &dyn Env {
-        self
-    }
-
+impl ResultSetConnection for Cursor<'_> {
     fn conn(&self) -> &Connection {
-        self.stmt.conn()
+        self.parent.conn()
     }
 }
 
 impl ToSqlOut for Cursor<'_> {
     fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
-        (SQLT_RSET, (*self).cursor.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCIStmt>(), std::mem::size_of::<*mut OCIStmt>())
+        (SQLT_RSET, (*self).cursor.as_mut_ptr() as *mut c_void, std::mem::size_of::<*mut OCIStmt>(), std::mem::size_of::<*mut OCIStmt>())
     }
 }
 
@@ -205,24 +227,31 @@ impl<'a> Cursor<'a> {
     */
     pub fn new(stmt: &'a Statement) -> Result<Self> {
         let handle = Handle::<OCIStmt>::new(stmt.env_ptr())?;
-        Ok( Self::from_handle(handle, stmt) )
+        Ok(
+            Self {
+                parent:   CursorParent::Statement(stmt),
+                cursor:   RefCursor::Handle( handle ),
+                cols:     OnceCell::new(),
+                max_long: DEFAULT_LONG_BUFFER_SIZE
+            }
+        )
     }
 
-    pub(crate) fn implicit(istmt: Ptr<OCIStmt>, stmt: &'a dyn ResultSetProvider) -> Self {
+    pub(crate) fn implicit(istmt: Ptr<OCIStmt>, stmt: &'a Statement) -> Self {
         Self {
-            cursor: RefCursor::Ptr( istmt ),
-            cols: OnceCell::new(),
-            stmt,
-            max_long: Cell::new(DEFAULT_LONG_BUFFER_SIZE)
+            parent:   CursorParent::Statement(stmt),
+            cursor:   RefCursor::Ptr( istmt ),
+            cols:     OnceCell::new(),
+            max_long: DEFAULT_LONG_BUFFER_SIZE
         }
     }
 
-    pub(crate) fn from_handle(handle: Handle<OCIStmt>, stmt: &'a dyn ResultSetProvider) -> Self {
+    pub(crate) fn explicit(handle: Handle<OCIStmt>, row: &'a Row<'a>) -> Self {
         Self {
-            cursor: RefCursor::Handle( handle ),
-            cols: OnceCell::new(),
-            stmt,
-            max_long: Cell::new(DEFAULT_LONG_BUFFER_SIZE)
+            parent:   CursorParent::Row(row),
+            cursor:   RefCursor::Handle( handle ),
+            cols:     OnceCell::new(),
+            max_long: DEFAULT_LONG_BUFFER_SIZE
         }
     }
 
@@ -312,7 +341,7 @@ impl<'a> Cursor<'a> {
         ```
     */
     pub fn get_column(&self, pos: usize) -> Option<ColumnInfo> {
-        self.cols.get().and_then(|cols| cols.get_column_info(self, pos))
+        self.cols.get().and_then(|cols| cols.read().get_column_info(self, pos))
     }
 
     /**
@@ -470,8 +499,8 @@ impl<'a> Cursor<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn set_max_long_size(&self, size: u32) {
-        self.max_long.set(size);
+    pub fn set_max_long_size(&mut self, size: u32) {
+        self.max_long = size;
     }
 
     /**
@@ -525,8 +554,11 @@ impl<'a> Cursor<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn rows(&'a self) -> Result<Rows<'a>> {
-        let _cols = self.cols.get_or_try_init(|| Columns::new(self, self.max_long.get()))?;
-        Ok( Rows::new(OCI_SUCCESS, self) )
+    pub fn rows(&self) -> Result<Rows> {        
+        if self.cols.get().is_none() {
+            let cols = Columns::new(self, self.max_long)?;
+            self.cols.get_or_init(|| RwLock::new(cols));
+        };
+        Ok( Rows::from_cursor(OCI_SUCCESS, self) )
     }
 }

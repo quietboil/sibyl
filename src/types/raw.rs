@@ -2,13 +2,11 @@
 
 mod tosql;
 
-use crate::{ Result, catch, oci::*, env::Env };
+use crate::{ Result, oci::{self, *}, env::Env };
 
 pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Ptr<OCIRaw>> {
     let bin = Ptr::null();
-    catch!{err =>
-        OCIRawResize(env, err, size, bin.as_ptr())
-    }
+    oci::raw_resize(env, err, size, bin.as_ptr())?;
     Ok( bin )
 }
 
@@ -74,10 +72,8 @@ impl<'a> Raw<'a> {
         ```
     */
     pub fn from_bytes(data: &[u8], env: &'a dyn Env) -> Result<Self> {
-        let raw = Ptr::null();
-        catch!{env.err_ptr() =>
-            OCIRawAssignBytes(env.env_ptr(), env.err_ptr(), data.as_ptr(), data.len() as u32, raw.as_ptr())
-        }
+        let mut raw = Ptr::null();
+        oci::raw_assign_bytes(env.env_ptr(), env.err_ptr(), data.as_ptr(), data.len() as u32, raw.as_mut_ptr())?;
         Ok( Self { env, raw } )
     }
 
@@ -99,10 +95,8 @@ impl<'a> Raw<'a> {
     */
     pub fn from_raw(other: &Raw<'a>) -> Result<Self> {
         let env = other.env;
-        let raw = Ptr::null();
-        catch!{env.err_ptr() =>
-            OCIRawAssignRaw(env.env_ptr(), env.err_ptr(), other.as_ptr(), raw.as_ptr())
-        }
+        let mut raw = Ptr::null();
+        oci::raw_assign_raw(env.env_ptr(), env.err_ptr(), other.as_ptr(), raw.as_mut_ptr())?;
         Ok( Self { env, raw } )
     }
 
@@ -142,9 +136,7 @@ impl<'a> Raw<'a> {
     */
     pub fn capacity(&self) -> Result<usize> {
         let mut size = 0u32;
-        catch!{self.env.err_ptr() =>
-            OCIRawAllocSize(self.env.env_ptr(), self.env.err_ptr(), self.as_ptr(), &mut size)
-        }
+        oci::raw_alloc_size(self.env.env_ptr(), self.env.err_ptr(), self.as_ptr(), &mut size)?;
         Ok( size as usize )
     }
 
@@ -172,10 +164,7 @@ impl<'a> Raw<'a> {
         ```
     */
     pub fn resize(&mut self, new_size: usize) -> Result<()> {
-        catch!{self.env.err_ptr() =>
-            OCIRawResize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, self.raw.as_ptr())
-        }
-        Ok(())
+        oci::raw_resize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, self.raw.as_ptr())
     }
 
     pub(crate) fn as_ptr(&self) -> *const OCIRaw {

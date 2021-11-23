@@ -23,5 +23,5 @@ use libc::c_void;
 */
 pub trait Ctx: Env {
     /// Returns pointer to the current context - either environment or session.
-    fn as_ptr(&self) -> *mut c_void;
+    fn ctx_ptr(&self) -> *mut c_void;
 }

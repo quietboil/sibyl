@@ -2,13 +2,13 @@
 
 use super::{LOB, InternalLob};
 use crate::{
-    Result, Error, catch, BFile,
-    oci::*,
+    Result, Error, BFile,
+    oci::{self, *},
     env::Env,
     conn::Connection,
 };
 use libc::c_void;
-use std::{cmp, ptr, cell::Cell};
+use std::ptr;
 
 impl<T> Drop for LOB<'_,T>
     where T: DescriptorType<OCIType=OCILobLocator>
@@ -161,10 +161,8 @@ impl<'a,T> LOB<'a,T>
     */
     pub fn clone(&self) -> Result<Self> {
         let locator = Descriptor::new(self.conn.env_ptr())?;
-        catch!{self.conn.err_ptr() =>
-            OCILobLocatorAssign(self.conn.svc_ptr(), self.conn.err_ptr(), self.locator.get(), locator.as_ptr())
-        }
-        Ok( Self { locator, conn: self.conn, chunk_size: self.chunk_size.clone() } )
+        oci::lob_locator_assign(self.conn.svc_ptr(), self.conn.err_ptr(), self.locator.get(), locator.as_ptr())?;
+        Ok( Self { locator, conn: self.conn } )
     }
 
     /**
@@ -239,10 +237,7 @@ impl<'a,T> LOB<'a,T>
         ```
     */
     pub fn close(&self) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobClose(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr())
-        }
-        Ok(())
+        oci::lob_close(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr())
     }
 
     /**
@@ -260,9 +255,7 @@ impl<'a,T> LOB<'a,T>
     */
     pub fn len(&self) -> Result<usize> {
         let mut len = 0u64;
-        catch!{self.conn.err_ptr() =>
-            OCILobGetLength2(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut len)
-        }
+        oci::lob_get_length(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut len)?;
         Ok( len as usize )
     }
 
@@ -283,9 +276,7 @@ impl<'a,T> LOB<'a,T>
     */
     pub fn is_open(&self) -> Result<bool> {
         let mut flag = 0u8;
-        catch!{self.conn.err_ptr() =>
-            OCILobIsOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut flag)
-        }
+        oci::lob_is_open(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut flag)?;
         Ok( flag != 0 )
     }
 
@@ -301,10 +292,7 @@ impl<'a,T> LOB<'a,T>
         - If a user tries to write to a LOB that was opened in read-only mode, an error is returned.
     */
     pub fn open_readonly(&self) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), OCI_LOB_READONLY)
-        }
-        Ok(())
+        oci::lob_open(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), OCI_LOB_READONLY)
     }
 
     /**
@@ -387,10 +375,7 @@ impl<'a, T> LOB<'a,T>
         ```
     */
     pub fn append_lob(&self, lob: &Self) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobAppend(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), lob.as_ptr())
-        }
-        Ok(())
+        oci::lob_append(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), lob.as_ptr())
     }
 
     /**
@@ -493,14 +478,11 @@ impl<'a, T> LOB<'a,T>
         ```
     */
     pub fn copy(&self, src: &Self, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobCopy2(
-                self.conn.svc_ptr(), self.conn.err_ptr(),
-                self.as_mut_ptr(), src.as_mut_ptr(),
-                amount as u64, (offset + 1) as u64, (src_offset + 1) as u64
-            )
-        }
-        Ok(())
+        oci::lob_copy(
+            self.conn.svc_ptr(), self.conn.err_ptr(),
+            self.as_mut_ptr(), src.as_mut_ptr(),
+            amount as u64, (offset + 1) as u64, (src_offset + 1) as u64
+        )
     }
 
     /**
@@ -667,14 +649,11 @@ impl<'a, T> LOB<'a,T>
         ```
     */
     pub fn load_from_file(&self, src: &BFile, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobLoadFromFile2(
-                self.conn.svc_ptr(), self.conn.err_ptr(),
-                self.as_mut_ptr(), src.as_mut_ptr(),
-                amount as u64, (offset + 1) as u64, (src_offset + 1) as u64
-            )
-        }
-        Ok(())
+        oci::lob_load_from_file(
+            self.conn.svc_ptr(), self.conn.err_ptr(),
+            self.as_mut_ptr(), src.as_mut_ptr(),
+            amount as u64, (offset + 1) as u64, (src_offset + 1) as u64
+        )
     }
 
     /**
@@ -686,12 +665,10 @@ impl<'a, T> LOB<'a,T>
     */
     pub fn erase(&self, offset: usize, amount: usize) -> Result<usize> {
         let mut count: u64 = amount as u64;
-        catch!{self.conn.err_ptr() =>
-            OCILobErase2(
-                self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
-                &mut count as *mut u64, (offset + 1) as u64
-            )
-        }
+        oci::lob_erase(
+            self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
+            &mut count as *mut u64, (offset + 1) as u64
+        )?;
         Ok( count as usize )
     }
 
@@ -717,13 +694,8 @@ impl<'a, T> LOB<'a,T>
         instead of issuing several write calls for the same chunk.
     */
     pub fn chunk_size(&self) -> Result<usize> {
-        let mut size: u32 = self.chunk_size.get();
-        if size == 0 {
-            catch!{self.conn.err_ptr() =>
-                OCILobGetChunkSize(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut size)
-            }
-            self.chunk_size.replace(size);
-        }
+        let mut size = 0u32;
+        oci::lob_get_chunk_size(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut size)?;
         Ok( size as usize )
     }
 
@@ -735,14 +707,13 @@ impl<'a, T> LOB<'a,T>
     pub fn content_type(&self) -> Result<String> {
         let mut txt = String::with_capacity(OCI_LOB_CONTENTTYPE_MAXSIZE);
         let mut len = txt.capacity() as u32;
-        catch!{self.conn.err_ptr() =>
-            OCILobGetContentType(
-                self.conn.env_ptr(), self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
-                txt.as_mut_vec().as_mut_ptr(), &mut len, 0
-            )
-        }
         unsafe {
-            txt.as_mut_vec().set_len(len as usize);
+            let txt = txt.as_mut_vec();
+            oci::lob_get_content_type(
+                self.conn.env_ptr(), self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
+                txt.as_mut_ptr(), &mut len, 0
+            )?;
+            txt.set_len(len as usize);
         }
         Ok( txt )
     }
@@ -755,13 +726,10 @@ impl<'a, T> LOB<'a,T>
     pub fn set_content_type(&self, content_type: &str) -> Result<()> {
         let len = content_type.len() as u32;
         let ptr = if len > 0 { content_type.as_ptr() } else { ptr::null::<u8>() };
-        catch!{self.conn.err_ptr() =>
-            OCILobSetContentType(
-                self.conn.env_ptr(), self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
-                ptr, len, 0
-            )
-        }
-        Ok(())
+        oci::lob_set_content_type(
+            self.conn.env_ptr(), self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
+            ptr, len, 0
+        )
     }
 
     /**
@@ -796,10 +764,7 @@ impl<'a, T> LOB<'a,T>
         - It is an error to open the same LOB twice.
     */
     pub fn open(&self) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), OCI_LOB_READWRITE)
-        }
-        Ok(())
+        oci::lob_open(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), OCI_LOB_READWRITE)
     }
 
     /**
@@ -809,25 +774,20 @@ impl<'a, T> LOB<'a,T>
         of bytes in the LOB.
     */
     pub fn trim(&self, new_len: usize) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobTrim2(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), new_len as u64)
-        }
-        Ok(())
+        oci::lob_trim(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), new_len as u64)
     }
 
     fn write_piece(&self, piece: u8, offset: usize, data: &[u8]) -> Result<usize> {
         let mut byte_cnt = if piece == OCI_ONE_PIECE { data.len() as u64 } else { 0u64 };
         let mut char_cnt = 0u64;
         let charset_form = self.charset_form()? as u8;
-        catch!{self.conn.err_ptr() =>
-            OCILobWrite2(
-                self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
-                &mut byte_cnt, &mut char_cnt, (offset + 1) as u64,
-                data.as_ptr(), data.len() as u64, piece,
-                ptr::null_mut::<c_void>(), ptr::null::<c_void>(),
-                AL32UTF8, charset_form
-            )
-        }
+        oci::lob_write(
+            self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
+            &mut byte_cnt, &mut char_cnt, (offset + 1) as u64,
+            data.as_ptr(), data.len() as u64, piece,
+            ptr::null_mut::<c_void>(), ptr::null::<c_void>(),
+            AL32UTF8, charset_form
+        )?;
         Ok( byte_cnt as usize )
     }
 
@@ -835,15 +795,13 @@ impl<'a, T> LOB<'a,T>
         let mut byte_cnt = if piece == OCI_ONE_PIECE { data.len() as u64 } else { 0u64 };
         let mut char_cnt = 0u64;
         let charset_form = self.charset_form()? as u8;
-        catch!{self.conn.err_ptr() =>
-            OCILobWriteAppend2(
-                self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
-                &mut byte_cnt, &mut char_cnt,
-                data.as_ptr(), data.len() as u64, piece,
-                ptr::null_mut::<c_void>(), ptr::null::<c_void>(),
-                AL32UTF8, charset_form
-            )
-        }
+        oci::lob_write_append(
+            self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
+            &mut byte_cnt, &mut char_cnt,
+            data.as_ptr(), data.len() as u64, piece,
+            ptr::null_mut::<c_void>(), ptr::null::<c_void>(),
+            AL32UTF8, charset_form
+        )?;
         Ok( byte_cnt as usize )
     }
 }
@@ -856,13 +814,11 @@ impl<'a> LOB<'a,OCICLobLocator> {
     */
     pub fn temp(conn: &'a Connection, csform: CharSetForm, cache: Cache) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
-        catch!{conn.err_ptr() =>
-            OCILobCreateTemporary(
-                conn.svc_ptr(), conn.err_ptr(), locator.get(),
-                OCI_DEFAULT as u16, csform as u8, OCI_TEMP_CLOB, cache as u8, OCI_DURATION_SESSION
-            )
-        }
-        Ok( Self { locator, conn, chunk_size: Cell::new(0) } )
+        oci::lob_create_temporary(
+            conn.svc_ptr(), conn.err_ptr(), locator.get(),
+            OCI_DEFAULT as u16, csform as u8, OCI_TEMP_CLOB, cache as u8, OCI_DURATION_SESSION
+        )?;
+        Ok( Self { locator, conn } )
     }
 
     /**
@@ -1078,7 +1034,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
     /**
         Starts piece-wise reading of the specified number of characters from this LOB into the provided buffer,
         returning a flag which indicates whether there are more pieces to read until the requested fragment is
-        complete. Application should call `read_next` repeatedly until `read_next` returns `false`.
+        complete. Application should call `read_next` (and **only** `read_next`) repeatedly until `read_next`
+        returns `false`.
 
         # Example
         ```
@@ -1105,9 +1062,12 @@ impl<'a> LOB<'a,OCICLobLocator> {
         let mut text = String::new();
         let mut text_len : usize = 0;
         let mut read_len : usize = 0;
-        let mut has_next = lob.read_first(chunk_size * 2, chunk_size * 5, &mut text, &mut text_len)?;
+        let piece_size = chunk_size;
+        let offset = chunk_size * 2;
+        let length = chunk_size * 5;
+        let mut has_next = lob.read_first(piece_size, offset, length, &mut text, &mut text_len)?;
         while has_next {
-            has_next = lob.read_next(&mut text, &mut read_len)?;
+            has_next = lob.read_next(piece_size, &mut text, &mut read_len)?;
             text_len += read_len;
         }
         assert_eq!(text_len, chunk_size * 5);
@@ -1115,12 +1075,11 @@ impl<'a> LOB<'a,OCICLobLocator> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn read_first(&self, offset: usize, len: usize, buf: &mut String, num_read: &mut usize) -> Result<bool> {
+    pub fn read_first(&self, piece_size: usize, offset: usize, len: usize, buf: &mut String, num_read: &mut usize) -> Result<bool> {
         let form = self.charset_form()? as u8;
         let buf = unsafe { buf.as_mut_vec() };
-        let chunk_size = self.chunk_size()?;
         *num_read = 0;
-        self.read_piece(OCI_FIRST_PIECE, chunk_size, offset, num_read, len, form, buf)
+        self.read_piece(OCI_FIRST_PIECE, piece_size, offset, num_read, len, form, buf)
     }
 
     /**
@@ -1128,12 +1087,11 @@ impl<'a> LOB<'a,OCICLobLocator> {
         whether there are more pieces to read until the requested fragment is complete. Application should keep
         calling `read_next` until it returns `false`.
     */
-    pub fn read_next(&self, buf: &mut String, num_read: &mut usize) -> Result<bool> {
+    pub fn read_next(&self, piece_size: usize, buf: &mut String, num_read: &mut usize) -> Result<bool> {
         // let form = self.charset_form()? as u8;
         let buf = unsafe { buf.as_mut_vec() };
-        let chunk_size = self.chunk_size()?;
         *num_read = 0;
-        self.read_piece(OCI_NEXT_PIECE, chunk_size, 0, num_read, 0, 0, buf)
+        self.read_piece(OCI_NEXT_PIECE, piece_size, 0, num_read, 0, 0, buf)
     }
 }
 
@@ -1145,13 +1103,11 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     */
     pub fn temp(conn: &'a Connection, cache: Cache) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
-        catch!{conn.err_ptr() =>
-            OCILobCreateTemporary(
-                conn.svc_ptr(), conn.err_ptr(), locator.get(),
-                OCI_DEFAULT as u16, 0u8, OCI_TEMP_BLOB, cache as u8, OCI_DURATION_SESSION
-            )
-        }
-        Ok( Self { locator, conn, chunk_size: Cell::new(0) } )
+        oci::lob_create_temporary(
+            conn.svc_ptr(), conn.err_ptr(), locator.get(),
+            OCI_DEFAULT as u16, 0u8, OCI_TEMP_BLOB, cache as u8, OCI_DURATION_SESSION
+        )?;
+        Ok( Self { locator, conn } )
     }
 
     /**
@@ -1380,8 +1336,8 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     /**
         Starts piece-wise reading of the specified number of bytes from this LOB into the provided buffer, returning a tuple
         with 2 elements - the number of bytes read in the current piece and the flag which indicates whether there are more
-        pieces to read until the requested fragment is complete. Application should call `read_next` repeatedly until "more
-        data" flag becomes `false`.
+        pieces to read until the requested fragment is complete. Application should call `read_next` (and **only** `read_next`)
+        repeatedly until "more data" flag becomes `false`.
 
         # Example
         ```
@@ -1404,12 +1360,15 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         let chunk_size = lob.chunk_size()?;
         let mut data = Vec::with_capacity(file_len);
         let mut data_len : usize = 0;
-        let mut has_next = lob.read_first(0, file_len, &mut data, &mut data_len)?;
+        let piece_size = chunk_size;
+        let offset = 0;
+        let length = file_len;
+        let mut has_next = lob.read_first(piece_size, offset, length, &mut data, &mut data_len)?;
         assert_eq!(data_len, chunk_size);
         assert_eq!(data.len(), data_len);
         while has_next {
             let mut bytes_read : usize = 0;
-            has_next = lob.read_next(&mut data, &mut bytes_read)?;
+            has_next = lob.read_next(piece_size, &mut data, &mut bytes_read)?;
             data_len += bytes_read;
             assert_eq!(data_len, data.len());
         }
@@ -1419,10 +1378,9 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn read_first(&self, offset: usize, len: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
-        let chunk_size = self.chunk_size()?;
+    pub fn read_first(&self, piece_size: usize, offset: usize, len: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
         *num_read = len;
-        self.read_piece(OCI_FIRST_PIECE, chunk_size, offset, num_read, 0, 0, buf)
+        self.read_piece(OCI_FIRST_PIECE, piece_size, offset, num_read, 0, 0, buf)
     }
 
     /**
@@ -1430,10 +1388,9 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         bytes read in the current piece and the flag which indicates whether there are more pieces to read until the requested
         fragment is complete. Application should keep calling `read_next` until "more data" flag becomes `false`.
     */
-    pub fn read_next(&self, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
-        let chunk_size = self.chunk_size()?;
+    pub fn read_next(&self, piece_size: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
         *num_read = 0;
-        self.read_piece(OCI_NEXT_PIECE, chunk_size, 0, num_read, 0, 0, buf)
+        self.read_piece(OCI_NEXT_PIECE, piece_size, 0, num_read, 0, 0, buf)
     }
 }
 
@@ -1448,12 +1405,7 @@ impl LOB<'_,OCIBFileLocator> {
         have no effect.
     */
     pub fn close_file(&self) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobFileClose(
-                self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr()
-            )
-        }
-        Ok(())
+        oci::lob_file_close(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr())
     }
 
     /**
@@ -1477,9 +1429,7 @@ impl LOB<'_,OCIBFileLocator> {
     */
     pub fn file_exists(&self) -> Result<bool> {
         let mut exists = 0u8;
-        catch!{self.conn.err_ptr() =>
-            OCILobFileExists(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut exists)
-        }
+        oci::lob_file_exists(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut exists)?;
         Ok( exists != 0 )
     }
 
@@ -1511,9 +1461,7 @@ impl LOB<'_,OCIBFileLocator> {
     */
     pub fn is_file_open(&self) -> Result<bool> {
         let mut is_open = 0u8;
-        catch!{self.conn.err_ptr() =>
-            OCILobFileIsOpen(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut is_open)
-        }
+        oci::lob_file_is_open(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), &mut is_open)?;
         Ok( is_open != 0 )
     }
 
@@ -1544,13 +1492,7 @@ impl LOB<'_,OCIBFileLocator> {
         ```
     */
     pub fn open_file(&self) -> Result<()> {
-        catch!{self.conn.err_ptr() =>
-            OCILobFileOpen(
-                self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
-                OCI_FILE_READONLY
-            )
-        }
-        Ok(())
+        oci::lob_file_open(self.conn.svc_ptr(), self.conn.err_ptr(), self.as_mut_ptr(), OCI_FILE_READONLY)
     }
 
     /**
@@ -1587,8 +1529,8 @@ impl LOB<'_,OCIBFileLocator> {
     /**
         Starts piece-wise reading of the specified number of bytes from this LOB into the provided buffer, returning a tuple
         with 2 elements - the number of bytes read in the current piece and the flag which indicates whether there are more
-        pieces to read until the requested fragment is complete. Application should call `read_next` repeatedly until "more
-        data" flag becomes `false`.
+        pieces to read until the requested fragment is complete. Application should call `read_next` (and **only** `read_next`)
+        repeatedly until "more data" flag becomes `false`.
 
         # Example
         ```
@@ -1607,11 +1549,14 @@ impl LOB<'_,OCIBFileLocator> {
 
         let mut data = Vec::with_capacity(file_len);
         let mut data_len : usize = 0;
-        let mut has_next = file.read_first(0, file_len, &mut data, &mut data_len)?;
+        let piece_size = 8192;
+        let offset = 0;
+        let length = file_len;
+        let mut has_next = file.read_first(piece_size, offset, length, &mut data, &mut data_len)?;
         assert_eq!(data.len(), data_len);
         while has_next {
             let mut bytes_read : usize = 0;
-            has_next = file.read_next(&mut data, &mut bytes_read)?;
+            has_next = file.read_next(piece_size, &mut data, &mut bytes_read)?;
             data_len += bytes_read;
             assert_eq!(data_len, data.len());
         }
@@ -1621,9 +1566,9 @@ impl LOB<'_,OCIBFileLocator> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn read_first(&self, offset: usize, len: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
+    pub fn read_first(&self, piece_size: usize, offset: usize, len: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
         *num_read = len;
-        self.read_piece(OCI_FIRST_PIECE, cmp::min(len, 8192), offset, num_read, 0, 0, buf)
+        self.read_piece(OCI_FIRST_PIECE, piece_size, offset, num_read, 0, 0, buf)
     }
 
     /**
@@ -1631,9 +1576,9 @@ impl LOB<'_,OCIBFileLocator> {
         bytes read in the current piece and the flag which indicates whether there are more pieces to read until the requested
         fragment is complete. Application should keep calling `read_next` until "more data" flag becomes `false`.
     */
-    pub fn read_next(&self, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
+    pub fn read_next(&self, piece_size: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
         *num_read = 0;
-        self.read_piece(OCI_NEXT_PIECE, 8192, 0, num_read, 0, 0, buf)
+        self.read_piece(OCI_NEXT_PIECE, piece_size, 0, num_read, 0, 0, buf)
     }
 }
 

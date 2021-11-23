@@ -9,12 +9,17 @@ pub mod attr;
 pub mod param;
 pub mod handle;
 pub mod desc;
+#[cfg(feature="nonblocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+pub mod futures;
 
 pub use ptr::Ptr;
 pub use handle::Handle;
 pub use desc::Descriptor;
 
 pub(crate) use desc::DescriptorType;
+
+use crate::{Error, Result};
 
 pub(crate) const OCI_DEFAULT                : u32 = 0;
 
@@ -49,6 +54,7 @@ pub(crate) const OCI_HTYPE_DEFINE           : u32 = 6;
 pub(crate) const OCI_HTYPE_DESCRIBE         : u32 = 7;
 pub(crate) const OCI_HTYPE_SERVER           : u32 = 8;
 pub(crate) const OCI_HTYPE_SESSION          : u32 = 9;
+pub(crate) const OCI_HTYPE_AUTHINFO         : u32 = 9;
 
 // Handle Definitions
 #[repr(C)] pub struct OCIEnv                { _private: [u8; 0] }
@@ -61,6 +67,9 @@ pub(crate) const OCI_HTYPE_SESSION          : u32 = 9;
 #[repr(C)] pub struct OCIServer             { _private: [u8; 0] }
 #[repr(C)] pub struct OCISession            { _private: [u8; 0] }
 #[repr(C)] pub struct OCIRaw                { _private: [u8; 0] }
+
+#[repr(C)] pub struct OCIAuthInfo           { _private: [u8; 0] }
+
 
 // Descriptor Types
 pub(crate) const OCI_DTYPE_LOB              : u32 = 50;  // lob locator
@@ -106,7 +115,7 @@ macro_rules! mark_as_oci {
     };
 }
 
-mark_as_oci!(OCIEnv, OCIError, OCISvcCtx, OCIStmt, OCIBind, OCIDefine, OCIDescribe, OCIServer, OCISession, OCIRaw);
+mark_as_oci!(OCIEnv, OCIError, OCISvcCtx, OCIStmt, OCIBind, OCIDefine, OCIDescribe, OCIServer, OCISession, OCIAuthInfo, OCIRaw);
 mark_as_oci!(OCIResult, OCILobLocator, OCILobRegion, OCIParam, OCIRowid, OCIDateTime, OCIInterval, OCIString);
 mark_as_oci!(OCICLobLocator, OCIBLobLocator, OCIBFileLocator, OCITimestamp, OCITimestampTZ, OCITimestampLTZ, OCIIntervalYearToMonth, OCIIntervalDayToSecond);
 
@@ -214,6 +223,13 @@ pub(crate) const OCI_ATTR_ENV_NLS_TERRITORY : u32 = 425;
 // Credential Types
 pub(crate) const OCI_CRED_RDBMS    : u32 = 1;
 pub(crate) const OCI_CRED_EXT      : u32 = 2;
+
+// OCISessionGet Modes
+pub(crate) const OCI_SESSGET_SPOOL          : u32 = 0x0001;
+pub(crate) const OCI_SESSGET_STMTCACHE      : u32 = 0x0004;
+pub(crate) const OCI_SESSGET_SPOOL_MATCHANY : u32 = 0x0020;
+pub(crate) const OCI_SESSGET_PURITY_NEW     : u32 = 0x0040;
+pub(crate) const OCI_SESSGET_PURITY_SELF    : u32 = 0x0080;
 
 // Server Handle Attribute Values
 // const OCI_SERVER_NOT_CONNECTED  : u32 = 0;
@@ -448,6 +464,31 @@ extern "C" {
         mode:       u32
     ) -> i32;
 
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-890DFBC4-718B-4339-A0EA-6226A25B8241
+    pub(crate) fn OCISessionGet(
+        envhp:      *mut OCIEnv,
+        errhp:      *mut OCIError,
+        svchp:      *mut *mut OCISvcCtx,
+        authinfop:  *mut OCIAuthInfo,
+        dbname:     *const u8,
+        dbname_len: u32,
+        taginfo:    *const u8,
+        taginfolen: u32,
+        rettags:    *mut *const u8,
+        rettagslen: *mut u32,
+        found:      *mut u8,
+        mode:       u32
+    ) -> i32;
+
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-DAAECC99-A432-48B5-AC33-0868C2FE762D
+    pub(crate) fn OCISessionRelease(
+        svchp:      *mut OCISvcCtx,
+        errhp:      *mut OCIError,
+        tag:        *const u8,
+        taglen:     u32,
+        mode:       u32
+    ) -> i32;
+
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/transaction-functions.html#GUID-DDAE3122-8769-4A30-8D78-EB2A3CCF77D4
     pub(crate) fn OCITransCommit(
         svchp:      *mut OCISvcCtx,
@@ -500,9 +541,9 @@ extern "C" {
         size:       u32,
         startloc:   u32,
         found:      *mut i32,
-        bvnp:       *const *mut u8,
+        bvnp:       *mut *mut u8,
         bvnl:       *mut u8,
-        invp:       *const *mut u8,
+        invp:       *mut *mut u8,
         invl:       *mut u8,
         dupl:       *mut u8,
         hndl:       *const *mut OCIBind
@@ -529,13 +570,13 @@ extern "C" {
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-D28DF5A7-3C75-4E52-82F7-A5D6D5714E69
     pub(crate) fn OCIBindByPos2(
         stmtp:      *mut OCIStmt,
-        bindpp:     *mut *mut OCIBind,
+        bindpp:     *const *mut OCIBind,
         errhp:      *mut OCIError,
         position:   u32,
         valuep:     *mut c_void,
         value_sz:   i64,
         dty:        u16,
-        indp:       *mut c_void,
+        indp:       *mut i16,
         alenp:      *mut u32,
         rcodep:     *mut u16,
         maxarr_len: u32,
@@ -589,7 +630,7 @@ extern "C" {
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-74939FB5-919E-4D24-B327-AFB532435061
     pub(crate) fn OCIDefineByPos2(
         stmtp:      *mut OCIStmt,
-        defnpp:     *mut *mut OCIDefine,
+        defnpp:     *const *mut OCIDefine,
         errhp:      *mut OCIError,
         position:   u32,
         valuep:     *mut c_void,
@@ -739,7 +780,7 @@ extern "C" {
     pub(crate) fn OCILobFileSetName(
         envhp:      *mut OCIEnv,
         errhp:      *mut OCIError,
-        filepp:     *mut *mut OCILobLocator,
+        filepp:     *const *mut OCILobLocator,
         dir:        *const u8,
         dir_len:    u16,
         filename:   *const u8,
@@ -912,7 +953,7 @@ extern "C" {
 extern "C" {
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-E0890180-8714-4243-A585-0FD21EB05CA9
     pub(crate) fn OCIDateAddDays(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         date:       *const OCIDate,
         num_days:   i32,
         result:     *mut OCIDate
@@ -920,7 +961,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-CE37ECF1-622A-49A9-A9FD-40E1BD67C941
     pub(crate) fn OCIDateAddMonths(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         date:       *const OCIDate,
         num_months: i32,
         result:     *mut OCIDate
@@ -928,21 +969,21 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-2251373B-4F7B-4680-BB90-F9013216465A
     pub(crate) fn OCIDateAssign(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         date:       *const OCIDate,
         result:     *mut OCIDate
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-067F7EB4-419B-4A5B-B1C4-B4C650B874A3
     // fn OCIDateCheck(
-    //     env:        *mut OCIError,
+    //     err:        *mut OCIError,
     //     date:       *const OCIDate,
     //     result:     *mut u32
     // ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-282C5B79-64AA-4B34-BFC6-292144B1AD16
     pub(crate) fn OCIDateCompare(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         date1:      *const OCIDate,
         date2:      *const OCIDate,
         result:     *mut i32
@@ -950,7 +991,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-42422C47-805F-4EAA-BF44-E6DE6164082E
     pub(crate) fn OCIDateDaysBetween(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         date1:      *const OCIDate,
         date2:      *const OCIDate,
         result:     *mut i32
@@ -958,7 +999,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-EA8FEB07-401C-477E-805B-CC9E89FB13F4
     pub(crate) fn OCIDateFromText(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         txt:        *const u8,
         txt_len:    u32,
         fmt:        *const u8,
@@ -970,14 +1011,14 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-14FB323E-BAEB-4FC7-81DA-6AF243C0D7D6
     pub(crate) fn OCIDateLastDay(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         date:       *const OCIDate,
         result:     *mut OCIDate
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-A16AB88E-A3BF-4B50-8FEF-6427926198F4
     pub(crate) fn OCIDateNextDay(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         date:       *const OCIDate,
         day:        *const u8,
         day_len:    u32,
@@ -986,7 +1027,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-123DD789-48A2-4AD7-8B1E-5E454DFE3F1E
     pub(crate) fn OCIDateToText(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         date:       *const OCIDate,
         fmt:        *const u8,
         fmt_len:    u8,
@@ -998,7 +1039,7 @@ extern "C" {
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-date-datetime-and-interval-functions.html#GUID-751D4F33-E593-4845-9D5E-8761A19BD243
     pub(crate) fn OCIDateSysDate(
-        env:        *mut OCIError,
+        err:        *mut OCIError,
         result:     *mut OCIDate
     ) -> i32;
 }
@@ -1536,7 +1577,7 @@ extern "C" {
         env:        *mut OCIEnv,
         err:        *mut OCIError,
         size:       u32,
-        raw:        *mut *mut OCIRaw
+        raw:        *const *mut OCIRaw
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-raw-functions.html#GUID-D74E75FA-5985-4DDC-BC25-430B415B8837
@@ -1743,7 +1784,7 @@ extern "C" {
         err:        *mut OCIError,
         rhs:        *const u8,
         rhs_len:    u32,
-        lhs:        *mut *mut OCIString
+        lhs:        *const *mut OCIString
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-0E1302F7-A32C-46F1-93D7-FB33CF60C24F
@@ -1757,7 +1798,7 @@ extern "C" {
         env:        *mut OCIEnv,
         err:        *mut OCIError,
         size:       u32,
-        txt:        *mut *mut OCIString
+        txt:        *const *mut OCIString
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-string-functions.html#GUID-DBDAB2D9-4E78-4752-85B6-55D30CA6AF30
@@ -1767,3 +1808,1652 @@ extern "C" {
     ) -> u32;
 }
 
+
+macro_rules! ok_or_env_err {
+    ( |$env:ident| $stmt:stmt ) => {{
+        let res = unsafe { $stmt };
+        if res == OCI_SUCCESS {
+            Ok(())
+        } else {
+            Err(Error::env($env, res))
+        }
+    }};
+}
+
+pub(crate) fn descriptor_alloc(
+    parenth:    *mut OCIEnv,
+    descpp:     *mut *mut  c_void,
+    desc_type:  u32,
+    xtramem_sz: size_t,
+    usrmempp:   *const c_void
+) -> Result<()> {
+    ok_or_env_err!(|parenth|
+        OCIDescriptorAlloc(parenth, descpp, desc_type, xtramem_sz, usrmempp)
+    )
+}
+
+pub(crate) fn handle_alloc(
+    parenth:    *mut OCIEnv,
+    hndlpp:     *mut *mut  c_void,
+    hndl_type:  u32,
+    xtramem_sz: size_t,
+    usrmempp:   *const c_void
+) -> Result<()> {
+    ok_or_env_err!(|parenth|
+        OCIHandleAlloc(parenth, hndlpp, hndl_type, xtramem_sz, usrmempp)
+    )
+}
+
+
+macro_rules! ok_or_oci_err {
+    ( |$err:ident| $stmt:stmt ) => {{
+        let res = unsafe { $stmt };
+        match res {
+            OCI_ERROR | OCI_INVALID_HANDLE => { Err(Error::oci($err, res)) },
+            _ => { Ok(()) }
+        }
+    }};
+}
+
+pub(crate) fn session_get(
+    envhp:      *mut OCIEnv,
+    errhp:      *mut OCIError,
+    svchp:      *mut *mut OCISvcCtx,
+    authinfop:  *mut OCIAuthInfo,
+    dbname:     *const u8,
+    dbname_len: u32,
+    taginfo:    *const u8,
+    taginfolen: u32,
+    rettags:    *mut *const u8,
+    rettagslen: *mut u32,
+    found:      *mut u8,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCISessionGet(envhp, errhp, svchp, authinfop, dbname, dbname_len, taginfo, taginfolen, rettags, rettagslen, found, mode)
+    )
+}
+
+pub(crate) fn attr_get(
+    trgthndlp:  *const c_void,
+    trghndltyp: u32,
+    attributep: *mut c_void,
+    sizep:      *mut u32,
+    attrtype:   u32,
+    errhp:      *mut OCIError
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIAttrGet(trgthndlp, trghndltyp, attributep, sizep, attrtype, errhp)
+    )
+}
+
+pub(crate) fn attr_set(
+    trgthndlp:  *mut c_void,
+    trghndltyp: u32,
+    attributep: *const c_void,
+    size:       u32,
+    attrtype:   u32,
+    errhp:      *mut OCIError
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIAttrSet(trgthndlp, trghndltyp, attributep, size, attrtype, errhp)
+    )
+}
+
+pub(crate) fn param_get(
+    hndlp:      *const c_void,
+    htype:      u32,
+    errhp:      *mut OCIError,
+    descr:      *mut *mut c_void,
+    pos:        u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIParamGet(hndlp, htype, errhp, descr, pos)
+    )
+}
+
+pub(crate) fn ping(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIPing(svchp, errhp, mode)
+    )
+}
+
+pub(crate) fn trans_commit(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    flags:      u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCITransCommit(svchp, errhp, flags)
+    )
+}
+
+pub(crate) fn trans_rollback(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    flags:      u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCITransRollback(svchp, errhp, flags)
+    )
+}
+
+pub(crate) fn stmt_prepare(
+    svchp:      *mut OCISvcCtx,
+    stmthp:     *mut *mut OCIStmt,
+    errhp:      *mut OCIError,
+    stmttext:   *const u8,
+    stmt_len:   u32,
+    key:        *const u8,
+    keylen:     u32,
+    language:   u32,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIStmtPrepare2(svchp, stmthp, errhp, stmttext, stmt_len, key, keylen, language, mode)
+    )
+}
+
+pub(crate) fn stmt_release(
+    stmtp:      *mut OCIStmt,
+    errhp:      *mut OCIError,
+    key:        *const u8,
+    keylen:     u32,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIStmtRelease(stmtp, errhp, key, keylen, mode)
+    )
+}
+
+pub(crate) fn stmt_get_bind_info(
+    stmtp:      *mut OCIStmt,
+    errhp:      *mut OCIError,
+    size:       u32,
+    startloc:   u32,
+    found:      *mut i32,
+    bvnp:       *mut *mut u8,
+    bvnl:       *mut u8,
+    invp:       *mut *mut u8,
+    invl:       *mut u8,
+    dupl:       *mut u8,
+    hndl:       *const *mut OCIBind
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIStmtGetBindInfo(stmtp, errhp, size, startloc, found, bvnp, bvnl, invp, invl, dupl, hndl)
+    )
+}
+
+pub(crate) fn bind_by_pos(
+    stmtp:      *mut OCIStmt,
+    bindpp:     *const *mut OCIBind,
+    errhp:      *mut OCIError,
+    position:   u32,
+    valuep:     *mut c_void,
+    value_sz:   i64,
+    dty:        u16,
+    indp:       *mut i16,
+    alenp:      *mut u32,
+    rcodep:     *mut u16,
+    maxarr_len: u32,
+    curelep:    *mut u32,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIBindByPos2(stmtp, bindpp, errhp, position, valuep, value_sz, dty, indp, alenp, rcodep, maxarr_len, curelep, mode)
+    )
+}
+
+pub(crate) fn stmt_execute(
+    svchp:      *mut OCISvcCtx,
+    stmtp:      *mut OCIStmt,
+    errhp:      *mut OCIError,
+    iters:      u32,
+    rowoff:     u32,
+    snap_in:    *const c_void,  // *const OCISnapshot
+    snap_out:   *mut c_void,    // *mut OCISnapshot
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIStmtExecute(svchp, stmtp, errhp, iters, rowoff, snap_in, snap_out, mode)
+    )
+}
+
+pub(crate) fn stmt_get_next_result(
+    stmtp:      *mut OCIStmt,
+    errhp:      *mut OCIError,
+    result:     *mut *mut OCIStmt,
+    rtype:      *mut u32,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIStmtGetNextResult(stmtp, errhp, result, rtype, mode)
+    )
+}
+
+pub(crate) fn stmt_fetch(
+    stmtp:      *mut OCIStmt,
+    errhp:      *mut OCIError,
+    nrows:      u32,
+    orient:     u16,
+    offset:     i16,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIStmtFetch2(stmtp, errhp, nrows, orient, offset, mode)
+    )
+}
+
+pub(crate) fn define_by_pos(
+    stmtp:      *mut OCIStmt,
+    defnpp:     *const *mut OCIDefine,
+    errhp:      *mut OCIError,
+    position:   u32,
+    valuep:     *mut c_void,
+    value_sz:   i64,
+    dty:        u16,
+    indp:       *mut i16,
+    rlenp:      *mut u32,
+    rcodep:     *mut u16,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIDefineByPos2(stmtp, defnpp, errhp, position, valuep, value_sz, dty, indp, rlenp, rcodep, mode)
+    )
+}
+
+pub(crate) fn rowid_to_char(
+    desc:   *mut OCIRowid,
+    text:   *mut u8,
+    size:   *mut u16,
+    errhp:  *mut OCIError,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCIRowidToChar(desc, text, size, errhp)
+    )
+}
+
+pub(crate) fn lob_append(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    dst:        *mut OCILobLocator,
+    src:        *const OCILobLocator,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobAppend(svchp, errhp, dst, src)
+    )
+}
+
+pub(crate) fn lob_char_set_form(
+    envhp:      *mut OCIEnv,
+    errhp:      *mut OCIError,
+    src:        *const OCILobLocator,
+    csform:     *mut u8
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobCharSetForm(envhp, errhp, src, csform)
+    )
+}
+
+pub(crate) fn lob_char_set_id(
+    envhp:      *mut OCIEnv,
+    errhp:      *mut OCIError,
+    src:        *const OCILobLocator,
+    csid:       *mut u16
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobCharSetId(envhp, errhp, src, csid)
+    )
+}
+
+pub(crate) fn lob_close(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobClose(svchp, errhp, loc)
+    )
+}
+
+pub(crate) fn lob_copy(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    dst:        *mut OCILobLocator,
+    src:        *mut OCILobLocator,
+    amount:     u64,
+    dst_off:    u64,
+    src_off:    u64,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobCopy2(svchp, errhp, dst, src, amount, dst_off, src_off)
+    )
+}
+
+pub(crate) fn lob_create_temporary(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    csid:       u16,
+    csfrm:      u8,
+    lob_type:   u8,
+    cache:      u8,
+    duration:   u16,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobCreateTemporary(svchp, errhp, loc, csid, csfrm, lob_type, cache, duration)
+    )
+}
+
+pub(crate) fn lob_erase(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    amount:     *mut u64,
+    offset:     u64,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobErase2(svchp, errhp, loc, amount, offset)
+    )
+}
+
+pub(crate) fn lob_file_close(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    filep:      *mut OCILobLocator,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobFileClose(svchp, errhp, filep)
+    )
+}
+
+pub(crate) fn lob_file_exists(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    filep:      *mut OCILobLocator,
+    flag:       *mut u8
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobFileExists(svchp, errhp, filep, flag)
+    )
+}
+
+pub(crate) fn lob_file_get_name(
+    envhp:      *mut OCIEnv,
+    errhp:      *mut OCIError,
+    loc:        *const OCILobLocator,
+    dir:        *mut u8,
+    dir_len:    *mut u16,
+    filename:   *mut u8,
+    name_len:   *mut u16,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobFileGetName(envhp, errhp, loc, dir, dir_len, filename, name_len)
+    )
+}
+
+pub(crate) fn lob_file_is_open(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    filep:      *mut OCILobLocator,
+    flag:       *mut u8
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobFileIsOpen(svchp, errhp, filep, flag)
+    )
+}
+
+pub(crate) fn lob_file_open(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    filep:      *mut OCILobLocator,
+    mode:       u8
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobFileOpen(svchp, errhp, filep, mode)
+    )
+}
+
+pub(crate) fn lob_file_set_name(
+    envhp:      *mut OCIEnv,
+    errhp:      *mut OCIError,
+    filepp:     *const *mut OCILobLocator,
+    dir:        *const u8,
+    dir_len:    u16,
+    filename:   *const u8,
+    name_len:   u16,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobFileSetName(envhp, errhp, filepp, dir, dir_len, filename, name_len)
+    )
+}
+
+pub(crate) fn lob_free_temporary(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobFreeTemporary(svchp, errhp, loc)
+    )
+}
+
+pub(crate) fn lob_get_chunk_size(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    size:       *mut u32,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobGetChunkSize(svchp, errhp, loc, size)
+    )
+}
+
+pub(crate) fn lob_get_content_type(
+    envhp:      *mut OCIEnv,
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    ctx_type:   *mut u8,
+    len:        *mut u32,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobGetContentType(envhp, svchp, errhp, loc, ctx_type, len, mode)
+    )
+}
+
+pub(crate) fn lob_get_length(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    len:        *mut u64,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobGetLength2(svchp, errhp, loc, len)
+    )
+}
+
+pub(crate) fn lob_is_equal(
+    envhp:      *mut OCIEnv,
+    loc1:       *const OCILobLocator,
+    loc2:       *const OCILobLocator,
+    flag:       *mut u8,
+) -> Result<()> {
+    ok_or_env_err!(|envhp|
+        OCILobIsEqual(envhp, loc1, loc2, flag)
+    )
+}
+
+pub(crate) fn lob_is_open(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    flag:       *mut u8,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobIsOpen(svchp, errhp, loc, flag)
+    )
+}
+
+pub(crate) fn lob_is_temporary(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    flag:       *mut u8,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobIsTemporary(svchp, errhp, loc, flag)
+    )
+}
+
+pub(crate) fn lob_load_from_file(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    dst:        *mut OCILobLocator,
+    src:        *mut OCILobLocator,
+    amount:     u64,
+    dst_off:    u64,
+    src_off:    u64,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobLoadFromFile2(svchp, errhp, dst, src, amount, dst_off, src_off)
+    )
+}
+
+pub(crate) fn lob_locator_assign(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    src:        *const OCILobLocator,
+    dst:        *const *mut OCILobLocator,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobLocatorAssign(svchp, errhp, src, dst)
+    )
+}
+
+pub(crate) fn lob_locator_is_init(
+    envhp:      *mut OCIEnv,
+    errhp:      *mut OCIError,
+    src:        *const OCILobLocator,
+    flag:       *mut u8,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobLocatorIsInit(envhp, errhp, src, flag)
+    )
+}
+
+pub(crate) fn lob_open(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    mode:       u8,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobOpen(svchp, errhp, loc, mode)
+    )
+}
+
+pub(crate) fn lob_read(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    byte_cnt:   *mut u64,
+    char_cnt:   *mut u64,
+    offset:     u64,
+    buf:        *mut u8,
+    buf_len:    u64,
+    piece:      u8,
+    ctx:        *mut c_void,
+    read_cb:    *const c_void,
+    csid:       u16,
+    csfrm:      u8,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobRead2(svchp, errhp, loc, byte_cnt, char_cnt, offset, buf, buf_len, piece, ctx, read_cb, csid, csfrm)
+    )
+}
+
+pub(crate) fn lob_set_content_type(
+    envhp:      *mut OCIEnv,
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    ctype:      *const u8,
+    len:        u32,
+    mode:       u32,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobSetContentType(envhp, svchp, errhp, loc, ctype, len, mode)
+    )
+}
+
+pub(crate) fn lob_trim(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    len:        u64,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobTrim2(svchp, errhp, loc, len)
+    )
+}
+
+pub(crate) fn lob_write(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    byte_cnt:   *mut u64,
+    char_cnt:   *mut u64,
+    offset:     u64,
+    buf:        *const u8,
+    buf_len:    u64,
+    piece:      u8,
+    ctx:        *mut c_void,
+    write_cb:   *const c_void,
+    csid:       u16,
+    csfrm:      u8,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobWrite2(svchp, errhp, loc, byte_cnt, char_cnt, offset, buf, buf_len, piece, ctx, write_cb, csid, csfrm)
+    )
+}
+
+pub(crate) fn lob_write_append(
+    svchp:      *mut OCISvcCtx,
+    errhp:      *mut OCIError,
+    loc:        *mut OCILobLocator,
+    byte_cnt:   *mut u64,
+    char_cnt:   *mut u64,
+    buf:        *const u8,
+    buf_len:    u64,
+    piece:      u8,
+    ctx:        *mut c_void,
+    write_cb:   *const c_void,
+    csid:       u16,
+    csfrm:      u8,
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCILobWriteAppend2(svchp, errhp, loc, byte_cnt, char_cnt, buf, buf_len, piece, ctx, write_cb, csid, csfrm)
+    )
+}
+
+pub(crate) fn date_add_days(
+    err:        *mut OCIError,
+    date:       *const OCIDate,
+    num_days:   i32,
+    result:     *mut OCIDate
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateAddDays(err, date, num_days, result)
+    )
+}
+
+pub(crate) fn date_add_months(
+    err:        *mut OCIError,
+    date:       *const OCIDate,
+    num_months: i32,
+    result:     *mut OCIDate
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateAddMonths(err, date, num_months, result)
+    )
+}
+
+pub(crate) fn date_assign(
+    err:        *mut OCIError,
+    date:       *const OCIDate,
+    result:     *mut OCIDate
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateAssign(err, date, result)
+    )
+}
+
+pub(crate) fn date_compare(
+    err:        *mut OCIError,
+    date1:      *const OCIDate,
+    date2:      *const OCIDate,
+    result:     *mut i32
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateCompare(err, date1, date2, result)
+    )
+}
+
+pub(crate) fn date_days_between(
+    err:        *mut OCIError,
+    date1:      *const OCIDate,
+    date2:      *const OCIDate,
+    result:     *mut i32
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateDaysBetween(err, date1, date2, result)
+    )
+}
+
+pub(crate) fn date_from_text(
+    err:        *mut OCIError,
+    txt:        *const u8,
+    txt_len:    u32,
+    fmt:        *const u8,
+    fmt_len:    u8,
+    lang:       *const u8,
+    lang_len:   u32,
+    result:     *mut OCIDate
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateFromText(err, txt, txt_len, fmt, fmt_len, lang, lang_len, result)
+    )
+}
+
+pub(crate) fn date_last_day(
+    err:        *mut OCIError,
+    date:       *const OCIDate,
+    result:     *mut OCIDate
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateLastDay(err, date, result)
+    )
+}
+
+pub(crate) fn date_next_day(
+    err:        *mut OCIError,
+    date:       *const OCIDate,
+    day:        *const u8,
+    day_len:    u32,
+    result:     *mut OCIDate
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateNextDay(err, date, day, day_len, result)
+    )
+}
+
+pub(crate) fn date_to_text(
+    err:        *mut OCIError,
+    date:       *const OCIDate,
+    fmt:        *const u8,
+    fmt_len:    u8,
+    lang:       *const u8,
+    lang_len:   u32,
+    buf_size:   *mut u32,
+    buf:        *mut u8
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateToText(err, date, fmt, fmt_len, lang, lang_len, buf_size, buf)
+    )
+}
+
+pub(crate) fn date_sys_date(
+    err:        *mut OCIError,
+    result:     *mut OCIDate
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateSysDate(err, result)
+    )
+}
+
+pub(crate) fn interval_add(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    addend1:    *const OCIInterval,
+    addend2:    *const OCIInterval,
+    result:     *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalAdd(hndl, err, addend1, addend2, result)
+    )
+}
+
+pub(crate) fn interval_assign(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    inpinter:   *const OCIInterval,
+    outinter:   *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalAssign(hndl, err, inpinter, outinter)
+    )
+}
+
+pub(crate) fn interval_compare(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    inter1:     *const OCIInterval,
+    inter2:     *const OCIInterval,
+    result:     *mut i32,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalCompare(hndl, err, inter1, inter2, result)
+    )
+}
+
+pub(crate) fn interval_divide(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    dividend:   *const OCIInterval,
+    divisor:    *const OCINumber,
+    result:     *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalDivide(hndl, err, dividend, divisor, result)
+    )
+}
+
+pub(crate) fn interval_from_number(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    interval:   *mut OCIInterval,
+    number:     *const OCINumber,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalFromNumber(hndl, err, interval, number)
+    )
+}
+
+pub(crate) fn interval_from_text(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    inpstring:  *const u8,
+    str_len:    size_t,
+    result:     *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalFromText(hndl, err, inpstring, str_len, result)
+    )
+}
+
+pub(crate) fn interval_from_tz(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    inpstring:  *const u8,
+    str_len:    size_t,
+    result:     *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalFromTZ(hndl, err, inpstring, str_len, result)
+    )
+}
+
+pub(crate) fn interval_get_day_second(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    dy:         *mut i32,
+    hr:         *mut i32,
+    mm:         *mut i32,
+    ss:         *mut i32,
+    fsec:       *mut i32,
+    interval:   *const OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalGetDaySecond(hndl, err, dy, hr, mm, ss, fsec, interval)
+    )
+}
+
+pub(crate) fn interval_get_year_month(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    yr:         *mut i32,
+    mnth:       *mut i32,
+    interval:   *const OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalGetYearMonth(hndl, err, yr, mnth, interval)
+    )
+}
+
+pub(crate) fn interval_multiply(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    inter:      *const OCIInterval,
+    nfactor:    *const OCINumber,
+    result:     *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalMultiply(hndl, err, inter, nfactor, result)
+    )
+}
+
+pub(crate) fn interval_set_day_second(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    dy:         i32,
+    hr:         i32,
+    mm:         i32,
+    ss:         i32,
+    fsec:       i32,
+    result:     *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalSetDaySecond(hndl, err, dy, hr, mm, ss, fsec, result)
+    )
+}
+
+pub(crate) fn interval_set_year_month(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    yr:         i32,
+    mnth:       i32,
+    result:     *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalSetYearMonth(hndl, err, yr, mnth, result)
+    )
+}
+
+pub(crate) fn interval_subtract(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    minuend:    *const OCIInterval,
+    subtrahend: *const OCIInterval,
+    result:     *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalSubtract(hndl, err, minuend, subtrahend, result)
+    )
+}
+
+pub(crate) fn interval_to_number(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    interval:   *const OCIInterval,
+    number:     *mut OCINumber,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalToNumber(hndl, err, interval, number)
+    )
+}
+
+pub(crate) fn interval_to_text(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    interval:   *const OCIInterval,
+    lfprec:     u8,
+    fsprec:     u8,
+    buffer:     *mut u8,
+    buflen:     size_t,
+    resultlen:  *mut size_t,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIIntervalToText(hndl, err, interval, lfprec, fsprec, buffer, buflen, resultlen)
+    )
+}
+
+pub(crate) fn raw_alloc_size(
+    env:        *mut OCIEnv,
+    err:        *mut OCIError,
+    raw:        *const OCIRaw,
+    size:       *mut u32
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIRawAllocSize(env, err, raw, size)
+    )
+}
+
+pub(crate) fn raw_assign_bytes(
+    env:        *mut OCIEnv,
+    err:        *mut OCIError,
+    rhs:        *const u8,
+    rhs_len:    u32,
+    lhs:        *mut *mut OCIRaw
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIRawAssignBytes(env, err, rhs, rhs_len, lhs)
+    )
+}
+
+pub(crate) fn raw_assign_raw(
+    env:        *mut OCIEnv,
+    err:        *mut OCIError,
+    rhs:        *const OCIRaw,
+    lhs:        *mut *mut OCIRaw
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIRawAssignRaw(env, err, rhs, lhs)
+    )
+}
+
+pub(crate) fn raw_resize(
+    env:        *mut OCIEnv,
+    err:        *mut OCIError,
+    size:       u32,
+    raw:        *const *mut OCIRaw
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIRawResize(env, err, size, raw)
+    )
+}
+
+pub(crate) fn string_alloc_size(
+    env:        *mut OCIEnv,
+    err:        *mut OCIError,
+    txt:        *const OCIString,
+    size:       *mut u32
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIStringAllocSize(env, err, txt, size)
+    )
+}
+
+pub(crate) fn string_assign(
+    env:        *mut OCIEnv,
+    err:        *mut OCIError,
+    rhs:        *const OCIString,
+    lhs:        *mut *mut OCIString
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIStringAssign(env, err, rhs, lhs)
+    )
+}
+
+pub(crate) fn string_assign_text(
+    env:        *mut OCIEnv,
+    err:        *mut OCIError,
+    rhs:        *const u8,
+    rhs_len:    u32,
+    lhs:        *const *mut OCIString
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIStringAssignText(env, err, rhs, rhs_len, lhs)
+    )
+}
+
+pub(crate) fn string_resize(
+    env:        *mut OCIEnv,
+    err:        *mut OCIError,
+    size:       u32,
+    txt:        *const *mut OCIString
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIStringResize(env, err, size, txt)
+    )
+}
+
+pub(crate) fn date_time_assign (
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    from:       *const OCIDateTime,
+    to:         *mut OCIDateTime
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeAssign(hndl, err, from, to)
+    )
+}
+
+pub(crate) fn date_time_compare (
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    date1:      *const OCIDateTime,
+    date2:      *const OCIDateTime,
+    result:     *mut i32
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeCompare(hndl, err, date1, date2, result)
+    )
+}
+
+pub(crate) fn date_time_construct (
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    datetime:   *mut OCIDateTime,
+    year:       i16,
+    month:      u8,
+    day:        u8,
+    hour:       u8,
+    min:        u8,
+    sec:        u8,
+    fsec:       u32,
+    timezone:   *const u8,
+    tz_len:     size_t
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeConstruct(hndl, err, datetime, year, month, day, hour, min, sec, fsec, timezone, tz_len)
+    )
+}
+
+pub(crate) fn date_time_convert (
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    indate:     *const OCIDateTime,
+    outdate:    *mut OCIDateTime
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeConvert(hndl, err, indate, outdate)
+    )
+}
+
+pub(crate) fn date_time_from_text(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    date_str:   *const u8,
+    dstr_length: size_t,
+    fmt:        *const u8,
+    fmt_length: u8,
+    lang_name:  *const u8,
+    lang_length: size_t,
+    datetime:   *mut OCIDateTime,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeFromText(hndl, err, date_str, dstr_length, fmt, fmt_length, lang_name, lang_length, datetime)
+    )
+}
+
+pub(crate) fn date_time_get_date(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    datetime:   *const OCIDateTime,
+    year:       *mut i16,
+    month:      *mut u8,
+    day:        *mut u8,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeGetDate(hndl, err, datetime, year, month, day)
+    )
+}
+
+pub(crate) fn date_time_get_time(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    datetime:   *const OCIDateTime,
+    hour:       *mut u8,
+    min:        *mut u8,
+    sec:        *mut u8,
+    fsec:       *mut u32,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeGetTime(hndl, err, datetime, hour, min, sec, fsec)
+    )
+}
+
+pub(crate) fn date_time_get_time_zone_name(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    datetime:   *const OCIDateTime,
+    buf:        *mut u8,
+    buflen:     *mut u32,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeGetTimeZoneName(hndl, err, datetime, buf, buflen)
+    )
+}
+
+pub(crate) fn date_time_get_time_zone_offset(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    datetime:   *const OCIDateTime,
+    hour:       *mut i8,
+    min:        *mut i8,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeGetTimeZoneOffset(hndl, err, datetime, hour, min)
+    )
+}
+
+pub(crate) fn date_time_interval_add(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    datetime:   *const OCIDateTime,
+    inter:      *const OCIInterval,
+    outdatetime: *mut OCIDateTime,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeIntervalAdd(hndl, err, datetime, inter, outdatetime)
+    )
+}
+
+pub(crate) fn date_time_interval_sub(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    datetime:   *const OCIDateTime,
+    inter:      *const OCIInterval,
+    outdatetime: *mut OCIDateTime,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeIntervalSub(hndl, err, datetime, inter, outdatetime)
+    )
+}
+
+pub(crate) fn date_time_subtract(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    indate1:    *const OCIDateTime,
+    indate2:    *const OCIDateTime,
+    inter:      *mut OCIInterval,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeSubtract(hndl, err, indate1, indate2, inter)
+    )
+}
+
+pub(crate) fn date_time_sys_time_stamp(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    sys_date:   *mut OCIDateTime,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeSysTimeStamp(hndl, err, sys_date)
+    )
+}
+
+pub(crate) fn date_time_to_text(
+    hndl:       *mut c_void,
+    err:        *mut OCIError,
+    date:       *const OCIDateTime,
+    fmt:        *const u8,
+    fmt_length: u8,
+    fsprec:     u8,
+    lang_name:  *const u8,
+    lang_length: size_t,
+    buf_size:   *mut u32,
+    buf:        *mut u8,
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCIDateTimeToText(hndl, err, date, fmt, fmt_length, fsprec, lang_name, lang_length, buf_size, buf)
+    )
+}
+
+pub(crate) fn number_abs(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberAbs(err, number, result)
+    )
+}
+
+pub(crate) fn number_add(
+    err:      *mut OCIError,
+    number1:  *const OCINumber,
+    number2:  *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberAdd(err, number1, number2, result)
+    )
+}
+
+pub(crate) fn number_arc_cos(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberArcCos(err, number, result)
+    )
+}
+
+pub(crate) fn number_arc_sin(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberArcSin(err, number, result)
+    )
+}
+
+pub(crate) fn number_arc_tan(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberArcTan(err, number, result)
+    )
+}
+
+pub(crate) fn number_arc_tan2(
+    err:      *mut OCIError,
+    number1:  *const OCINumber,
+    number2:  *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberArcTan2(err, number1, number2, result)
+    )
+}
+
+pub(crate) fn number_assign(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberAssign(err, number, result)
+    )
+}
+
+pub(crate) fn number_ceil(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberCeil(err, number, result)
+    )
+}
+
+pub(crate) fn number_cmp(
+    err:      *mut OCIError,
+    number1:  *const OCINumber,
+    number2:  *const OCINumber,
+    result:   *mut i32
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberCmp(err, number1, number2, result)
+    )
+}
+
+pub(crate) fn number_cos(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberCos(err, number, result)
+    )
+}
+
+pub(crate) fn number_dec(
+    err:      *mut OCIError,
+    number:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberDec(err, number)
+    )
+}
+
+pub(crate) fn number_div(
+    err:      *mut OCIError,
+    number1:  *const OCINumber,
+    number2:  *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberDiv(err, number1, number2, result)
+    )
+}
+
+pub(crate) fn number_exp(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberExp(err, number, result)
+    )
+}
+
+pub(crate) fn number_floor(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberFloor(err, number, result)
+    )
+}
+
+pub(crate) fn number_from_real(
+    err:      *mut OCIError,
+    rnum:     *const c_void,
+    rnum_len: u32,                  
+    number:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberFromReal(err, rnum, rnum_len, number)
+    )
+}
+
+pub(crate) fn number_from_text(
+    err:      *mut OCIError,
+    txt:      *const u8,
+    txt_len:  u32,
+    fmt:      *const u8,
+    fmt_len:  u32,
+    nls_par:  *const u8,
+    nls_len:  u32,
+    number:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberFromText(err, txt, txt_len, fmt, fmt_len, nls_par, nls_len, number)
+    )
+}
+
+pub(crate) fn number_hyp_cos(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberHypCos(err, number, result)
+    )
+}
+
+pub(crate) fn number_hyp_sin(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberHypSin(err, number, result)
+    )
+}
+
+pub(crate) fn number_hyp_tan(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberHypTan(err, number, result)
+    )
+}
+
+pub(crate) fn number_inc(
+    err:      *mut OCIError,
+    number:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberInc(err, number)
+    )
+}
+
+pub(crate) fn number_int_power(
+    err:      *mut OCIError,
+    base:     *const OCINumber,
+    exp:      i32,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberIntPower(err, base, exp, result)
+    )
+}
+
+pub(crate) fn number_is_int(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut i32
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberIsInt(err, number, result)
+    )
+}
+
+pub(crate) fn number_is_zero(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut i32          
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberIsZero(err, number, result)
+    )
+}
+
+pub(crate) fn number_ln(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberLn(err, number, result)
+    )
+}
+
+pub(crate) fn number_log(
+    err:      *mut OCIError,
+    base:     *const OCINumber,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberLog(err, base, number, result)
+    )
+}
+
+pub(crate) fn number_mod(
+    err:      *mut OCIError,
+    number1:  *const OCINumber,
+    number2:  *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberMod(err, number1, number2, result)
+    )
+}
+
+pub(crate) fn number_mul(
+    err:      *mut OCIError,
+    number1:  *const OCINumber,
+    number2:  *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberMul(err, number1, number2, result)
+    )
+}
+
+pub(crate) fn number_neg(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberNeg(err, number, result)
+    )
+}
+
+pub(crate) fn number_power(
+    err:      *mut OCIError,
+    base:     *const OCINumber,
+    exp:      *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberPower(err, base, exp, result)
+    )
+}
+
+pub(crate) fn number_prec(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    num_dig:  i32,                  
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberPrec(err, number, num_dig, result)
+    )
+}
+
+pub(crate) fn number_round(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    num_dig:  i32,                  
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberRound(err, number, num_dig, result)
+    )
+}
+
+pub(crate) fn number_set_pi(
+    err:      *mut OCIError,
+    number:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberSetPi(err, number)
+    )
+}
+
+pub(crate) fn number_set_zero(
+    err:      *mut OCIError,
+    number:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberSetZero(err, number)
+    )
+}
+
+pub(crate) fn number_shift(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    num_dec:  i32,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberShift(err, number, num_dec, result)
+    )
+}
+
+pub(crate) fn number_sign(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut i32
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberSign(err, number, result)
+    )
+}
+
+pub(crate) fn number_sin(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberSin(err, number, result)
+    )
+}
+
+pub(crate) fn number_sqrt(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberSqrt(err, number, result)
+    )
+}
+
+pub(crate) fn number_sub(
+    err:      *mut OCIError,
+    number1:  *const OCINumber,
+    number2:  *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberSub(err, number1, number2, result)
+    )
+}
+
+pub(crate) fn number_tan(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberTan(err, number, result)
+    )
+}
+
+pub(crate) fn number_to_real(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    res_len:  u32,                  
+    result:   *mut c_void
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberToReal(err, number, res_len, result)
+    )
+}
+
+pub(crate) fn number_to_text(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    fmt:      *const u8,
+    fmt_len:  u32,
+    nls_par:  *const u8,
+    nls_len:  u32,
+    buf_size: *mut u32,
+    buf:      *mut u8
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberToText(err, number, fmt, fmt_len, nls_par, nls_len, buf_size, buf)
+    )
+}
+
+pub(crate) fn number_trunc(
+    err:      *mut OCIError,
+    number:   *const OCINumber,
+    num_dig:  i32,
+    result:   *mut OCINumber
+) -> Result<()> {
+    ok_or_oci_err!(|err|
+        OCINumberTrunc(err, number, num_dig, result)
+    )
+}
