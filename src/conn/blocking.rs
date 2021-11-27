@@ -1,6 +1,6 @@
 //! Blocking mode User session (a.k.a. database connection) methods.
 
-use super::{connect, Connection};
+use super::{connect, get_from_session_pool, get_from_connection_pool, Connection};
 use crate::{Environment, Result, Statement, oci::{self, *}, env::Env};
 // use libc::c_void;
 
@@ -15,6 +15,14 @@ impl Drop for Connection<'_> {
 impl<'a> Connection<'a> {
     pub(crate) fn new(env: &'a Environment, addr: &str, user: &str, pass: &str) -> Result<Self> {
         connect(env, addr, user, pass)
+    }
+
+    pub(crate) fn from_session_pool(env: &'a Environment, pool_name: &str) -> Result<Self> {
+        get_from_session_pool(env, pool_name)
+    }
+
+    pub(crate) fn from_connection_pool(env: &'a Environment, pool_name: &str, user: &str, pass: &str) -> Result<Self> {
+        get_from_connection_pool(env, pool_name, user, pass)
     }
 
     /// Confirms that the connection and the server are active.

@@ -104,7 +104,7 @@ impl<'a> Statement<'a> {
             return Err( Error::new("Use `execute_into` with output arguments to execute a RETURNING statement") );
         }
         self.exec(stmt_type, args, &mut [])?;
-        self.get_row_count()
+        self.row_count()
     }
 
     /**
@@ -151,7 +151,7 @@ impl<'a> Statement<'a> {
             return Err( Error::new("Use `query` to execute SELECT") );
         }
         self.exec(stmt_type, in_args, out_args)?;
-        self.get_row_count()
+        self.row_count()
     }
 
     /**
@@ -190,7 +190,7 @@ impl<'a> Statement<'a> {
             );
             subs.insert(id, name);
         }
-        assert_eq!(stmt.get_row_count()?, 4);
+        assert_eq!(stmt.row_count()?, 4);
         assert_eq!(subs.len(), 4);
         assert!(subs.contains_key(&104), "Bruce Ernst");
         assert!(subs.contains_key(&105), "David Austin");

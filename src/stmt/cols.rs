@@ -388,7 +388,7 @@ impl Columns {
         self.inds.get(pos).map_or(true, |ind| *ind == OCI_IND_NULL)
     }
 
-    pub(crate) fn get_column_info<'a>(&self, stmt: &'a dyn Stmt, pos: usize) -> Option<ColumnInfo<'a>> {
+    pub(crate) fn column_info<'a>(&self, stmt: &'a dyn Stmt, pos: usize) -> Option<ColumnInfo<'a>> {
         self.info.get(pos).map(|desc| ColumnInfo::new(desc.get(), stmt)) }
 
     pub(crate) fn get<'a, T: FromSql<'a>>(&mut self, row: &'a Row<'a>, pos: usize) -> Result<Option<T>> {

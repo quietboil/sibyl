@@ -100,4 +100,97 @@ mod tests {
 
         Ok(())
     }
+
+    /**
+        Creates a session pool in a multithreaded environment.
+        Threads get sessions (`Connection`s) from this pool.
+    */
+    #[test]
+    fn pooled_sessions() -> Result<()> {
+        use once_cell::sync::OnceCell;
+
+        static ORACLE : OnceCell<Environment> = OnceCell::new();
+        let oracle = ORACLE.get_or_try_init(|| {
+            env()
+        })?;
+
+        let dbname = env::var("DBNAME").expect("database name");
+        let dbuser = env::var("DBUSER").expect("schema name");
+        let dbpass = env::var("DBPASS").expect("password");
+
+        let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 2, 10)?;
+        let pool = Arc::new(pool);
+
+        let mut workers = Vec::with_capacity(100);
+        for _i in 0..workers.capacity() {
+            let pool = pool.clone();
+            let handle = thread::spawn(move || -> String {
+                let conn = pool.get_session().expect("database session");
+                let stmt = conn.prepare("
+                    SELECT first_name, last_name, hire_date
+                      FROM (
+                            SELECT first_name, last_name, hire_date
+                                 , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
+                              FROM hr.employees
+                           )
+                     WHERE hire_date_rank = 1
+                ").expect("prepared select");
+                fetch_latest_hire(stmt).expect("selected employee name")
+            });
+            workers.push(handle);
+        }
+        for handle in workers {
+            let name = handle.join().expect("select result");
+            assert_eq!(name, "Amit Banda was hired on April 21, 2008");
+        }
+
+        Ok(())
+    }
+
+    /**
+        Creates a connection pool in a multithreaded environment.
+        Threads get their own (stateful) sessions fro this pool.
+        These sessions, however, share the available connections.
+    */
+    #[test]
+    fn pooled_connections() -> Result<()> {
+        use once_cell::sync::OnceCell;
+
+        static ORACLE : OnceCell<Environment> = OnceCell::new();
+        let oracle = ORACLE.get_or_try_init(|| {
+            env()
+        })?;
+
+        let dbname = env::var("DBNAME").expect("database name");
+        let dbuser = env::var("DBUSER").expect("schema name");
+        let dbpass = env::var("DBPASS").expect("password");
+
+        let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 0, 2, 10)?;
+        let pool = Arc::new(pool);
+
+        let mut workers = Vec::with_capacity(100);
+        for _i in 0..workers.capacity() {
+            let pool = pool.clone();
+            let handle = thread::spawn(move || -> String {
+                let conn = pool.get_session().expect("database session");
+                let stmt = conn.prepare("
+                    SELECT first_name, last_name, hire_date
+                      FROM (
+                            SELECT first_name, last_name, hire_date
+                                 , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
+                              FROM hr.employees
+                           )
+                     WHERE hire_date_rank = 1
+                ").expect("prepared select");
+                fetch_latest_hire(stmt).expect("selected employee name")
+            });
+            workers.push(handle);
+        }
+        for handle in workers {
+            let name = handle.join().expect("select result");
+            assert_eq!(name, "Amit Banda was hired on April 21, 2008");
+        }
+
+        Ok(())
+    }
 }

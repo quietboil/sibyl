@@ -214,7 +214,9 @@ Sibyl provides API to access several Oracle native data types.
 ```rust
 use sibyl::Number;
 
-let pi = Number::pi(&oracle);
+let oracle = sibyl::env()?;
+
+let pi = Number::pi(&oracle)?;
 let two = Number::from_int(2, &oracle);
 let two_pi = pi.mul(&two)?;
 let h = Number::from_string("6.62607004E-34", "9D999999999EEEE", &oracle)?;
@@ -283,7 +285,7 @@ let stmt = conn.prepare("
 ")?;
 let mut rows = stmt.query(&[ &107 ])?;
 let cur_row = rows.next()?.unwrap();
-let rowid = row.get_rowid()?;
+let rowid = row.rowid()?;
 
 let manager_id: u32 = row.get(0)?.unwrap();
 assert_eq!(manager_id, 103);
@@ -362,7 +364,6 @@ At this time sibyl provides only the most commonly needed means to interface wit
 - JSON data
 - LDAP and proxy authentications
 - Global transactions
-- Session and connection pooling
 - High Availability
 - Continuous query and publish-subscribe notifications
 - Advanced queuing

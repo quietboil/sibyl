@@ -339,13 +339,13 @@ impl<'a> Statement<'a> {
              WHERE manager_id = :id
         ")?;
         let mut _rows = stmt.query(&[ &103 ])?;
-        let num_cols = stmt.get_column_count()?;
+        let num_cols = stmt.column_count()?;
 
         assert_eq!(num_cols, 3);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_column_count(&self) -> Result<usize> {
+    pub fn column_count(&self) -> Result<usize> {
         let num_columns = self.get_attr::<u32>(OCI_ATTR_PARAM_COUNT)? as usize;
         Ok( num_columns )
     }
@@ -370,7 +370,7 @@ impl<'a> Statement<'a> {
              WHERE manager_id = :id
         ")?;
         let mut _rows = stmt.query(&[ &103 ])?;
-        let col = stmt.get_column(0).expect("employee_id column info");
+        let col = stmt.column(0).expect("employee_id column info");
         assert_eq!(col.name()?, "EMPLOYEE_ID");
         assert_eq!(col.data_type()?, ColumnType::Number);
         assert_eq!(col.precision()?, 6);
@@ -381,8 +381,8 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_column(&self, pos: usize) -> Option<ColumnInfo> {
-        self.cols.get().and_then(|cols| cols.read().get_column_info(self, pos))
+    pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
+        self.cols.get().and_then(|cols| cols.read().column_info(self, pos))
     }
 
     /**
@@ -416,13 +416,13 @@ impl<'a> Statement<'a> {
             let id : u32 = row.get(0)?.unwrap();
             ids.push(id);
         }
-        assert_eq!(stmt.get_row_count()?, 4);
+        assert_eq!(stmt.row_count()?, 4);
         assert_eq!(ids.len(), 4);
         assert_eq!(ids.as_slice(), &[104 as u32, 105, 106, 107]);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_row_count(&self) -> Result<usize> {
+    pub fn row_count(&self) -> Result<usize> {
         let num_rows = self.get_attr::<u64>(OCI_ATTR_UB8_ROW_COUNT)? as usize;
         Ok( num_rows )
     }
@@ -430,7 +430,7 @@ impl<'a> Statement<'a> {
     // Indicates the number of rows that were successfully fetched into the user's buffers
     // in the last fetch or execute with nonzero iterations.
     // This is not very useful in this implementation as we set up buffers for 1 row only.
-    // pub fn get_rows_fetched(&self) -> Result<usize> {
+    // pub fn rows_fetched(&self) -> Result<usize> {
     //     let num_rows = self.get_attr::<u32>(OCI_ATTR_ROWS_FETCHED)? as usize;
     //     Ok( num_rows )
     // }

@@ -75,7 +75,7 @@ macro_rules! impl_oci_handle_attr {
     };
 }
 
-impl_oci_handle_attr!{ OCIServer, OCISession }
+impl_oci_handle_attr!{ OCIServer, OCISession, OCIAuthInfo }
 
 impl AttrGet for *mut c_void {
     type ValueType = Self;

@@ -291,12 +291,12 @@ impl<'a> Cursor<'a> {
         stmt.execute_into(&[&(":ID", 103)], &mut [
             &mut (":SUBORDINATES", &mut subordinates),
         ])?;
-        assert_eq!(subordinates.get_column_count()?, 3);
+        assert_eq!(subordinates.column_count()?, 3);
         # }
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_column_count(&self) -> Result<usize> {
+    pub fn column_count(&self) -> Result<usize> {
         let num_columns = self.get_attr::<u32>(OCI_ATTR_PARAM_COUNT)? as usize;
         Ok( num_columns )
     }
@@ -329,7 +329,7 @@ impl<'a> Cursor<'a> {
             &mut (":SUBORDINATES", &mut subordinates),
         ])?;
         let mut _rows = subordinates.rows()?;
-        let col = subordinates.get_column(0).expect("ID column info");
+        let col = subordinates.column(0).expect("ID column info");
         assert_eq!(col.name()?, "EMPLOYEE_ID", "column name");
         assert_eq!(col.data_type()?, ColumnType::Number, "column type");
         assert_eq!(col.precision()?, 6, "number precision");
@@ -340,8 +340,8 @@ impl<'a> Cursor<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_column(&self, pos: usize) -> Option<ColumnInfo> {
-        self.cols.get().and_then(|cols| cols.read().get_column_info(self, pos))
+    pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
+        self.cols.get().and_then(|cols| cols.read().column_info(self, pos))
     }
 
     /**
@@ -384,13 +384,13 @@ impl<'a> Cursor<'a> {
             let id : usize = row.get(0)?.unwrap();
             ids.push(id);
         }
-        assert_eq!(subordinates.get_row_count()?, 4);
+        assert_eq!(subordinates.row_count()?, 4);
         assert_eq!(ids.len(), 4);
         assert_eq!(ids.as_slice(), &[104 as usize, 105, 106, 107]);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_row_count(&self) -> Result<usize> {
+    pub fn row_count(&self) -> Result<usize> {
         let num_rows = self.get_attr::<u64>(OCI_ATTR_UB8_ROW_COUNT)? as usize;
         Ok( num_rows )
     }

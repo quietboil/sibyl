@@ -58,7 +58,7 @@ impl<'a, T> Interval<'a, T>
 
         let int = IntervalDS::from_string("3 11:45:28.150000000", &env)?;
 
-        assert_eq!(int.get_duration()?, (3,11,45,28,150000000));
+        assert_eq!(int.duration()?, (3,11,45,28,150000000));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -81,7 +81,7 @@ impl<'a, T> Interval<'a, T>
         let num = Number::from_real(5.5, &env)?;
         let int = IntervalDS::from_number(&num)?;
 
-        assert_eq!(int.get_duration()?, (5,12,0,0,0));
+        assert_eq!(int.duration()?, (5,12,0,0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -115,7 +115,7 @@ impl<'a, T> Interval<'a, T>
         let int = IntervalDS::from_string("3 11:45:28.150000000", &env)?;
         let cpy = IntervalDS::from_interval(&int)?;
 
-        assert_eq!(cpy.get_duration()?, (3,11,45,28,150000000));
+        assert_eq!(cpy.duration()?, (3,11,45,28,150000000));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -212,12 +212,12 @@ impl<'a, T> Interval<'a, T>
         let i2 = IntervalDS::from_string("+0 00:46:20.000000000", &env)?;
         let res = i1.add(&i2)?;
 
-        assert_eq!(res.get_duration()?, (0,3,0,0,0));
+        assert_eq!(res.duration()?, (0,3,0,0,0));
 
         let i3 = oracle::IntervalDS::from_string("-0 00:13:40.000000000", &env)?;
         let res = i1.add(&i3)?;
 
-        assert_eq!(res.get_duration()?, (0,2,0,0,0));
+        assert_eq!(res.duration()?, (0,2,0,0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -239,11 +239,11 @@ impl<'a, T> Interval<'a, T>
         let i1 = IntervalDS::from_string("+0 02:13:40.000000000", &env)?;
         let i2 = IntervalDS::from_string("+0 01:13:40.000000000", &env)?;
         let res = i1.sub(&i2)?;
-        assert_eq!(res.get_duration()?, (0,1,0,0,0));
+        assert_eq!(res.duration()?, (0,1,0,0,0));
 
         let i3 = IntervalDS::from_string("-0 01:46:20.000000000", &env)?;
         let res = i1.sub(&i3)?;
-        assert_eq!(res.get_duration()?, (0,4,0,0,0));
+        assert_eq!(res.duration()?, (0,4,0,0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -266,7 +266,7 @@ impl<'a, T> Interval<'a, T>
         let num = Number::from_int(4, &env)?;
         let res = int.mul(&num)?;
 
-        assert_eq!(res.get_duration()?, (0,0,41,0,0));
+        assert_eq!(res.duration()?, (0,0,41,0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -289,7 +289,7 @@ impl<'a, T> Interval<'a, T>
         let num = Number::from_int(5, &env)?;
         let res = int.div(&num)?;
 
-        assert_eq!(res.get_duration()?, (0,0,10,3,0));
+        assert_eq!(res.duration()?, (0,0,10,3,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -337,7 +337,7 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
         // 3 days, 14 hours, 15 minutes, 26 seconds, 535897932 nanoseconds
         let int = IntervalDS::with_duration(3, 14, 15, 26, 535_897_932, &env)?;
 
-        assert_eq!(int.get_duration()?, (3, 14, 15, 26, 535897932));
+        assert_eq!(int.duration()?, (3, 14, 15, 26, 535897932));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -357,11 +357,11 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
 
         let int = IntervalDS::from_tz("EST", &env)?;
 
-        assert_eq!(int.get_duration()?, (0, -5, 0, 0, 0));
+        assert_eq!(int.duration()?, (0, -5, 0, 0, 0));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_duration(&self) -> Result<(i32,i32,i32,i32,i32)> {
+    pub fn duration(&self) -> Result<(i32,i32,i32,i32,i32)> {
         let mut day  = 0i32;
         let mut hour = 0i32;
         let mut min  = 0i32;
@@ -384,10 +384,10 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
         let env = oracle::env()?;
 
         let mut int = IntervalDS::with_duration(3, 14, 15, 26, 535_897_932, &env)?;
-        assert_eq!(int.get_duration()?, (3, 14, 15, 26, 535897932));
+        assert_eq!(int.duration()?, (3, 14, 15, 26, 535897932));
 
         int.set_duration(0, -5, 0, 0, 0)?;
-        assert_eq!(int.get_duration()?, (0, -5, 0, 0, 0));
+        assert_eq!(int.duration()?, (0, -5, 0, 0, 0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -408,7 +408,7 @@ impl<'a> Interval<'a, OCIIntervalYearToMonth> {
         // 3 years, 1 month
         let int = IntervalYM::with_duration(3, 1, &env)?;
 
-        assert_eq!(int.get_duration()?, (3, 1));
+        assert_eq!(int.duration()?, (3, 1));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -427,13 +427,13 @@ impl<'a> Interval<'a, OCIIntervalYearToMonth> {
         let env = oracle::env()?;
 
         let int = IntervalYM::with_duration(3, 1, &env)?;
-        let (year, month) = int.get_duration()?;
+        let (year, month) = int.duration()?;
 
         assert_eq!((year, month), (3, 1));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_duration(&self) -> Result<(i32,i32)> {
+    pub fn duration(&self) -> Result<(i32,i32)> {
         let mut year  = 0i32;
         let mut month = 0i32;
         oci::interval_get_year_month(self.ctx.ctx_ptr(), self.ctx.err_ptr(), &mut year, &mut month, self.as_ptr())?;
@@ -449,10 +449,10 @@ impl<'a> Interval<'a, OCIIntervalYearToMonth> {
         let env = oracle::env()?;
 
         let mut int = IntervalYM::with_duration(3, 1, &env)?;
-        assert_eq!(int.get_duration()?, (3, 1));
+        assert_eq!(int.duration()?, (3, 1));
 
         int.set_duration(0, 17)?;
-        assert_eq!(int.get_duration()?, (0, 17));
+        assert_eq!(int.duration()?, (0, 17));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -463,7 +463,7 @@ impl<'a> Interval<'a, OCIIntervalYearToMonth> {
 
 impl std::fmt::Debug for Interval<'_, OCIIntervalDayToSecond> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.get_duration() {
+        match self.duration() {
             Ok(duration) => fmt.write_fmt(format_args!("IntervalDS {:?}", duration)),
             Err(err)     => fmt.write_fmt(format_args!("IntervalDS {:?}", err)),
         }
@@ -472,7 +472,7 @@ impl std::fmt::Debug for Interval<'_, OCIIntervalDayToSecond> {
 
 impl std::fmt::Debug for Interval<'_, OCIIntervalYearToMonth> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.get_duration() {
+        match self.duration() {
             Ok(duration) => fmt.write_fmt(format_args!("IntervalDS {:?}", duration)),
             Err(err)     => fmt.write_fmt(format_args!("IntervalDS {:?}", err)),
         }

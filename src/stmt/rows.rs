@@ -278,7 +278,7 @@ impl<'a> Row<'a> {
         let manager_id: u32 = row.get(0)?.unwrap();
         assert_eq!(manager_id, 103);
 
-        let rowid = row.get_rowid()?;
+        let rowid = row.rowid()?;
 
         let stmt = conn.prepare("
             UPDATE hr.employees
@@ -294,7 +294,7 @@ impl<'a> Row<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_rowid(&self) -> Result<RowID> {
+    pub fn rowid(&self) -> Result<RowID> {
         let mut rowid = RowID::new(self.get_env().env_ptr())?;
         attr::get_into(OCI_ATTR_ROWID, &mut rowid, OCI_HTYPE_STMT, self.rows.stmt_ptr() as *const c_void, self.err_ptr())?;
         Ok( rowid )

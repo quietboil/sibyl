@@ -43,6 +43,54 @@ fn connect<'a>(env: &'a Environment, addr: &str, user: &str, pass: &str) -> Resu
     )
 }
 
+fn get_from_session_pool<'a>(env: &'a Environment, pool_name: &str) -> Result<Connection<'a>> {
+    let err = Handle::<OCIError>::new(env.env_ptr())?;
+    let inf = Handle::<OCIAuthInfo>::new(env.env_ptr())?;
+    let mut svc = Ptr::null();
+    let mut found = 0u8;
+    oci::session_get(
+        env.env_ptr(), err.get(), svc.as_mut_ptr(), inf.get(), pool_name.as_ptr(), pool_name.len() as u32,
+        ptr::null(), 0, ptr::null_mut(), ptr::null_mut(), &mut found, 
+        OCI_SESSGET_SPOOL | OCI_SESSGET_SPOOL_MATCHANY | OCI_SESSGET_PURITY_SELF
+    )?;    
+    attr::get::<Ptr<OCISession>>(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, svc.get() as *const c_void, err.get())
+    .or_else(|attr_err| {
+        unsafe {
+            OCISessionRelease(svc.get(), err.get(), ptr::null(), 0, OCI_DEFAULT);
+        }
+        Err(attr_err)
+    })
+    .map(|usr| 
+        Connection { env, err, svc, usr }
+    )
+}
+
+fn get_from_connection_pool<'a>(env: &'a Environment, pool_name: &str, username: &str, password: &str) -> Result<Connection<'a>> {
+    let err = Handle::<OCIError>::new(env.env_ptr())?;
+    let inf = Handle::<OCIAuthInfo>::new(env.env_ptr())?;
+    inf.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", err.get())?;
+    inf.set_attr(OCI_ATTR_USERNAME, username, err.get())?;
+    inf.set_attr(OCI_ATTR_PASSWORD, password, err.get())?;
+    let mut svc = Ptr::null();
+    let mut found = 0u8;
+    oci::session_get(
+        env.env_ptr(), err.get(), svc.as_mut_ptr(), inf.get(), pool_name.as_ptr(), pool_name.len() as u32,
+        ptr::null(), 0, ptr::null_mut(), ptr::null_mut(), &mut found, 
+        OCI_SESSGET_CPOOL | OCI_SESSGET_STMTCACHE
+    )?;    
+    attr::get::<Ptr<OCISession>>(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, svc.get() as *const c_void, err.get())
+    .or_else(|attr_err| {
+        unsafe {
+            OCISessionRelease(svc.get(), err.get(), ptr::null(), 0, OCI_DEFAULT);
+        }
+        Err(attr_err)
+    })
+    .map(|usr| 
+        Connection { env, err, svc, usr }
+    )
+}
+
+
 /// Represents a user session
 pub struct Connection<'a> {
     env: &'a Environment,
@@ -112,7 +160,7 @@ impl Connection<'_> {
     }
 
     /// Returns the server-side time for the preceding call in microseconds.
-    pub fn get_call_time(&self) -> Result<u64> {
+    pub fn call_time(&self) -> Result<u64> {
         self.get_session_attr(OCI_ATTR_CALL_TIME)
     }
 
@@ -249,17 +297,17 @@ impl Connection<'_> {
         # let dbpass = std::env::var("DBPASS")?;
         # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let orig_name = conn.get_current_schema()?;
+        let orig_name = conn.current_schema()?;
 
         conn.set_current_schema("HR")?;
-        assert_eq!(conn.get_current_schema()?, "HR");
+        assert_eq!(conn.current_schema()?, "HR");
 
         conn.set_current_schema(orig_name)?;
-        assert_eq!(conn.get_current_schema()?, orig_name);
+        assert_eq!(conn.current_schema()?, orig_name);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_current_schema(&self) -> Result<&str> {
+    pub fn current_schema(&self) -> Result<&str> {
         self.get_session_attr(OCI_ATTR_CURRENT_SCHEMA)
     }
 
@@ -277,9 +325,9 @@ impl Connection<'_> {
         # let dbpass = std::env::var("DBPASS")?;
         # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let orig_name = conn.get_current_schema()?;
+        let orig_name = conn.current_schema()?;
         conn.set_current_schema("HR")?;
-        assert_eq!(conn.get_current_schema()?, "HR");
+        assert_eq!(conn.current_schema()?, "HR");
 
         let stmt = conn.prepare("
             SELECT schemaname
@@ -292,7 +340,7 @@ impl Connection<'_> {
         assert_eq!(schema_name, "HR");
 
         conn.set_current_schema(orig_name)?;
-        assert_eq!(conn.get_current_schema()?, orig_name);
+        assert_eq!(conn.current_schema()?, orig_name);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */

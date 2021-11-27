@@ -92,8 +92,8 @@ impl<'a> Date<'a> {
 
         let date = Date::with_date(1969, 7, 16, &env)?;
 
-        assert_eq!(date.get_date(), (1969, 7, 16));
-        assert_eq!(date.get_time(), (0, 0, 0));
+        assert_eq!(date.date(), (1969, 7, 16));
+        assert_eq!(date.time(), (0, 0, 0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -112,8 +112,8 @@ impl<'a> Date<'a> {
 
         let date = Date::with_datetime(1969, 7, 24, 16, 50, 35, &env)?;
 
-        assert_eq!(date.get_date(), (1969, 7, 24));
-        assert_eq!(date.get_time(), (16, 50, 35));
+        assert_eq!(date.date(), (1969, 7, 24));
+        assert_eq!(date.time(), (16, 50, 35));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -132,7 +132,7 @@ impl<'a> Date<'a> {
 
         let date = Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
 
-        assert_eq!(date.get_date(), (1776, 7, 4));
+        assert_eq!(date.date(), (1776, 7, 4));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -158,7 +158,7 @@ impl<'a> Date<'a> {
         let env = oracle::env()?;
 
         let date = Date::from_sysdate(&env)?;
-        let (year, _month, _day) = date.get_date();
+        let (year, _month, _day) = date.date();
 
         assert!(year >= 2021);
         # Ok::<(),oracle::Error>(())
@@ -183,7 +183,7 @@ impl<'a> Date<'a> {
         let src = Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
         let dst = Date::from_date(&src)?;
 
-        assert_eq!(dst.get_date(), (1776, 7, 4));
+        assert_eq!(dst.date(), (1776, 7, 4));
         assert_eq!(dst.compare(&src)?, Ordering::Equal);
         # Ok::<(),oracle::Error>(())
         ```
@@ -201,13 +201,13 @@ impl<'a> Date<'a> {
         let env = oracle::env()?;
 
         let date = Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
-        let (year, month, day) = date.get_date();
+        let (year, month, day) = date.date();
 
         assert_eq!((year, month, day), (1776, 7, 4));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_date(&self) -> (i16, u8, u8) {
+    pub fn date(&self) -> (i16, u8, u8) {
         (self.date.year, self.date.month, self.date.day)
     }
 
@@ -220,10 +220,10 @@ impl<'a> Date<'a> {
         let env = oracle::env()?;
 
         let mut date = Date::from_string("July 4, 1776", "MONTH DD, YYYY", &env)?;
-        assert_eq!(date.get_date(), (1776, 7, 4));
+        assert_eq!(date.date(), (1776, 7, 4));
 
         date.set_date(1787, 9, 17)?;
-        assert_eq!(date.get_date(), (1787, 9, 17));
+        assert_eq!(date.date(), (1787, 9, 17));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -242,13 +242,13 @@ impl<'a> Date<'a> {
         let env = oracle::env()?;
 
         let date = Date::with_datetime(1969, 7, 24, 16, 50, 35, &env)?;
-        let (hour, min, sec) = date.get_time();
+        let (hour, min, sec) = date.time();
 
         assert_eq!((hour, min, sec), (16, 50, 35));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_time(&self) -> (u8, u8, u8) {
+    pub fn time(&self) -> (u8, u8, u8) {
         (self.date.hour, self.date.min, self.date.sec)
     }
 
@@ -263,8 +263,8 @@ impl<'a> Date<'a> {
         let mut date = Date::with_date(1969, 7, 16, &env)?;
         date.set_time(13, 32, 0)?;
 
-        assert_eq!(date.get_date(), (1969, 7, 16));
-        assert_eq!(date.get_time(), (13, 32, 0));
+        assert_eq!(date.date(), (1969, 7, 16));
+        assert_eq!(date.time(), (13, 32, 0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -284,11 +284,11 @@ impl<'a> Date<'a> {
 
         let date = Date::with_datetime(1969, 7, 24, 16, 50, 35, &env)?;
 
-        assert_eq!(date.get_date_and_time(), (1969, 7, 24, 16, 50, 35));
+        assert_eq!(date.date_and_time(), (1969, 7, 24, 16, 50, 35));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_date_and_time(&self) -> (i16, u8, u8, u8, u8, u8) {
+    pub fn date_and_time(&self) -> (i16, u8, u8, u8, u8, u8) {
         (self.date.year, self.date.month, self.date.day, self.date.hour, self.date.min, self.date.sec)
     }
 
@@ -303,7 +303,7 @@ impl<'a> Date<'a> {
         let mut date = Date::with_datetime(1969, 7, 16, 13, 32,  0, &env)?;
         date.set_date_and_time(1969, 7, 24, 16, 50, 35)?;
 
-        assert_eq!(date.get_date_and_time(), (1969, 7, 24, 16, 50, 35));
+        assert_eq!(date.date_and_time(), (1969, 7, 24, 16, 50, 35));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -346,7 +346,7 @@ impl<'a> Date<'a> {
         let start = Date::with_date(1969, 7, 16, &env)?;
         let end = start.add_days(8)?;
 
-        assert_eq!(end.get_date(), (1969, 7, 24));
+        assert_eq!(end.date(), (1969, 7, 24));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -374,13 +374,13 @@ impl<'a> Date<'a> {
         let date = Date::with_date(2019, 12, 31, &env)?;
 
         let date = date.add_months(2)?;
-        assert_eq!(date.get_date(), (2020, 2, 29));
+        assert_eq!(date.date(), (2020, 2, 29));
 
         let date = date.add_months(2)?;
-        assert_eq!(date.get_date(), (2020, 4, 30));
+        assert_eq!(date.date(), (2020, 4, 30));
 
         let date = date.add_months(-1)?;
-        assert_eq!(date.get_date(), (2020, 3, 31));
+        assert_eq!(date.date(), (2020, 3, 31));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -451,7 +451,7 @@ impl<'a> Date<'a> {
         let date = Date::with_date(2020, 2, 9, &env)?;
         let last_day_of_the_month = date.month_last_day()?;
 
-        assert_eq!(last_day_of_the_month.get_date(), (2020, 2, 29));
+        assert_eq!(last_day_of_the_month.date(), (2020, 2, 29));
         # Ok::<(),oracle::Error>(())
         ```
     */

@@ -25,6 +25,8 @@ impl_handle_type!{
     OCIServer   => OCI_HTYPE_SERVER,
     OCISvcCtx   => OCI_HTYPE_SVCCTX,
     OCISession  => OCI_HTYPE_SESSION,
+    OCISPool    => OCI_HTYPE_SPOOL,
+    OCICPool    => OCI_HTYPE_CPOOL,
     OCIAuthInfo => OCI_HTYPE_AUTHINFO,
     OCIStmt     => OCI_HTYPE_STMT,
     OCIBind     => OCI_HTYPE_BIND,
@@ -50,6 +52,8 @@ pub struct Handle<T: HandleType> {
 */
 unsafe impl Sync for Handle<OCIEnv> {}
 unsafe impl Sync for Handle<OCIError> {}
+unsafe impl Sync for Handle<OCISPool> {}
+unsafe impl Sync for Handle<OCICPool> {}
 unsafe impl Sync for Handle<OCIServer> {}
 unsafe impl Sync for Handle<OCISvcCtx> {}
 unsafe impl Sync for Handle<OCISession> {}

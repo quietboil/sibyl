@@ -48,13 +48,13 @@ impl Environment {
         # Example
         ```
         let oracle = sibyl::env()?;
-        let max_size_percentage = oracle.get_cache_max_size()?;
+        let max_size_percentage = oracle.max_cache_size()?;
 
         assert_eq!(max_size_percentage, 10);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_cache_max_size(&self) -> Result<u32> {
+    pub fn max_cache_size(&self) -> Result<u32> {
         self.env.get_attr::<u32>(OCI_ATTR_CACHE_MAX_SIZE, self.err_ptr())
     }
 
@@ -81,7 +81,7 @@ impl Environment {
         ```
         let oracle = sibyl::env()?;
         oracle.set_cache_max_size(30)?;
-        let max_size_percentage = oracle.get_cache_max_size()?;
+        let max_size_percentage = oracle.max_cache_size()?;
 
         assert_eq!(max_size_percentage, 30);
         # Ok::<(),Box<dyn std::error::Error>>(())
@@ -97,13 +97,13 @@ impl Environment {
         # Example
         ```
         let oracle = sibyl::env()?;
-        let optimal_size = oracle.get_cache_opt_size()?;
+        let optimal_size = oracle.optimal_cache_size()?;
 
         assert_eq!(optimal_size, 8*1024*1024);
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_cache_opt_size(&self) -> Result<u32> {
+    pub fn optimal_cache_size(&self) -> Result<u32> {
         self.env.get_attr::<u32>(OCI_ATTR_CACHE_OPT_SIZE, self.err_ptr())
     }
 
@@ -115,7 +115,7 @@ impl Environment {
         ```
         let oracle = sibyl::env()?;
         oracle.set_cache_opt_size(64*1024*1024)?;
-        let optimal_size = oracle.get_cache_opt_size()?;
+        let optimal_size = oracle.optimal_cache_size()?;
 
         assert_eq!(optimal_size, 64*1024*1024);
         # Ok::<(),Box<dyn std::error::Error>>(())
@@ -135,13 +135,13 @@ impl Environment {
         # Example
         ```
         let oracle = sibyl::env()?;
-        let lang = oracle.get_nls_language()?;
+        let lang = oracle.nls_language()?;
 
         assert_eq!(lang, "AMERICAN");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_nls_language(&self) -> Result<String> {
+    pub fn nls_language(&self) -> Result<String> {
         let mut lang = String::with_capacity(32);
         self.env.get_attr_into(OCI_ATTR_ENV_NLS_LANGUAGE, &mut lang, self.err_ptr())?;
         Ok( lang )
@@ -153,7 +153,7 @@ impl Environment {
         ```
         let oracle = sibyl::env()?;
         oracle.set_nls_language("ENGLISH")?;
-        let lang = oracle.get_nls_language()?;
+        let lang = oracle.nls_language()?;
 
         assert_eq!(lang, "ENGLISH");
         # Ok::<(),Box<dyn std::error::Error>>(())
@@ -172,13 +172,13 @@ impl Environment {
         # Example
         ```
         let oracle = sibyl::env()?;
-        let territory = oracle.get_nls_territory()?;
+        let territory = oracle.nls_territory()?;
 
         assert_eq!(territory, "AMERICA");
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn get_nls_territory(&self) -> Result<String> {
+    pub fn nls_territory(&self) -> Result<String> {
         let mut territory = String::with_capacity(24);
         self.env.get_attr_into(OCI_ATTR_ENV_NLS_TERRITORY, &mut territory, self.err_ptr())?;
         Ok( territory )
@@ -191,7 +191,7 @@ impl Environment {
         ```
         let oracle = sibyl::env()?;
         oracle.set_nls_territory("CANADA")?;
-        let territory = oracle.get_nls_territory()?;
+        let territory = oracle.nls_territory()?;
 
         assert_eq!(territory, "CANADA");
         # Ok::<(),Box<dyn std::error::Error>>(())

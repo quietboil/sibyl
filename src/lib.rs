@@ -5,6 +5,9 @@
 #[cfg(all(feature="blocking",feature="nonblocking",not(docsrs)))]
 compile_error!("'blocking' and 'nonblocking' features are exclusive");
 
+#[cfg(not(any(feature="blocking",feature="nonblocking")))]
+compile_error!("either 'blocking' or 'nonblocking' feature must be explicitly specified");
+
 #[cfg(feature="nonblocking")]
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod task;
@@ -14,11 +17,13 @@ mod err;
 mod env;
 mod types;
 mod lob;
+mod pool;
 mod conn;
 mod stmt;
 
 pub use err::Error;
 pub use env::Environment;
+pub use pool::{ConnectionPool, SessionPool, SessionPoolGetMode};
 pub use conn::Connection;
 pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ToSqlOut, SqlInArg, SqlOutArg, cols::ColumnType};
 pub use types::{Date, Number, Raw, Varchar};

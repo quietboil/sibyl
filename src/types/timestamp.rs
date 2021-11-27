@@ -86,10 +86,10 @@ impl<'e, T> Timestamp<'e, T>
         let env = oracle::env()?;
 
         let ts = Timestamp::with_datetime(1969, 7, 20, 20, 18, 4, 0, "", &env)?;
-        assert_eq!(ts.get_date()?, (1969, 7, 20));
-        assert_eq!(ts.get_time()?, (20, 18, 4,0));
+        assert_eq!(ts.date()?, (1969, 7, 20));
+        assert_eq!(ts.time()?, (20, 18, 4,0));
 
-        let res = ts.get_tz_offset();
+        let res = ts.tz_offset();
         assert!(res.is_err());
         match res {
             Err( oracle::Error::Oracle(errcode, _errmsg) ) => assert_eq!(1878, errcode),
@@ -97,15 +97,15 @@ impl<'e, T> Timestamp<'e, T>
         }
 
         let ts = oracle::TimestampTZ::with_datetime(1969, 7, 20, 20, 18, 4, 0, "UTC", &env)?;
-        assert_eq!(ts.get_date()?, (1969, 7, 20));
-        assert_eq!(ts.get_time()?, (20, 18, 4,0));
-        assert_eq!(ts.get_tz_offset()?, (0,0));
+        assert_eq!(ts.date()?, (1969, 7, 20));
+        assert_eq!(ts.time()?, (20, 18, 4,0));
+        assert_eq!(ts.tz_offset()?, (0,0));
 
         let ts1 = TimestampLTZ::from_string("1969-7-20 8:18:04 pm", "YYYY-MM-DD HH:MI:SS PM", &env)?;
         // Here it gets a little tricky... The timestamp above is in the local time zone
         // (whatever "local" is on the machine where this code is running).
         // To create the same timestamp using `from_datetime` we need to know that time zone
-        let tzn = ts1.get_tz_name()?;
+        let tzn = ts1.tz_name()?;
         // And then provide it to the `from_datetime` method
         let ts2 = TimestampLTZ::with_datetime(1969, 7, 20, 20, 18, 4, 0, &tzn, &env)?;
         assert_eq!(ts2.compare(&ts1)?, Ordering::Equal);
@@ -136,9 +136,9 @@ impl<'e, T> Timestamp<'e, T>
         let env = oracle::env()?;
 
         let ts = TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
-        assert_eq!(ts.get_date()?, (1969,7,20));
-        assert_eq!(ts.get_time()?, (20,18,4,160000000));
-        assert_eq!(ts.get_tz_offset()?, (0,0));
+        assert_eq!(ts.date()?, (1969,7,20));
+        assert_eq!(ts.time()?, (20,18,4,160000000));
+        assert_eq!(ts.tz_offset()?, (0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
@@ -168,13 +168,13 @@ impl<'e, T> Timestamp<'e, T>
 
         let ts : Timestamp = tzts.convert_into(&env)?;
         // It just discards the timezone
-        assert_eq!(ts.get_date_and_time()?, (1969, 7, 24, 16, 50, 35, 0));
+        assert_eq!(ts.date_and_time()?, (1969, 7, 24, 16, 50, 35, 0));
 
         let lts : TimestampLTZ = tzts.convert_into(&env)?;
         // It just slaps in the local time zone without shifting the time
-        assert_eq!(lts.get_date_and_time()?, (1969, 7, 24, 16, 50, 35, 0));
+        assert_eq!(lts.date_and_time()?, (1969, 7, 24, 16, 50, 35, 0));
 
-        let (tzh, tzm) = lts.get_tz_offset()?;
+        let (tzh, tzm) = lts.tz_offset()?;
         assert_ne!((tzh, tzm), (0, 0));
         # Ok::<(),oracle::Error>(())
         ```
@@ -266,7 +266,7 @@ impl<'e, T> Timestamp<'e, T>
         let ts1 = TimestampTZ::with_datetime(1969,7,20,20,18,4,0,"UTC", &env)?;
         let ts2 = TimestampTZ::with_datetime(1969,7,21,17,54,0,0,"UTC", &env)?;
         let int: IntervalDS = ts2.subtract(&ts1)?;
-        let (days, hours, min, sec, nanosec) = int.get_duration()?;
+        let (days, hours, min, sec, nanosec) = int.duration()?;
 
         assert_eq!((days, hours, min, sec, nanosec), (0, 21, 35, 56, 0));
         # Ok::<(),oracle::Error>(())
@@ -317,11 +317,11 @@ impl<'e, T> Timestamp<'e, T>
 
         let ts = Timestamp::with_datetime(1969,7,20,20,18,4,0,"", &env)?;
 
-        assert_eq!(ts.get_date()?, (1969, 7, 20));
+        assert_eq!(ts.date()?, (1969, 7, 20));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_date(&self) -> Result<(i16, u8, u8)> {
+    pub fn date(&self) -> Result<(i16, u8, u8)> {
         let mut year  = 0i16;
         let mut month = 0u8;
         let mut day   = 0u8;
@@ -342,11 +342,11 @@ impl<'e, T> Timestamp<'e, T>
 
         let ts = Timestamp::with_datetime(1969,7,20,20,18,4,0,"", &env)?;
 
-        assert_eq!(ts.get_time()?, (20, 18, 4, 0));
+        assert_eq!(ts.time()?, (20, 18, 4, 0));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_time(&self) -> Result<(u8, u8, u8, u32)> {
+    pub fn time(&self) -> Result<(u8, u8, u8, u32)> {
         let mut hour = 0u8;
         let mut min  = 0u8;
         let mut sec  = 0u8;
@@ -369,13 +369,13 @@ impl<'e, T> Timestamp<'e, T>
 
         let ts = Timestamp::with_datetime(1969,7,20,20,18,4,0,"", &env)?;
 
-        assert_eq!(ts.get_date_and_time()?, (1969, 7, 20, 20, 18, 4, 0));
+        assert_eq!(ts.date_and_time()?, (1969, 7, 20, 20, 18, 4, 0));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_date_and_time(&self) -> Result<(i16, u8, u8, u8, u8, u8, u32)> {
-        let (year, month, day) = self.get_date()?;
-        let (hour, min, sec, nanos) = self.get_time()?;
+    pub fn date_and_time(&self) -> Result<(i16, u8, u8, u8, u8, u8, u32)> {
+        let (year, month, day) = self.date()?;
+        let (hour, min, sec, nanos) = self.time()?;
         Ok((year, month, day, hour, min, sec, nanos))
     }
 
@@ -388,17 +388,17 @@ impl<'e, T> Timestamp<'e, T>
         let env = oracle::env()?;
 
         let ts = TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
-        assert_eq!(ts.get_tz_name()?, "UTC");
+        assert_eq!(ts.tz_name()?, "UTC");
 
         let ts = TimestampTZ::with_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
-        assert_eq!(ts.get_tz_name()?, "+00:00");
+        assert_eq!(ts.tz_name()?, "+00:00");
 
         let ts = TimestampTZ::with_datetime(1969,7,20,20,18,4,0,"EST", &env)?;
-        assert_eq!(ts.get_tz_name()?, "EST");
+        assert_eq!(ts.tz_name()?, "EST");
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_tz_name(&self) -> Result<String> {
+    pub fn tz_name(&self) -> Result<String> {
         let mut name: [u8;64] = unsafe { mem::MaybeUninit::uninit().assume_init() };
         let mut size = name.len() as u32;
         oci::date_time_get_time_zone_name(
@@ -418,13 +418,13 @@ impl<'e, T> Timestamp<'e, T>
         let env = oracle::env()?;
 
         let ts = TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
-        let (tzh, tzm) = ts.get_tz_offset()?;
+        let (tzh, tzm) = ts.tz_offset()?;
 
         assert_eq!((tzh, tzm), (0,0));
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn get_tz_offset(&self) -> Result<(i8, i8)> {
+    pub fn tz_offset(&self) -> Result<(i8, i8)> {
         let mut hours = 0i8;
         let mut min   = 0i8;
         oci::date_time_get_time_zone_offset(
@@ -484,7 +484,7 @@ impl<'e> Timestamp<'e, OCITimestampTZ> {
         let env = oracle::env()?;
 
         let ts = TimestampTZ::from_systimestamp(&env)?;
-        let (year, _month, _day) = ts.get_date()?;
+        let (year, _month, _day) = ts.date()?;
 
         assert!(year >= 2021);
         # Ok::<(),oracle::Error>(())

@@ -590,7 +590,7 @@ mod blocking {
         ")?;
         let mut rows = stmt.query(&[ &(":ID", 107) ])?;
         let row = rows.next()?.expect("selected row");
-        let implicit_rowid = row.get_rowid()?;
+        let implicit_rowid = row.rowid()?;
         let str_rowid : String = row.get(0)?.expect("ROWID as text");
         assert_eq!(str_rowid, implicit_rowid.to_string(&conn)?);
         let explicit_rowid : RowID = row.get(0)?.expect("ROWID pseudo-column");
