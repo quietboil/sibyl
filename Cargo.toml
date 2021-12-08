@@ -1,6 +1,6 @@
 [package]
 name = "sibyl"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2018"
 description = "An OCI-based interface between Rust applications and Oracle databases"
 authors = ["Alex Demenchuk <alexander.demenchuk@gmail.com>"]
@@ -15,10 +15,9 @@ documentation = "https://docs.rs/sibyl"
 libc = "0.2"
 once_cell = "1.8"
 parking_lot = "0.11"
-tokio = { version = "1", features=["rt"], optional = true }
+tokio = { version = "1", features=["rt", "rt-multi-thread"], optional = true }
 
 [features]
-default = []
 blocking = []
 nonblocking = ["tokio"]
 

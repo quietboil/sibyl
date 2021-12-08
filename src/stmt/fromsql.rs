@@ -24,7 +24,7 @@ pub trait FromSql<'a> : Sized {
 impl<'a> FromSql<'a> for String {
     fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
         match col {
-            ColumnBuffer::Text( oci_str_ptr )   => Ok( varchar::to_string(oci_str_ptr.get(), row.get_env().env_ptr()) ),
+            ColumnBuffer::Text( oci_str_ptr )   => Ok( varchar::to_string(oci_str_ptr.get(), row.env_ptr()) ),
             ColumnBuffer::Number( oci_num_box ) => number::to_string("TM", oci_num_box.as_ref() as *const OCINumber, row.err_ptr()),
             ColumnBuffer::Date( oci_date )      => date::to_string("YYYY-MM-DD HH24::MI:SS", oci_date as *const OCIDate, row.err_ptr()),
             ColumnBuffer::Timestamp( ts )       => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF", 3, ts.get(), row.get_ctx()),
@@ -199,7 +199,7 @@ impl<'a> FromSql<'a> for Cursor<'a> {
     fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
         match col {
             ColumnBuffer::Cursor( handle ) => {
-                let mut ref_cursor : Handle<OCIStmt> = Handle::new(row.get_env().env_ptr())?;
+                let mut ref_cursor : Handle<OCIStmt> = Handle::new(row.env_ptr())?;
                 ref_cursor.swap(handle);
                 Ok( Cursor::explicit(ref_cursor, row) )
             }
@@ -214,8 +214,8 @@ macro_rules! impl_from_lob {
             fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
                 match col {
                     $var ( lob ) => {
-                        if lob::is_initialized(lob, row.get_env().env_ptr(), row.err_ptr())? {
-                            let mut loc : Descriptor<$t> = Descriptor::new(row.get_env().env_ptr())?;
+                        if lob::is_initialized(lob, row.env_ptr(), row.err_ptr())? {
+                            let mut loc : Descriptor<$t> = Descriptor::new(row.env_ptr())?;
                             loc.swap(lob);
                             Ok( LOB::<$t>::make(loc, row.conn()) )
                         } else {
@@ -238,7 +238,7 @@ impl<'a> FromSql<'a> for RowID {
         match col {
             ColumnBuffer::Rowid( rowid )  => {
                 if rowid.is_initialized() {
-                    let mut res = RowID::new(row.get_env().env_ptr())?;
+                    let mut res = RowID::new(row.env_ptr())?;
                     res.swap(rowid);
                     Ok(res)
                 } else {
@@ -299,7 +299,7 @@ mod tests {
         assert_eq!(count, 1);
 
         let stmt = conn.prepare("SELECT fbin FROM test_large_object_data ORDER BY id")?;
-        let mut rows = stmt.query(&[])?;
+        let rows = stmt.query(&[])?;
 
         if let Some(row) = rows.next()? {
             let lob : BFile = row.get(0)?.expect("first row BFILE locator");
@@ -345,7 +345,7 @@ mod tests {
               FROM hr.employees
              WHERE employee_id = :ID
         ")?;
-        let mut rows = stmt.query(&[ &(":ID", 107) ])?;
+        let rows = stmt.query(&[ &(":ID", 107) ])?;
 
         if let Some(row) = rows.next()? {
             let strid : String = row.get(0)?.expect("ROWID as text");

@@ -21,6 +21,16 @@ mod pool;
 mod conn;
 mod stmt;
 
+#[cfg(feature="nonblocking")]
+#[doc(hidden)]
+pub mod test;
+
+#[cfg(feature="nonblocking")]
+mod ptr;
+
+#[cfg(feature="nonblocking")]
+pub use task::{spawn, spawn_blocking, JoinError};
+
 pub use err::Error;
 pub use env::Environment;
 pub use pool::{ConnectionPool, SessionPool, SessionPoolGetMode};

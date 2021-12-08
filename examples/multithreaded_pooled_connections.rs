@@ -1,5 +1,5 @@
 /*!
-    This example is a variant of "multithreaded connection per thread" that executes 
+    This example is a variant of "multithreaded connection per thread" that executes
     its queries in multiple threads. Unlike "connection per thread" it creates a
     connection pool, which is then shared by all worker threads. The latter then fetch
     theor own sessions, which can be stateful, from the shared pool.
@@ -24,12 +24,16 @@ fn main() -> Result<()> {
 
     let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 1, 1, 10)?;
     let pool = Arc::new(pool);
+    let user = Arc::new(dbuser);
+    let pass = Arc::new(dbpass);
 
     let mut workers = Vec::with_capacity(98);
     for _i in 0..workers.capacity() {
         let pool = pool.clone();
+        let user = user.clone();
+        let pass = pass.clone();
         let handle = thread::spawn(move || -> Result<Option<(String,String)>> {
-            let conn = pool.get_session()?;
+            let conn = pool.get_session(user.as_str(), pass.as_str())?;
             let stmt = conn.prepare("
                 SELECT first_name, last_name, hire_date
                   FROM (
@@ -39,7 +43,7 @@ fn main() -> Result<()> {
                        )
                  WHERE hire_date_rank = 1
             ")?;
-            let mut rows = stmt.query(&[])?;
+            let rows = stmt.query(&[])?;
             if let Some( row ) = rows.next()? {
                 let first_name : Option<&str> = row.get(0)?;
                 let last_name : &str = row.get(1)?.unwrap();

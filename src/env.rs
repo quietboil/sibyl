@@ -2,15 +2,17 @@
 
 #[cfg(feature="blocking")]
 #[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
-pub mod blocking;
+mod blocking;
 
 #[cfg(feature="nonblocking")]
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
-pub mod nonblocking;
+mod nonblocking;
 
-use crate::{Result, Error, oci::*, types::Ctx};
+use std::{ptr, sync::Arc};
+
 use libc::c_void;
-use std::ptr;
+
+use crate::{Error, Result, oci::*, types::Ctx};
 
 fn create_environment() -> Result<Handle<OCIEnv>> {
     let mut env = ptr::null_mut::<OCIEnv>();
@@ -28,17 +30,53 @@ fn create_environment() -> Result<Handle<OCIEnv>> {
     }
 }
 
+pub trait Env {
+    fn env_ptr(&self) -> *mut OCIEnv;
+    fn err_ptr(&self) -> *mut OCIError;
+    fn get_env_ptr(&self) -> Ptr<OCIEnv>;
+    fn get_err_ptr(&self) -> Ptr<OCIError>;
+}
+
 /// Represents an OCI environment.
 pub struct Environment {
+    env: Arc<Handle<OCIEnv>>,
     err: Handle<OCIError>,
-    env: Handle<OCIEnv>
+}
+
+impl Env for Environment {
+    fn env_ptr(&self) -> *mut OCIEnv {
+        self.env.get()
+    }
+
+    fn err_ptr(&self) -> *mut OCIError {
+        self.err.get()
+    }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        Ptr::new(self.env_ptr())
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        Ptr::new(self.err_ptr())
+    }
+}
+
+impl Ctx for Environment {
+    fn ctx_ptr(&self) -> *mut c_void {
+        self.env.get() as *mut c_void
+    }
 }
 
 impl Environment {
     pub(crate) fn new() -> Result<Self> {
         let env = create_environment()?;
+        let env = Arc::new(env);
         let err = Handle::<OCIError>::new(env.get())?;
-        Ok( Environment { env, err } )
+        Ok(Self { env, err })
+    }
+
+    pub(crate) fn clone_env(&self) -> Arc<Handle<OCIEnv>> {
+        self.env.clone()
     }
 
     /**
@@ -199,26 +237,5 @@ impl Environment {
     */
     pub fn set_nls_territory(&self, territory: &str) -> Result<()> {
         self.env.set_attr(OCI_ATTR_ENV_NLS_TERRITORY, territory, self.err_ptr())
-    }
-}
-
-pub trait Env {
-    fn env_ptr(&self) -> *mut OCIEnv;
-    fn err_ptr(&self) -> *mut OCIError;
-}
-
-impl Env for Environment {
-    fn env_ptr(&self) -> *mut OCIEnv {
-        self.env.get()
-    }
-
-    fn err_ptr(&self) -> *mut OCIError {
-        self.err.get()
-    }
-}
-
-impl Ctx for Environment {
-    fn ctx_ptr(&self) -> *mut c_void {
-        self.env_ptr() as *mut c_void
     }
 }

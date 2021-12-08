@@ -4,13 +4,13 @@
 #[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
 pub mod blocking;
 
-use crate::{
-    Result,
-    oci::{self, *},
-    env::Env,
-    conn::Connection,
-    stmt::args::{ToSql, ToSqlOut},
-};
+#[cfg(feature="nonblocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+pub mod nonblocking;
+
+use std::{sync::Arc, marker::PhantomData};
+
+use crate::{Result, Connection, env::Env, oci::{self, *}, stmt::args::{ToSql, ToSqlOut}, conn::Session};
 use libc::c_void;
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
@@ -26,27 +26,106 @@ pub(crate) fn is_initialized<T>(locator: &Descriptor<T>, env: *mut OCIEnv, err: 
     Ok( flag != 0 )
 }
 
-/// LOB locator.
-pub struct LOB<'a,T>
-    where T: DescriptorType<OCIType=OCILobLocator>
+struct LobInner<T>
+    where T: DescriptorType<OCIType=OCILobLocator>  + 'static
 {
     locator: Descriptor<T>,
-    conn: &'a Connection<'a>,
+    conn:    Arc<Session>,
+}
+
+impl<T> LobInner<T>
+    where T: DescriptorType<OCIType=OCILobLocator>
+{
+    fn new(locator: Descriptor<T>, conn: Arc<Session>) -> Self {
+        Self { locator, conn }
+    }
+
+    fn get(&self) -> *mut OCILobLocator {
+        self.locator.get()
+    }
+
+    fn as_ptr(&self) -> *const *mut OCILobLocator {
+        self.locator.as_ptr()
+    }
+
+    fn err_ptr(&self) -> *mut OCIError {
+        self.conn.err_ptr()
+    }
+
+    fn env_ptr(&self) -> *mut OCIEnv {
+        self.conn.env_ptr()
+    }
+
+    fn get_ptr(&self) -> Ptr<OCILobLocator> {
+        Ptr::new(self.locator.get())
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        Ptr::new(self.conn.err_ptr())
+    }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        Ptr::new(self.conn.env_ptr())
+    }
+
+    fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
+        Ptr::new(self.conn.svc_ptr())
+    }
+}
+
+/// LOB locator.
+pub struct LOB<'a,T>
+    where T: DescriptorType<OCIType=OCILobLocator> + 'static
+{
+    inner: LobInner<T>,
+    phantom_conn: PhantomData<&'a Connection<'a>>
+}
+
+impl<'a,T> AsRef<Descriptor<T>> for LOB<'a,T>
+    where T: DescriptorType<OCIType=OCILobLocator>
+{
+    fn as_ref(&self) -> &Descriptor<T> {
+        &self.inner.locator
+    }
 }
 
 impl<'a,T> LOB<'a,T>
     where T: DescriptorType<OCIType=OCILobLocator>
 {
-    pub(crate) fn as_ptr(&self) -> *const OCILobLocator {
-        self.locator.get()
+    fn get(&self) -> *mut OCILobLocator {
+        self.inner.get()
     }
 
-    pub(crate) fn as_mut_ptr(&self) -> *mut OCILobLocator {
-        self.locator.get()
+    fn as_ptr(&self) -> *const *mut OCILobLocator {
+        self.inner.as_ptr()
+    }
+
+    fn err_ptr(&self) -> *mut OCIError {
+        self.inner.err_ptr()
+    }
+
+    fn env_ptr(&self) -> *mut OCIEnv {
+        self.inner.env_ptr()
+    }
+
+    fn get_ptr(&self) -> Ptr<OCILobLocator> {
+        self.inner.get_ptr()
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        self.inner.get_err_ptr()
+    }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        self.inner.get_env_ptr()
+    }
+
+    fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
+        self.inner.get_svc_ptr()
     }
 
     pub(crate) fn make(locator: Descriptor<T>, conn: &'a Connection) -> Self {
-        Self { locator, conn }
+        Self { inner: LobInner::new(locator, conn.clone_session()), phantom_conn: PhantomData }
     }
 
     /**
@@ -55,14 +134,31 @@ impl<'a,T> LOB<'a,T>
         The application must fetch the LOB descriptor from the database before querying this attribute.
     */
     pub fn is_remote(&self) -> Result<bool> {
-        let is_remote: u8 = self.locator.get_attr(OCI_ATTR_LOB_REMOTE, self.conn.err_ptr())?;
+        let is_remote: u8 = self.as_ref().get_attr(OCI_ATTR_LOB_REMOTE, self.err_ptr())?;
         Ok( is_remote != 0 )
     }
 
     /// Returns the LOB's `SQLT` type, i.e. SQLT_CLOB, SQLT_BLOB or SQLT_BFILE.
     pub fn get_type(&self) -> Result<u16> {
-        let lob_type: u16 = self.locator.get_attr(OCI_ATTR_LOB_TYPE, self.conn.err_ptr())?;
+        let lob_type: u16 = self.as_ref().get_attr(OCI_ATTR_LOB_TYPE, self.err_ptr())?;
         Ok( lob_type )
+    }
+
+    /**
+        Returns `true` if the given LOB or BFILE locator is initialized.
+
+        InternalLob LOB locators can be initialized by one of these methods:
+        - Selecting a non-NULL LOB into the locator
+        - Pinning an object that contains a non-NULL LOB attribute
+        - Setting the locator to empty by calling `empty`
+
+        BFILE locators can be initialized by one of these methods:
+        - Selecting a non-NULL BFILE into the locator
+        - Pinning an object that contains a non-NULL BFILE attribute
+        - Calling `set_file_name`
+    */
+    pub fn is_initialized(&self) -> Result<bool> {
+        is_initialized(&self.inner.locator, self.env_ptr(), self.err_ptr())
     }
 
     /**
@@ -72,13 +168,20 @@ impl<'a,T> LOB<'a,T>
         Two NULL locators are considered not equal by this function.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::CLOB;
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         # let stmt = conn.prepare("
         #     declare
@@ -117,11 +220,11 @@ impl<'a,T> LOB<'a,T>
         let stmt = conn.prepare("
             select text from test_lobs where id = :id
         ")?;
-        let mut rows = stmt.query(&[ &id ])?;
+        let rows = stmt.query(&[ &id ])?;
         let row = rows.next()?.expect("selected row");
         let lob1 : CLOB = row.get(0)?.expect("CLOB locator");
 
-        let mut rows = stmt.query(&[ &id ])?;
+        let rows = stmt.query(&[ &id ])?;
         let row = rows.next()?.expect("selected row");
         let lob2 : CLOB = row.get(0)?.expect("CLOB locator");
 
@@ -129,32 +232,19 @@ impl<'a,T> LOB<'a,T>
         // the same LOB which makes them "equal"
         assert!(lob1.is_equal(&lob2)?, "CLOB1 == CLOB2");
         assert!(lob2.is_equal(&lob1)?, "CLOB2 == CLOB1");
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn is_equal<U>(&self, other: &LOB<'a,U>) -> Result<bool>
         where U: DescriptorType<OCIType=OCILobLocator>
     {
         let mut flag = 0u8;
-        oci::lob_is_equal(self.conn.env_ptr(), self.as_ptr(), other.as_ptr(), &mut flag)?;
+        oci::lob_is_equal(self.env_ptr(), self.get(), other.get(), &mut flag)?;
         Ok( flag != 0 )
-    }
-
-    /**
-        Returns `true` if the given LOB or BFILE locator is initialized.
-
-        InternalLob LOB locators can be initialized by one of these methods:
-        - Selecting a non-NULL LOB into the locator
-        - Pinning an object that contains a non-NULL LOB attribute
-        - Setting the locator to empty by calling `empty`
-
-        BFILE locators can be initialized by one of these methods:
-        - Selecting a non-NULL BFILE into the locator
-        - Pinning an object that contains a non-NULL BFILE attribute
-        - Calling `set_file_name`
-    */
-    pub fn is_initialized(&self) -> Result<bool> {
-        is_initialized(&self.locator, self.conn.env_ptr(), self.conn.err_ptr())
     }
 
     /**
@@ -164,7 +254,7 @@ impl<'a,T> LOB<'a,T>
     */
     pub fn charset_form(&self) -> Result<CharSetForm> {
         let mut csform = 0u8;
-        oci::lob_char_set_form(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), &mut csform)?;
+        oci::lob_char_set_form(self.env_ptr(), self.err_ptr(), self.get(), &mut csform)?;
         let csform = match csform {
             SQLCS_IMPLICIT => CharSetForm::Implicit,
             SQLCS_NCHAR    => CharSetForm::NChar,
@@ -179,7 +269,7 @@ impl<'a,T> LOB<'a,T>
     */
     pub fn charset_id(&self) -> Result<u16> {
         let mut csid = 0u16;
-        oci::lob_char_set_id(self.conn.env_ptr(), self.conn.err_ptr(), self.as_ptr(), &mut csid)?;
+        oci::lob_char_set_id(self.env_ptr(), self.err_ptr(), self.get(), &mut csid)?;
         Ok( csid )
     }
 }
@@ -200,13 +290,20 @@ impl<'a, T> LOB<'a,T>
         populate the LOB with data.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::{ CLOB };
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         # let stmt = conn.prepare("
         #     declare
@@ -232,13 +329,17 @@ impl<'a, T> LOB<'a,T>
         let lob = CLOB::empty(&conn)?;
         stmt.execute_into(&[ &lob ], &mut [ &mut id ])?;
         # assert!(id > 0);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn empty(conn: &'a Connection) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
         locator.set_attr(OCI_ATTR_LOBEMPTY, 0u32, conn.err_ptr())?;
-        Ok( Self { locator, conn } )
+        Ok(Self::make(locator, conn))
     }
 
     /**
@@ -249,7 +350,7 @@ impl<'a, T> LOB<'a,T>
         populate the LOB with data.
     */
     pub fn clear(&self) -> Result<()> {
-        self.locator.set_attr(OCI_ATTR_LOBEMPTY, 0u32, self.conn.err_ptr())
+        self.as_ref().set_attr(OCI_ATTR_LOBEMPTY, 0u32, self.err_ptr())
     }
 }
 
@@ -258,18 +359,29 @@ impl<'a> LOB<'a,OCICLobLocator> {
         Returns `true` if the LOB locator is for an NCLOB.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let lob = CLOB::temp(&conn, CharSetForm::NChar, Cache::No)?;
 
         assert!(lob.is_nclob()?);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn is_nclob(&self) -> Result<bool> {
@@ -279,24 +391,30 @@ impl<'a> LOB<'a,OCICLobLocator> {
 }
 
 impl<'a> LOB<'a,OCIBFileLocator> {
-
     /// Creates a new uninitialized BFILE.
     pub fn new(conn: &'a Connection) -> Result<Self> {
         let locator = Descriptor::new(conn.env_ptr())?;
-        Ok( Self { locator, conn } )
+        Ok(Self::make(locator, conn))
     }
 
     /**
         Returns the directory object and file name associated with this BFILE locator.
 
         # Example
-        ```
-        use sibyl::{BFile};
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
+        ```
+        use sibyl::BFile;
+
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let file = BFile::new(&conn)?;
         file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -304,7 +422,11 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 
         assert_eq!(dir_name, "MEDIA_DIR");
         assert_eq!(file_name, "hello_world.txt");
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn file_name(&self) -> Result<(String,String)> {
@@ -316,10 +438,10 @@ impl<'a> LOB<'a,OCIBFileLocator> {
             let dir  = dir.as_mut_vec();
             let name = name.as_mut_vec();
             oci::lob_file_get_name(
-                self.conn.env_ptr(), self.conn.err_ptr(), self.as_mut_ptr(),
+                self.env_ptr(), self.err_ptr(), self.get(),
                 dir.as_mut_ptr(),  &mut dir_len  as *mut u16,
                 name.as_mut_ptr(), &mut name_len as *mut u16
-            )?;    
+            )?;
             dir.set_len(dir_len as usize);
             name.set_len(name_len as usize);
         }
@@ -330,25 +452,36 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         Sets the directory object and file name in the BFILE locator.
 
         # Example
-        ```
-        use sibyl::{BFile};
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
+        ```
+        use sibyl::BFile;
+
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let mut file = BFile::new(&conn)?;
         file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
 
         assert!(file.file_exists()?);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_file_name(&self, dir: &str, name: &str) -> Result<()> {
         oci::lob_file_set_name(
-            self.conn.env_ptr(), self.conn.err_ptr(),
-            self.locator.as_ptr(),
+            self.env_ptr(), self.err_ptr(),
+            self.as_ptr(),
             dir.as_ptr(),  dir.len() as u16,
             name.as_ptr(), name.len() as u16
         )
@@ -359,12 +492,12 @@ macro_rules! impl_lob_to_sql {
     ($ts:ty => $sqlt:ident) => {
         impl ToSql for LOB<'_, $ts> {
             fn to_sql(&self) -> (u16, *const c_void, usize) {
-                ( $sqlt, self.locator.as_ptr() as *const c_void, std::mem::size_of::<*mut OCILobLocator>() )
+                ( $sqlt, self.as_ptr() as *const c_void, std::mem::size_of::<*mut OCILobLocator>() )
             }
         }
         impl ToSql for &LOB<'_, $ts> {
             fn to_sql(&self) -> (u16, *const c_void, usize) {
-                ( $sqlt, self.locator.as_ptr() as *const c_void, std::mem::size_of::<*mut OCILobLocator>() )
+                ( $sqlt, self.as_ptr() as *const c_void, std::mem::size_of::<*mut OCILobLocator>() )
             }
         }
     };
@@ -383,7 +516,7 @@ macro_rules! impl_lob_to_sql_output {
         }
         impl ToSqlOut for LOB<'_, $ts> {
             fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
-                self.locator.to_sql_output()
+                self.inner.locator.to_sql_output()
             }
         }
     };

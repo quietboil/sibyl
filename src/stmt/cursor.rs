@@ -1,7 +1,15 @@
 //! REF CURSOR
 
-use super::{ResultSetColumns, ResultSetConnection, Statement, Stmt, args::ToSqlOut, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::{Rows, Row}};
-use crate::{Connection, Result, env::Env, oci::*, types::Ctx};
+#[cfg(feature="blocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
+mod blocking;
+
+#[cfg(feature="nonblocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+mod nonblocking;
+
+use super::{ResultSetColumns, Statement, Stmt, args::ToSqlOut, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::Row, ResultSetConnection};
+use crate::{Result, env::Env, oci::*, types::Ctx, Connection};
 use libc::c_void;
 use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -41,8 +49,8 @@ enum CursorParent<'a> {
 impl CursorParent<'_> {
     fn conn(&self) -> &Connection {
         match self {
-            Self::Statement(stmt) => stmt.conn,
-            Self::Row(row) => row.conn(),
+            &Self::Statement(stmt) => stmt.conn,
+            &Self::Row(row) => row.conn(),
         }
     }
 }
@@ -50,24 +58,32 @@ impl CursorParent<'_> {
 impl Env for CursorParent<'_> {
     fn env_ptr(&self) -> *mut OCIEnv {
         match self {
-            Self::Statement(stmt) => stmt.env_ptr(),
-            Self::Row(row) => row.get_ctx().env_ptr(),
+            &Self::Statement(stmt) => stmt.env_ptr(),
+            &Self::Row(row) => row.get_ctx().env_ptr(),
         }
     }
 
     fn err_ptr(&self) -> *mut OCIError {
         match self {
-            Self::Statement(stmt) => stmt.err_ptr(),
-            Self::Row(row) => row.err_ptr(),
+            &Self::Statement(stmt) => stmt.err_ptr(),
+            &Self::Row(row) => row.err_ptr(),
         }
+    }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        Ptr::new(self.env_ptr())
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        Ptr::new(self.err_ptr())
     }
 }
 
 impl Ctx for CursorParent<'_> {
     fn ctx_ptr(&self) -> *mut c_void {
         match self {
-            Self::Statement(stmt) => stmt.ctx_ptr(),
-            Self::Row(row) => row.get_ctx().ctx_ptr(),
+            &Self::Statement(stmt) => stmt.ctx_ptr(),
+            &Self::Row(row) => row.get_ctx().ctx_ptr(),
         }
     }
 }
@@ -88,6 +104,14 @@ impl Env for Cursor<'_> {
     fn err_ptr(&self) -> *mut OCIError {
         self.parent.err_ptr()
     }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        self.parent.get_env_ptr()
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        self.parent.get_err_ptr()
+    }
 }
 
 impl Ctx for Cursor<'_> {
@@ -99,6 +123,10 @@ impl Ctx for Cursor<'_> {
 impl Stmt for Cursor<'_> {
     fn stmt_ptr(&self) -> *mut OCIStmt {
         self.cursor.get_ptr()
+    }
+
+    fn get_stmt_ptr(&self) -> Ptr<OCIStmt> {
+        Ptr::new(self.stmt_ptr())
     }
 }
 
@@ -129,14 +157,21 @@ impl<'a> Cursor<'a> {
         Creates a Cursor that can be used as an OUT argument to receive a returning REF CURSOR.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::{Cursor, Number};
         use std::cmp::Ordering::Equal;
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             BEGIN
@@ -177,7 +212,7 @@ impl<'a> Cursor<'a> {
         let expected_lowest_salary = Number::from_int(2100, &conn)?;
         let expected_median_salary = Number::from_int(6200, &conn)?;
 
-        let mut rows = lowest_payed_employee.rows()?;
+        let rows = lowest_payed_employee.rows()?;
         let row = rows.next()?.unwrap();
 
         let department_name : &str = row.get(0)?.unwrap();
@@ -194,7 +229,7 @@ impl<'a> Cursor<'a> {
         let row = rows.next()?;
         assert!(row.is_none());
 
-        let mut rows = median_salary_employees.rows()?;
+        let rows = median_salary_employees.rows()?;
 
         let row = rows.next()?.unwrap();
         let department_name : &str = row.get(0)?.unwrap();
@@ -221,7 +256,11 @@ impl<'a> Cursor<'a> {
 
         let row = rows.next()?;
         assert!(row.is_none());
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
         See also [`Statement::next_result`] for another method to return REF CURSORs.
     */
@@ -268,15 +307,19 @@ impl<'a> Cursor<'a> {
 
         # Example
 
-        Blocking variant:
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::Cursor;
 
-        # if cfg!(feature="blocking") {
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             BEGIN
@@ -292,8 +335,11 @@ impl<'a> Cursor<'a> {
             &mut (":SUBORDINATES", &mut subordinates),
         ])?;
         assert_eq!(subordinates.column_count()?, 3);
+        # Ok(())
         # }
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn column_count(&self) -> Result<usize> {
@@ -307,13 +353,20 @@ impl<'a> Cursor<'a> {
         statement is not a SELECT and has no columns.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::{Cursor, ColumnType};
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             BEGIN
@@ -337,7 +390,11 @@ impl<'a> Cursor<'a> {
         assert!(!col.is_null()?, "not null");
         assert!(col.is_visible()?, "is visible");
         assert!(!col.is_identity()?, "not an identity column");
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
@@ -355,13 +412,20 @@ impl<'a> Cursor<'a> {
         this also represents the highest row number seen by the application.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::Cursor;
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             BEGIN
@@ -377,7 +441,7 @@ impl<'a> Cursor<'a> {
         stmt.execute_into(&[&(":ID", 103)], &mut [
             &mut (":SUBORDINATES", &mut subordinates),
         ])?;
-        let mut rows = subordinates.rows()?;
+        let rows = subordinates.rows()?;
         let mut ids = Vec::new();
         while let Some( row ) = rows.next()? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
@@ -387,7 +451,11 @@ impl<'a> Cursor<'a> {
         assert_eq!(subordinates.row_count()?, 4);
         assert_eq!(ids.len(), 4);
         assert_eq!(ids.as_slice(), &[104 as usize, 105, 106, 107]);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn row_count(&self) -> Result<usize> {
@@ -399,13 +467,20 @@ impl<'a> Cursor<'a> {
         Sets the number of top-level rows to be prefetched. The default value is 1 row.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::Cursor;
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             BEGIN
@@ -422,7 +497,11 @@ impl<'a> Cursor<'a> {
             &mut (":SUBORDINATES", &mut subordinates),
         ])?;
         subordinates.set_prefetch_rows(10)?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_prefetch_rows(&self, num_rows: u32) -> Result<()> {
@@ -438,13 +517,19 @@ impl<'a> Cursor<'a> {
 
         # Example
 
-        ```rust
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
+        ```
         use sibyl::Cursor;
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         # let stmt = conn.prepare("
         #     DECLARE
@@ -492,73 +577,18 @@ impl<'a> Cursor<'a> {
             &mut (":LONG_TEXTS", &mut long_texts),
         ])?;
         long_texts.set_max_long_size(100_000);
-        let mut rows = long_texts.rows()?;
+        let rows = long_texts.rows()?;
         let row = rows.next()?.expect("first (and only) row");
         let txt : &str = row.get(0)?.expect("long text");
         # assert_eq!(txt, text);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_max_long_size(&mut self, size: u32) {
         self.max_long = size;
-    }
-
-    /**
-        Returns rows selected by this cursor
-
-        # Example
-        ```
-        use sibyl::Cursor;
-
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            SELECT last_name
-                 , CURSOR(
-                        SELECT department_name
-                          FROM hr.departments
-                         WHERE department_id IN (
-                                    SELECT department_id
-                                      FROM hr.employees
-                                     WHERE last_name = e.last_name)
-                      ORDER BY department_name
-                   ) AS departments
-              FROM (
-                    SELECT DISTINCT last_name
-                      FROM hr.employees
-                     WHERE last_name = :last_name
-                   ) e
-        ")?;
-        let mut rows = stmt.query(&[ &"King" ])?;
-
-        let row = rows.next()?.unwrap();
-        let last_name : &str = row.get(0)?.unwrap();
-        assert_eq!(last_name, "King");
-
-        let departments : Cursor = row.get(1)?.unwrap();
-        let mut dept_rows = departments.rows()?;
-        let dept_row = dept_rows.next()?.unwrap();
-
-        let department_name : &str = dept_row.get(0)?.unwrap();
-        assert_eq!(department_name, "Executive");
-
-        let dept_row = dept_rows.next()?.unwrap();
-        let department_name : &str = dept_row.get(0)?.unwrap();
-        assert_eq!(department_name, "Sales");
-
-        assert!(dept_rows.next()?.is_none());
-        assert!(rows.next()?.is_none());
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn rows(&self) -> Result<Rows> {        
-        if self.cols.get().is_none() {
-            let cols = Columns::new(self, self.max_long)?;
-            self.cols.get_or_init(|| RwLock::new(cols));
-        };
-        Ok( Rows::from_cursor(OCI_SUCCESS, self) )
     }
 }

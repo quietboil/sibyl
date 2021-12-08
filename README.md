@@ -8,6 +8,8 @@ Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databa
 
 ## Example
 
+### Blocking Mode
+
 ```rust
 use sibyl as oracle; // pun intended :)
 
@@ -29,8 +31,58 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
          WHERE hire_date_rank = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
-    let mut rows = stmt.query(&[ &date ])?;
+    let rows = stmt.query(&[ &date ])?;
     if let Some( row ) = rows.next()? {
+        let first_name : Option<&str> = row.get("FIRST_NAME")?;
+        let last_name : &str = row.get("LAST_NAME")?.unwrap();
+        let name = first_name.map_or(last_name.to_string(),
+            |first_name| format!("{}, {}", last_name, first_name)
+        );
+        let hire_date : oracle::Date = row.get("HIRE_DATE")?.unwrap();
+        let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
+
+        println!("{} was hired on {}", name, hire_date);
+    } else {
+        println!("No one was hired after {}", date.to_string("FMMonth DD, YYYY")?);
+    }
+    Ok(())
+}
+```
+
+### Nonnlocking Mode
+
+:memo: Note that the example below uses and depends on [Tokio](https://crates.io/crates/tokio)
+
+:recycle: Note also that the nonblocking mode example is almost a verbatim copy of the blocking
+mode example (see above) with `await`s added.
+
+:warning: For the moment, Sibyl can use only Tokio as an async runtime.
+
+
+```rust
+use sibyl as oracle;
+
+#[tokio::main]
+async fn main() -> Result<(),Box<dyn std::error::Error>> {
+    let dbname = std::env::var("DBNAME")?;
+    let dbuser = std::env::var("DBUSER")?;
+    let dbpass = std::env::var("DBPASS")?;
+
+    let oracle = oracle::env()?;
+    let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = conn.prepare("
+        SELECT first_name, last_name, hire_date
+          FROM (
+                SELECT first_name, last_name, hire_date
+                     , Row_Number() OVER (ORDER BY hire_date) hire_date_rank
+                  FROM hr.employees
+                 WHERE hire_date >= :hire_date
+               )
+         WHERE hire_date_rank = 1
+    ").await?;
+    let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
+    let rows = stmt.query(&[ &date ]).await?;
+    if let Some( row ) = rows.next().await? {
         let first_name : Option<&str> = row.get("FIRST_NAME")?;
         let last_name : &str = row.get("LAST_NAME")?.unwrap();
         let name = first_name.map_or(last_name.to_string(),
@@ -51,20 +103,30 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
 
 Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can supply that information via environment variable `OCI_LIB_DIR` in Windows or `LIBRARY_PATH` in Linux. In Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build sibyl's example as:
 ```bash
-LIBRARY_PATH=/usr/lib/oracle/19.13/client64/lib cargo build --examples
+LIBRARY_PATH=/usr/lib/oracle/19.13/client64/lib cargo build --examples --features=blocking
 ```
 
 In Windows the process is similar if the target environment is `gnu`. The `OCI_LIB_DIR` would point to the directory with `oci.dll`:
 ```bat
 set OCI_LIB_DIR=%ORACLE_HOME%\bin
-cargo build --examples
+cargo build --examples --features=blocking
 ```
 
 However, for `msvc` environment the `OCI_LIB_DIR` must point to the directory with `oci.lib`. For example, you might build that example as:
 ```bat
 set OCI_LIB_DIR=%ORACLE_HOME%\oci\lib\msvc
-cargo build --examples
+cargo build --examples --features=blocking
 ```
+
+:memo: Note that Sibyl has 2 features - `blocking` and `nonblocking`. They are exclusive and one must be explictly selected. Thus, when Sibyl is used as a dependency it might be included as:
+
+```toml
+[dependencies]
+sibyl = { version = "0.5", features = "blocking" }
+```
+
+:warning: Version `0.5` is not released yet. At the moment it is the latest in GitHub.
+
 
 ## Usage
 
@@ -103,10 +165,11 @@ let current_timestamp = TimestampTZ::from_systimestamp(&ORACLE)?;
 Use `Environment::connect` method to connect to a database:
 
 ```rust
-fn main() {
-    let oracle = sibyl::env().expect("Oracle OCI environment");
-    let conn = oracle.connect("dbname", "username", "password").expect("New database connection");
+fn main() -> Result<(),Box<dyn std::error::Error>> {
+    let oracle = sibyl::env()?;
+    let conn = oracle.connect("dbname", "username", "password")?;
     // ...
+    Ok(())
 }
 ```
 
@@ -176,7 +239,7 @@ let stmt = conn.prepare("
     WHERE manager_id = :id
     ORDER BY employee_id
 ")?;
-let mut rows = stmt.query(&[ &103 ])?;
+let rows = stmt.query(&[ &103 ])?;
 while let Some( row ) = rows.next()? {
     let employee_id : u32 = row.get(0)?.unwrap();
     let last_name : &str  = row.get(1)?.unwrap();
@@ -192,7 +255,7 @@ There are a few notable points of interest in the last example:
 - Column value is returned as an `Option`. However, if a column is declared as `NOT NULL`, like `EMPLOYEE_ID` and `LAST_NAME`, the result will always be `Some` and therefore can be safely unwrapped.
 - `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they are borrowed directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
 
-**Note** that instead of column indexes sibyl also accepts column names. The row processing loop of the previous example can be written as:
+**Note** that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:
 
 ```rust
 while let Some( row ) = rows.next()? {
@@ -283,7 +346,7 @@ let stmt = conn.prepare("
      WHERE employee_id = :id
        FOR UPDATE
 ")?;
-let mut rows = stmt.query(&[ &107 ])?;
+let rows = stmt.query(&[ &107 ])?;
 let cur_row = rows.next()?.unwrap();
 let rowid = row.rowid()?;
 
@@ -318,7 +381,7 @@ let stmt = conn.prepare("
 ")?;
 let mut cursor = Cursor::new(&stmt)?;
 stmt.execute_into(&[], &mut [ &mut cursor ])?;
-let mut rows = cursor.rows()?;
+let rows = cursor.rows()?;
 // ...
 ```
 
@@ -339,7 +402,7 @@ let stmt = conn.prepare("
 ")?;
 stmt.execute(&[])?;
 if let Some( cursor ) = stmt.next_result()? {
-    let mut rows = cursor.rows()?;
+    let rows = cursor.rows()?;
     // ...
 }
 ```
@@ -356,7 +419,6 @@ Some of sibyl's tests connect to the database and expect certain objects to exis
 ## Limitations
 
 At this time sibyl provides only the most commonly needed means to interface with the Oracle database. Some of the missing features are:
-- Non-blocking execution
 - Array interface for multi-row operations
 - User defined data types
 - PL/SQL collections and tables
@@ -370,7 +432,7 @@ At this time sibyl provides only the most commonly needed means to interface wit
 - Shards
 - Direct path load
 
-Some of these features will be added in the upcoming releases. Some will likely be kept on a backburner until the need arises or they are explicitly requested. And some might never be implemented.
+Some of these features will be added in the upcoming releases. Some will likely be kept on a backburner until the need arises or they are explicitly requested. And some might never be implemented. The latter category includes those that are incompatible with nonblocking execution.
 
 [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html
 [2]: https://docs.oracle.com/en/database/oracle/oracle-database/19/comsc/installing-sample-schemas.html#GUID-1E645D09-F91F-4BA6-A286-57C5EC66321D

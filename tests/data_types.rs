@@ -90,7 +90,7 @@ mod blocking {
 
         let stmt = conn.prepare("SELECT text, ntext FROM test_character_data WHERE id = :ID")?;
 
-        let mut rows = stmt.query(&[ &(":ID", ids[0]) ])?;
+        let rows = stmt.query(&[ &(":ID", ids[0]) ])?;
         let row  = rows.next()?.unwrap();
         let text : &str = row.get("TEXT")?.unwrap();
         assert_eq!(text, "Two roads diverged in a yellow wood,");
@@ -98,7 +98,7 @@ mod blocking {
         assert_eq!(text, "> Two roads diverged in a yellow wood,");
         assert!(rows.next()?.is_none());
 
-        let mut rows = stmt.query(&[ &(":ID", ids[1]) ])?;
+        let rows = stmt.query(&[ &(":ID", ids[1]) ])?;
         if let Some(row)  = rows.next()? {
             let text : String = row.get(0)?.unwrap();
             assert_eq!(text.as_str(), "And sorry I could not travel both");
@@ -107,7 +107,7 @@ mod blocking {
         }
         assert!(rows.next()?.is_none());
 
-        let mut rows = stmt.query(&[ &(":ID", ids[2]) ])?;
+        let rows = stmt.query(&[ &(":ID", ids[2]) ])?;
         if let Some(row) = rows.next()? {
             let text : Varchar = row.get("TEXT")?.unwrap();
             assert_eq!(text.as_str(), "And be one traveler, long I stood");
@@ -236,7 +236,7 @@ mod blocking {
 
 
         let stmt = conn.prepare("SELECT dt, ts, tsz, tsl, iym, ids FROM test_datetime_data WHERE id = :ID")?;
-        let mut rows = stmt.query(&[ &(":ID", id) ])?;
+        let rows = stmt.query(&[ &(":ID", id) ])?;
         let row  = rows.next()?.unwrap();
         let val : Date = row.get("DT")?.unwrap();
         assert_eq!(val.compare(&dt2)?, Equal);
@@ -307,7 +307,7 @@ mod blocking {
 
         // Can only read BFILEs
         let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID")?;
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : BFile = row.get("FBIN")?.expect("BFILE locator");
 
@@ -327,7 +327,7 @@ mod blocking {
         // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
 
         let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : BLOB = row.get(0)?.expect("BLOB locator");
 
@@ -339,7 +339,7 @@ mod blocking {
         // Read it (in another transaction)
 
         let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : BLOB = row.get(0)?.expect("BLOB locator");
         let mut lob_data = Vec::new();
@@ -348,7 +348,7 @@ mod blocking {
 
 
         let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("BLOB locator");
         assert!(!lob.is_nclob()?);
@@ -362,7 +362,7 @@ mod blocking {
         lob.close()?;
 
         let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(!lob.is_nclob()?);
@@ -372,7 +372,7 @@ mod blocking {
 
 
         let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(lob.is_nclob()?);
@@ -384,7 +384,7 @@ mod blocking {
         lob.close()?;
 
         let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID")?;
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(lob.is_nclob()?);
@@ -446,7 +446,7 @@ mod blocking {
 
         let stmt = conn.prepare("SELECT bin, text FROM test_long_and_raw_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_column_size` (before `stmt.query`) TEXT output is limited to 32768
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.unwrap();
         let bin : &[u8] = row.get("BIN")?.unwrap();
         let txt : &str = row.get("TEXT")?.unwrap();
@@ -500,7 +500,7 @@ mod blocking {
 
         let stmt = conn.prepare("SELECT bin FROM test_long_raw_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_column_size` (before `stmt.query`) BIN output is limited to 32768
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.unwrap();
         let bin : &[u8] = row.get(0)?.unwrap();
         assert_eq!(bin, &data[..]);
@@ -562,7 +562,7 @@ mod blocking {
         assert!(3.1415926 < flt && flt < 3.1415929);
 
         let stmt = conn.prepare("SELECT num, flt, dbl FROM test_numeric_data WHERE id = :ID")?;
-        let mut rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.unwrap();
         let num : Number = row.get("NUM")?.expect("test_numeric_data.num");
         let flt : f32 = row.get("FLT")?.expect("test_numeric_data.flt");
@@ -588,7 +588,7 @@ mod blocking {
              WHERE employee_id = :ID
                FOR UPDATE
         ")?;
-        let mut rows = stmt.query(&[ &(":ID", 107) ])?;
+        let rows = stmt.query(&[ &(":ID", 107) ])?;
         let row = rows.next()?.expect("selected row");
         let implicit_rowid = row.rowid()?;
         let str_rowid : String = row.get(0)?.expect("ROWID as text");
@@ -658,7 +658,7 @@ mod blocking {
         let expected_lowest_salary = Number::from_int(2100, &conn)?;
         let expected_median_salary = Number::from_int(6200, &conn)?;
 
-        let mut rows = lowest_payed_employee.rows()?;
+        let rows = lowest_payed_employee.rows()?;
         let row = rows.next()?.unwrap();
 
         let department_name : &str = row.get(0)?.unwrap();
@@ -674,7 +674,7 @@ mod blocking {
         let row = rows.next()?;
         assert!(row.is_none());
 
-        let mut rows = median_salary_employees.rows()?;
+        let rows = median_salary_employees.rows()?;
 
         let row = rows.next()?.unwrap();
         let department_name : &str = row.get(0)?.unwrap();
@@ -752,7 +752,7 @@ mod blocking {
 
         let lowest_payed_employee = stmt.next_result()?.unwrap();
 
-        let mut rows = lowest_payed_employee.rows()?;
+        let rows = lowest_payed_employee.rows()?;
         let row = rows.next()?.unwrap();
 
         let department_name : &str = row.get(0)?.unwrap();
@@ -770,7 +770,7 @@ mod blocking {
 
         let median_salary_employees = stmt.next_result()?.unwrap();
 
-        let mut rows = median_salary_employees.rows()?;
+        let rows = median_salary_employees.rows()?;
 
         let row = rows.next()?.unwrap();
         let department_name : &str = row.get(0)?.unwrap();
@@ -828,14 +828,14 @@ mod blocking {
                      WHERE last_name = :last_name
                    ) e
         ")?;
-        let mut rows = stmt.query(&[ &"King" ])?;
+        let rows = stmt.query(&[ &"King" ])?;
 
         let row = rows.next()?.unwrap();
         let last_name : &str = row.get(0)?.unwrap();
         assert_eq!(last_name, "King");
 
         let departments : Cursor = row.get(1)?.unwrap();
-        let mut dept_rows = departments.rows()?;
+        let dept_rows = departments.rows()?;
         let dept_row = dept_rows.next()?.unwrap();
 
         let department_name : &str = dept_row.get(0)?.unwrap();

@@ -1,38 +1,27 @@
-//! Blocking SQL statement methods
+//! Nonblocking SQL statement methods
 
-use super::{
-    Statement, Cursor, Stmt, Params, SqlInArg, SqlOutArg, Columns, Rows,
-    cols::DEFAULT_LONG_BUFFER_SIZE,
-};
-use crate::{Error, Result, env::Env, oci::{self, *}, Connection};
-use std::ptr;
-use libc::c_void;
+use super::{Statement, Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}, Stmt};
+use crate::{Result, env::Env, oci::{self, *}, Connection, task, SqlInArg, SqlOutArg, Error, Rows, Cursor};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
 impl Drop for Statement<'_> {
     fn drop(&mut self) {
-        let _ = self.session;
-        let ocistmt = self.stmt_ptr();
-        if !ocistmt.is_null() {
-            unsafe {
-                OCIStmtRelease(ocistmt, self.err_ptr(), ptr::null(), 0, OCI_DEFAULT);
-            }
+        if !self.stmt.is_null() {
+            let mut stmt = Ptr::null();
+            stmt.swap(&mut self.stmt);
+            let err = Handle::take_over(&mut self.err);
+            let session = self.session.clone();
+            task::spawn(oci::futures::StmtRelease::new(stmt, err, session));
         }
     }
 }
 
 impl<'a> Statement<'a> {
     /// Creates a new statement
-    pub(crate) fn new(sql: &str, conn: &'a Connection) -> Result<Self> {
+    pub(crate) async fn new(sql: &str, conn: &'a Connection<'a>) -> Result<Statement<'a>> {
         let err = Handle::<OCIError>::new(conn.env_ptr())?;
-        let mut stmt = Ptr::null();
-        oci::stmt_prepare(
-            conn.svc_ptr(), stmt.as_mut_ptr(), err.get(),
-            sql.as_ptr(), sql.len() as u32,
-            ptr::null(), 0,
-            OCI_NTV_SYNTAX, OCI_DEFAULT
-        )?;
+        let stmt = oci::futures::StmtPrepare::new(conn.get_svc_ptr(), err.get_ptr(), sql.to_string()).await?;
         let params = Params::new(stmt.get(), err.get())?.map(|params| RwLock::new(params));
         Ok(Self {conn, session: conn.clone_session(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
     }
@@ -41,7 +30,7 @@ impl<'a> Statement<'a> {
     fn bind_args(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<Option<Vec<usize>>> {
         self.params.as_ref()
             .map(|params| params.write().bind_args(self.stmt_ptr(), self.err_ptr(), in_args, out_args))
-            .unwrap_or_else(|| 
+            .unwrap_or_else(||
                 if in_args.len() == 0 && out_args.len() == 0 {
                     Ok(None)
                 } else {
@@ -51,18 +40,11 @@ impl<'a> Statement<'a> {
     }
 
     /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
-    fn exec(&self, stmt_type: u16, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<i32>{
+    async fn exec(&self, stmt_type: u16, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<i32>{
         let out_idxs = self.bind_args(in_args, out_args)?;
-
-        let iters: u32 = if stmt_type == OCI_STMT_SELECT { 0 } else { 1 };
-        let res = unsafe {
-            OCIStmtExecute(
-                self.conn.svc_ptr(), self.stmt_ptr(), self.err_ptr(),
-                iters, 0,
-                ptr::null::<c_void>(), ptr::null_mut::<c_void>(),
-                OCI_DEFAULT
-            )
-        };
+        let res = oci::futures::StmtExecute::new(
+            self.conn.get_svc_ptr(), self.get_err_ptr(), self.get_stmt_ptr(), stmt_type
+        ).await?;
         match res {
             OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
                 if let Some(idxs) = out_idxs {
@@ -86,27 +68,29 @@ impl<'a> Statement<'a> {
         Executes the prepared statement. Returns the number of rows affected.
 
         # Example
+
         ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("
             UPDATE hr.departments
                SET manager_id = :manager_id
              WHERE department_id = :department_id
-        ")?;
+        ").await?;
         let num_updated_rows = stmt.execute(&[
             &( ":DEPARTMENT_ID", 120 ),
             &( ":MANAGER_ID",    101 ),
-        ])?;
+        ]).await?;
         assert_eq!(num_updated_rows, 1);
-        # conn.rollback()?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # conn.rollback().await?;
+        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
         ```
     */
-    pub fn execute(&self, args: &[&dyn SqlInArg]) -> Result<usize> {
+    pub async fn execute(&self, args: &[&dyn SqlInArg]) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
@@ -115,7 +99,7 @@ impl<'a> Statement<'a> {
         if is_returning != 0 {
             return Err( Error::new("Use `execute_into` with output arguments to execute a RETURNING statement") );
         }
-        self.exec(stmt_type, args, &mut [])?;
+        self.exec(stmt_type, args, &mut []).await?;
         self.row_count()
     }
 
@@ -123,19 +107,21 @@ impl<'a> Statement<'a> {
         Executes a prepared RETURNING statement. Returns the number of rows affected.
 
         # Example
+
         ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("
             INSERT INTO hr.departments
                    ( department_id, department_name, manager_id, location_id )
             VALUES ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
          RETURNING department_id
               INTO :department_id
-        ")?;
+        ").await?;
         let mut department_id : usize = 0;
         // In this case (no duplicates in the statement parameters and the OUT parameter follows
         // the IN parameters) we could have used positional arguments. However, there are many
@@ -149,20 +135,20 @@ impl<'a> Statement<'a> {
             &( ":LOCATION_ID",     1700       ),
         ], &mut [
             &mut ( ":DEPARTMENT_ID", &mut department_id )
-        ])?;
+        ]).await?;
         assert_eq!(num_rows, 1);
         assert!(!stmt.is_null(":DEPARTMENT_ID")?);
         assert!(department_id > 0);
-        # conn.rollback()?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # conn.rollback().await?;
+        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
         ```
     */
-    pub fn execute_into(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<usize> {
+    pub async fn execute_into(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
         }
-        self.exec(stmt_type, in_args, out_args)?;
+        self.exec(stmt_type, in_args, out_args).await?;
         self.row_count()
     }
 
@@ -170,23 +156,25 @@ impl<'a> Statement<'a> {
         Executes the prepared statement. Returns "streaming iterator" over the returned rows.
 
         # Example
+
         ```
         # use std::collections::HashMap;
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("
             SELECT employee_id, last_name, first_name
               FROM hr.employees
              WHERE manager_id = :id
           ORDER BY employee_id
-        ")?;
+        ").await?;
         stmt.set_prefetch_rows(5)?;
-        let rows = stmt.query(&[ &103 ])?; // Alexander Hunold
+        let rows = stmt.query(&[ &103 ]).await?; // Alexander Hunold
         let mut subs = HashMap::new();
-        while let Some( row ) = rows.next()? {
+        while let Some( row ) = rows.next().await? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
             let id : u32 = row.get(0)?.unwrap();
             // Same for the LAST_NAME.
@@ -208,20 +196,21 @@ impl<'a> Statement<'a> {
         assert!(subs.contains_key(&105), "David Austin");
         assert!(subs.contains_key(&106), "Valli Pataballa");
         assert!(subs.contains_key(&107), "Diana Lorentz");
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
         ```
     */
-    pub fn query(&'a self, args: &[&dyn SqlInArg]) -> Result<Rows> {
+    pub async fn query(&'a self, args: &[&dyn SqlInArg]) -> Result<Rows<'a>> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
             return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
         }
-        let res = self.exec(stmt_type, args, &mut [])?;
+        let res = self.exec(stmt_type, args, &mut []).await?;
 
         if self.cols.get().is_none() {
             let cols = Columns::new(self, self.max_long)?;
             self.cols.get_or_init(|| RwLock::new(cols));
         };
+
         match res {
             OCI_SUCCESS | OCI_SUCCESS_WITH_INFO | OCI_NO_DATA => {
                 Ok( Rows::from_query(res, self) )
@@ -244,15 +233,17 @@ impl<'a> Statement<'a> {
         but can fetch rows from any result-set independently.
 
         # Example
+
         ```
         use sibyl::Number;
         use std::cmp::Ordering::Equal;
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("
             DECLARE
                 c1 SYS_REFCURSOR;
@@ -285,16 +276,16 @@ impl<'a> Statement<'a> {
                 ;
                 DBMS_SQL.RETURN_RESULT (c2);
             END;
-        ")?;
+        ").await?;
         let expected_lowest_salary = Number::from_int(2100, &conn)?;
         let expected_median_salary = Number::from_int(6200, &conn)?;
 
-        stmt.execute(&[])?;
+        stmt.execute(&[]).await?;
 
-        let lowest_payed_employee = stmt.next_result()?.unwrap();
+        let lowest_payed_employee = stmt.next_result().await?.unwrap();
 
-        let rows = lowest_payed_employee.rows()?;
-        let row = rows.next()?.unwrap();
+        let rows = lowest_payed_employee.rows().await?;
+        let row = rows.next().await?.unwrap();
 
         let department_name : &str = row.get(0)?.unwrap();
         let first_name : &str = row.get(1)?.unwrap();
@@ -306,14 +297,14 @@ impl<'a> Statement<'a> {
         assert_eq!(last_name, "Olson");
         assert_eq!(salary.compare(&expected_lowest_salary)?, Equal);
 
-        let row = rows.next()?;
+        let row = rows.next().await?;
         assert!(row.is_none());
 
-        let median_salary_employees = stmt.next_result()?.unwrap();
+        let median_salary_employees = stmt.next_result().await?.unwrap();
 
-        let rows = median_salary_employees.rows()?;
+        let rows = median_salary_employees.rows().await?;
 
-        let row = rows.next()?.unwrap();
+        let row = rows.next().await?.unwrap();
         let department_name : &str = row.get(0)?.unwrap();
         let first_name : &str = row.get(1)?.unwrap();
         let last_name : &str = row.get(2)?.unwrap();
@@ -324,7 +315,7 @@ impl<'a> Statement<'a> {
         assert_eq!(last_name, "Banda");
         assert_eq!(salary.compare(&expected_median_salary)?, Equal);
 
-        let row = rows.next()?.unwrap();
+        let row = rows.next().await?.unwrap();
 
         let department_name : &str = row.get(0)?.unwrap();
         let first_name : &str = row.get(1)?.unwrap();
@@ -336,56 +327,58 @@ impl<'a> Statement<'a> {
         assert_eq!(last_name, "Johnson");
         assert_eq!(salary.compare(&expected_median_salary)?, Equal);
 
-        let row = rows.next()?;
+        let row = rows.next().await?;
         assert!(row.is_none());
 
-        assert!(stmt.next_result()?.is_none());
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        assert!(stmt.next_result().await?.is_none());
+        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
         ```
     */
-    pub fn next_result(&'a self) -> Result<Option<Cursor>> {
-        let mut stmt = Ptr::null();
-        let mut stmt_type = 0u32;
-        let res = unsafe {
-            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), stmt.as_mut_ptr(), &mut stmt_type, OCI_DEFAULT)
-        };
-        match res {
-            OCI_NO_DATA => Ok( None ),
-            OCI_SUCCESS => Ok( Some ( Cursor::implicit(stmt, self) ) ),
-            _ => Err( Error::oci(self.err_ptr(), res) )
+    pub async fn next_result(&'a self) -> Result<Option<Cursor<'a>>> {
+        let res = oci::futures::StmtGetNextResult::new(Ptr::new(self.stmt_ptr()), Ptr::new(self.err_ptr())).await?;
+        if let Some(stmt) = res {
+            Ok(Some(Cursor::implicit(stmt, self)))
+        } else {
+            Ok(None)
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::*;
+    use crate::{test, Result};
+
     #[test]
-    fn stmt_args() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let oracle = env()?;
-        let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            INSERT INTO hr.departments
-                   ( department_id, department_name, manager_id, location_id )
-            VALUES ( 9, :department_name, :manager_id, :location_id )
-         RETURNING department_id
-              INTO :department_id
-        ")?;
-        let mut department_id : i32 = 0;
-        let num_rows = stmt.execute_into(&[
-            &( ":department_name", "Security" ),
-            &( ":manager_id",      ""         ),
-            &( ":location_id",     1700       ),
-        ], &mut [
-            &mut ( ":department_id", &mut department_id )
-        ])?;
-        assert_eq!(num_rows, 1);
-        assert!(!stmt.is_null(":department_id")?);
-        assert_eq!(department_id, 9);
-        conn.rollback()?;
-        Ok(())
+    fn async_query() -> Result<()> {
+        test::on_single_thread(async {
+            use std::env;
+
+            let oracle = crate::env()?;
+
+            let dbname = env::var("DBNAME").expect("database name");
+            let dbuser = env::var("DBUSER").expect("schema name");
+            let dbpass = env::var("DBPASS").expect("password");
+
+            let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let stmt = conn.prepare("
+                SELECT employee_id
+                  FROM (
+                        SELECT employee_id
+                             , row_number() OVER (ORDER BY hire_date) AS hire_date_rank
+                          FROM hr.employees
+                       )
+                 WHERE hire_date_rank = 1
+            ").await?;
+            let rows = stmt.query(&[]).await?;
+
+            let row = rows.next().await?.expect("first (and only) row");
+            let id : usize = row.get(0)?.expect("non-null employee_id");
+            assert_eq!(id, 102);
+
+            let row = rows.next().await?;
+            assert!(row.is_none());
+
+            Ok(())
+        })
     }
 }

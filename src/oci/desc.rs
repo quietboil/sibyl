@@ -34,11 +34,17 @@ impl_descr_type!{
     OCIIntervalDayToSecond  => OCI_DTYPE_INTERVAL_DS,   OCIInterval
 }
 
-pub struct Descriptor<T: DescriptorType> {
+pub struct Descriptor<T>
+    where T: DescriptorType
+        , T::OCIType : OCIStruct
+{
     ptr: Ptr<T>,
 }
 
-impl<T: DescriptorType> Drop for Descriptor<T> {
+impl<T> Drop for Descriptor<T>
+    where T: DescriptorType
+        , T::OCIType : OCIStruct
+{
     fn drop(&mut self) {
         let ptr = self.ptr.get();
         if !ptr.is_null() {
@@ -49,7 +55,10 @@ impl<T: DescriptorType> Drop for Descriptor<T> {
     }
 }
 
-impl<T: DescriptorType> Descriptor<T> {
+impl<T> Descriptor<T>
+    where T: DescriptorType
+        , T::OCIType : OCIStruct
+{
     fn alloc(env: *mut OCIEnv) -> Result<*mut T> {
         let mut desc = ptr::null_mut::<T>();
         oci::descriptor_alloc(env, &mut desc as *mut *mut T as *mut *mut c_void, T::get_type(), 0, ptr::null())?;
@@ -69,6 +78,21 @@ impl<T: DescriptorType> Descriptor<T> {
         Self { ptr: Ptr::new(ptr) }
     }
 
+    pub(crate) fn take_over(other: &mut Self) -> Self {
+        let mut ptr = Ptr::null();
+        ptr.swap(&mut other.ptr);
+        Self { ptr }
+    }
+
+    pub(crate) fn replace(&mut self, ptr: Ptr<T::OCIType>) {
+        let mut ptr = Ptr::new(ptr.get() as *mut T);
+        self.ptr.swap(&mut ptr);
+    }
+
+    pub(crate) fn get_ptr(&self) -> Ptr<T::OCIType> {
+        Ptr::new(self.get())
+    }
+
     pub(crate) fn get(&self) -> *mut T::OCIType {
         self.ptr.get() as *mut T::OCIType
     }
@@ -77,7 +101,7 @@ impl<T: DescriptorType> Descriptor<T> {
         self.ptr.as_ptr() as *const *mut T::OCIType
     }
 
-    pub(crate) fn as_mut_ptr(&self) -> *mut *mut T::OCIType {
+    pub(crate) fn as_mut_ptr(&mut self) -> *mut *mut T::OCIType {
         self.ptr.as_ptr() as *mut *mut T::OCIType
     }
 

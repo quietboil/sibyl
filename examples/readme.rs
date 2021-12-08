@@ -30,7 +30,7 @@ fn main() -> oracle::Result<()> {
          WHERE hire_date_rank = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &conn)?;
-    let mut rows = stmt.query(&[ &date ])?;
+    let rows = stmt.query(&[ &date ])?;
     // The SELECT above will return either 1 or 0 rows, thus `if let` is sufficient.
     // When more than one row is expected, `while let` should be used to process rows
     if let Some( row ) = rows.next()? {
@@ -60,12 +60,40 @@ fn main() -> oracle::Result<()> {
 }
 
 #[cfg(feature="nonblocking")]
-fn main() -> Result<(),Box<dyn std::error::Error>> {
-    let _dbname = std::env::var("DBNAME")?;
-    let _dbuser = std::env::var("DBUSER")?;
-    let _dbpass = std::env::var("DBPASS")?;
+fn main() -> oracle::Result<()> {
+    tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+        let oracle = oracle::env()?;
 
-    let _oracle = oracle::env()?;
-
-    Ok(())
+        let dbname = std::env::var("DBNAME").expect("database name");
+        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbpass = std::env::var("DBPASS").expect("password");
+    
+        let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        let stmt = conn.prepare("
+            SELECT first_name, last_name, hire_date
+              FROM (
+                    SELECT first_name, last_name, hire_date
+                         , Row_Number() OVER (ORDER BY hire_date) hire_date_rank
+                      FROM hr.employees
+                     WHERE hire_date >= :hire_date
+                   )
+             WHERE hire_date_rank = 1
+        ").await?;
+        let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
+        let rows = stmt.query(&[ &date ]).await?;
+        if let Some( row ) = rows.next().await? {
+            let first_name : Option<&str> = row.get("FIRST_NAME")?;
+            let last_name : &str = row.get("LAST_NAME")?.unwrap();
+            let name = first_name.map_or(last_name.to_string(),
+                |first_name| format!("{}, {}", last_name, first_name)
+            );
+            let hire_date : oracle::Date = row.get("HIRE_DATE")?.unwrap();
+            let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
+    
+            println!("{} was hired on {}", name, hire_date);
+        } else {
+            println!("No one was hired after {}", date.to_string("FMMonth DD, YYYY")?);
+        }
+        Ok(())
+    })    
 }

@@ -6,9 +6,16 @@ pub mod fromsql;
 pub mod cols;
 pub mod cursor;
 pub mod rows;
+
 #[cfg(feature="blocking")]
 #[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
-pub mod blocking;
+mod blocking;
+
+#[cfg(feature="nonblocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+mod nonblocking;
+
+use std::sync::Arc;
 
 use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -18,29 +25,18 @@ pub use cursor::Cursor;
 pub use args::{ToSql, ToSqlOut, SqlInArg, SqlOutArg};
 use bind::Params;
 use cols::{Columns, Position, ColumnInfo};
-use crate::{Result, Error, Connection, oci::*, env::Env, types::Ctx};
-use std::ptr;
+use crate::{Result, conn::Session, env::Env, oci::*, types::Ctx, Connection};
+
 
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
     conn:     &'a Connection<'a>,
+    session:  Arc<Session>,
     stmt:     Ptr<OCIStmt>,
     params:   Option<RwLock<Params>>,
     cols:     OnceCell<RwLock<Columns>>,
     err:      Handle<OCIError>,
     max_long: u32,
-}
-
-impl Drop for Statement<'_> {
-    fn drop(&mut self) {
-        let ocistmt = self.stmt_ptr();
-        if !ocistmt.is_null() {
-            let res = unsafe {
-                OCIStmtRelease(ocistmt, self.err_ptr(), ptr::null(), 0, OCI_DEFAULT)
-            };
-            assert_ne!(res, OCI_STILL_EXECUTING, "OCIStmtRelease is still executing");
-        }
-    }
 }
 
 impl Env for Statement<'_> {
@@ -51,21 +47,34 @@ impl Env for Statement<'_> {
     fn err_ptr(&self) -> *mut OCIError {
         self.err.get()
     }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        Ptr::new(self.conn.env_ptr())
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        Ptr::new(self.err.get())
+    }
 }
 
 impl Ctx for Statement<'_> {
     fn ctx_ptr(&self) -> *mut c_void {
-        self.conn.usr_ptr() as *mut c_void
+        self.conn.ctx_ptr()
     }
 }
 
 pub trait Stmt: Env {
     fn stmt_ptr(&self) -> *mut OCIStmt;
+    fn get_stmt_ptr(&self) -> Ptr<OCIStmt>;
 }
 
 impl Stmt for Statement<'_> {
     fn stmt_ptr(&self) -> *mut OCIStmt {
         self.stmt.get()
+    }
+
+    fn get_stmt_ptr(&self) -> Ptr<OCIStmt> {
+        Ptr::new(self.stmt_ptr())
     }
 }
 
@@ -112,140 +121,21 @@ impl<'a> Statement<'a> {
     }
 
     /**
-        Retrieves a single implicit result (cursor) in the order in which they were returned
-        from the PL/SQL procedure or block. If no more results are available, then `None` is
-        returned.
-
-        PL/SQL provides a subprogram RETURN_RESULT in the DBMS_SQL package to return the result
-        of an executed statement. Only SELECT query result-sets can be implicitly returned by a
-        PL/SQL procedure or block.
-
-        `next_result` can be called iteratively by the application to retrieve each implicit
-        result from an executed PL/SQL statement. Applications retrieve each result-set sequentially
-        but can fetch rows from any result-set independently.
-
-        # Example
-        ```
-        use sibyl::Number;
-        use std::cmp::Ordering::Equal;
-
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            DECLARE
-                c1 SYS_REFCURSOR;
-                c2 SYS_REFCURSOR;
-            BEGIN
-                OPEN c1 FOR
-                    SELECT department_name, first_name, last_name, salary
-                     FROM (
-                           SELECT first_name, last_name, salary, department_id
-                                , ROW_NUMBER() OVER (ORDER BY salary) ord
-                             FROM hr.employees
-                          ) e
-                     JOIN hr.departments d
-                       ON d.department_id = e.department_id
-                    WHERE ord = 1
-                ;
-                DBMS_SQL.RETURN_RESULT (c1);
-
-                OPEN c2 FOR
-                    SELECT department_name, first_name, last_name, salary
-                      FROM (
-                            SELECT first_name, last_name, salary, department_id
-                                 , MEDIAN(salary) OVER () median_salary
-                              FROM hr.employees
-                           ) e
-                      JOIN hr.departments d
-                        ON d.department_id = e.department_id
-                     WHERE salary = median_salary
-                  ORDER BY department_name, last_name, first_name
-                ;
-                DBMS_SQL.RETURN_RESULT (c2);
-            END;
-        ")?;
-        let expected_lowest_salary = Number::from_int(2100, &conn)?;
-        let expected_median_salary = Number::from_int(6200, &conn)?;
-
-        stmt.execute(&[])?;
-
-        let lowest_payed_employee = stmt.next_result()?.unwrap();
-
-        let mut rows = lowest_payed_employee.rows()?;
-        let row = rows.next()?.unwrap();
-
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
-
-        assert_eq!(department_name, "Shipping");
-        assert_eq!(first_name, "TJ");
-        assert_eq!(last_name, "Olson");
-        assert_eq!(salary.compare(&expected_lowest_salary)?, Equal);
-
-        let row = rows.next()?;
-        assert!(row.is_none());
-
-        let median_salary_employees = stmt.next_result()?.unwrap();
-
-        let mut rows = median_salary_employees.rows()?;
-
-        let row = rows.next()?.unwrap();
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
-
-        assert_eq!(department_name, "Sales");
-        assert_eq!(first_name, "Amit");
-        assert_eq!(last_name, "Banda");
-        assert_eq!(salary.compare(&expected_median_salary)?, Equal);
-
-        let row = rows.next()?.unwrap();
-
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
-
-        assert_eq!(department_name, "Sales");
-        assert_eq!(first_name, "Charles");
-        assert_eq!(last_name, "Johnson");
-        assert_eq!(salary.compare(&expected_median_salary)?, Equal);
-
-        let row = rows.next()?;
-        assert!(row.is_none());
-
-        assert!(stmt.next_result()?.is_none());
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
-    */
-    pub fn next_result(&'a self) -> Result<Option<Cursor>> {
-        let mut stmt = Ptr::null();
-        let mut stmt_type = 0u32;
-        let res = unsafe {
-            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), stmt.as_mut_ptr(), &mut stmt_type, OCI_DEFAULT)
-        };
-        match res {
-            OCI_NO_DATA => Ok( None ),
-            OCI_SUCCESS => Ok( Some ( Cursor::implicit(stmt, self) ) ),
-            _ => Err( Error::oci(self.err_ptr(), res) )
-        }
-    }
-
-    /**
         Sets the number of top-level rows to be prefetched. The default value is 1 row.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             SELECT employee_id, first_name, last_name
@@ -253,7 +143,11 @@ impl<'a> Statement<'a> {
              WHERE manager_id = :id
         ")?;
         stmt.set_prefetch_rows(10)?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_prefetch_rows(&self, num_rows: u32) -> Result<()> {
@@ -268,11 +162,18 @@ impl<'a> Statement<'a> {
         has to be changed **before** the `query` is run.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         # let stmt = conn.prepare("
         #     DECLARE
@@ -312,11 +213,15 @@ impl<'a> Statement<'a> {
              WHERE id = :id
         ")?;
         stmt.set_max_long_size(100_000);
-        let mut rows = stmt.query(&[ &id ])?;
+        let rows = stmt.query(&[ &id ])?;
         let row = rows.next()?.expect("first (and only) row");
         let txt : &str = row.get(0)?.expect("long text");
         # assert_eq!(txt, text);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_max_long_size(&mut self, size: u32) {
@@ -327,22 +232,32 @@ impl<'a> Statement<'a> {
         Returns he number of columns in the select-list of this statement.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             SELECT employee_id, last_name, first_name
               FROM hr.employees
              WHERE manager_id = :id
         ")?;
-        let mut _rows = stmt.query(&[ &103 ])?;
+        let rows = stmt.query(&[ &103 ])?;
         let num_cols = stmt.column_count()?;
-
         assert_eq!(num_cols, 3);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn column_count(&self) -> Result<usize> {
@@ -356,20 +271,27 @@ impl<'a> Statement<'a> {
         statement is not a SELECT and has no columns.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
         use sibyl::ColumnType;
 
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             SELECT employee_id, last_name, first_name
               FROM hr.employees
              WHERE manager_id = :id
         ")?;
-        let mut _rows = stmt.query(&[ &103 ])?;
+        let rows = stmt.query(&[ &103 ])?;
         let col = stmt.column(0).expect("employee_id column info");
         assert_eq!(col.name()?, "EMPLOYEE_ID");
         assert_eq!(col.data_type()?, ColumnType::Number);
@@ -378,7 +300,11 @@ impl<'a> Statement<'a> {
         assert!(!col.is_null()?);
         assert!(col.is_visible()?);
         assert!(!col.is_identity()?);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
@@ -396,11 +322,18 @@ impl<'a> Statement<'a> {
         this also represents the highest row number seen by the application.
 
         # Example
+
+        🛈 **Note** The supporting code of this example is written for blocking mode execution.
+        Add `await`s, where needed, to make a nonblocking variant.
+
         ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn test() -> Result<()> {
         # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
             SELECT employee_id, first_name, last_name
@@ -409,7 +342,7 @@ impl<'a> Statement<'a> {
           ORDER BY employee_id
         ")?;
         stmt.set_prefetch_rows(5)?;
-        let mut rows = stmt.query(&[ &103 ])?;
+        let rows = stmt.query(&[ &103 ])?;
         let mut ids = Vec::new();
         while let Some( row ) = rows.next()? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
@@ -419,7 +352,11 @@ impl<'a> Statement<'a> {
         assert_eq!(stmt.row_count()?, 4);
         assert_eq!(ids.len(), 4);
         assert_eq!(ids.as_slice(), &[104 as u32, 105, 106, 107]);
-        # Ok::<(),Box<dyn std::error::Error>>(())
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn test() -> Result<()> { Ok(()) }
+        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn row_count(&self) -> Result<usize> {

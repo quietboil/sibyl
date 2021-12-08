@@ -3,14 +3,14 @@
 use std::ptr;
 use libc::c_void;
 
-use super::{OCIServer, OCISession, OCIStruct, OCISvcCtx, attr::{AttrGet, AttrGetInto}};
+use super::{OCIStruct, attr::{AttrGet, AttrGetInto}};
 
 /// Send-able cell-like wrapper around a pointer to OCI handle or descriptor.
 pub struct Ptr<T: OCIStruct> {
     value: *mut T
 }
 
-impl<T: OCIStruct> Ptr<T> {    
+impl<T: OCIStruct> Ptr<T> {
     pub(crate) fn new(ptr: *mut T) -> Self {
         Self{ value: ptr }
     }
@@ -20,11 +20,15 @@ impl<T: OCIStruct> Ptr<T> {
     }
 
     pub(crate) fn swap(&mut self, other: &mut Self) {
-        if !ptr::eq(self, other) {
+        if !ptr::eq(self, other) && !ptr::eq(self.value, other.value) {
             unsafe {
                 ptr::swap(&mut self.value, &mut other.value);
             }
         }
+    }
+
+    pub(crate) fn is_null(&self) -> bool {
+        self.value.is_null()
     }
 
     pub(crate) fn get(&self) -> *mut T {
@@ -61,14 +65,4 @@ impl<T: OCIStruct> AttrGet for Ptr<T> {
 
 
 unsafe impl<T: OCIStruct> Send for Ptr<T> {}
-
-/*
-    Server, Session and Service Context handle pointers are read-only.
-    They also do not use interior mutability. Most importantly, because
-    OCI environment is created by sibyl in OCI_THREADED mode, the internal
-    OCI structures are protected by OCI itself from concurrent access by
-    multiple threads.
-*/
-unsafe impl Sync for Ptr<OCIServer> {}
-unsafe impl Sync for Ptr<OCISvcCtx> {}
-unsafe impl Sync for Ptr<OCISession> {}
+unsafe impl<T: OCIStruct> Sync for Ptr<T> {}

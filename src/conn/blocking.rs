@@ -1,10 +1,12 @@
 //! Blocking mode User session (a.k.a. database connection) methods.
 
-use super::{connect, get_from_session_pool, get_from_connection_pool, Connection};
-use crate::{Environment, Result, Statement, oci::{self, *}, env::Env};
-// use libc::c_void;
+use super::{Session, Connection};
+use crate::{Result, Statement, env::Env, oci::{self, *, attr}, Environment, SessionPool, ConnectionPool};
+use std::{ptr, marker::PhantomData, sync::Arc};
+use libc::c_void;
 
-impl Drop for Connection<'_> {
+
+impl Drop for Session {
     fn drop(&mut self) {
         unsafe {
             OCISessionRelease(self.svc.get(), self.err.get(), std::ptr::null(), 0, OCI_DEFAULT);
@@ -12,17 +14,58 @@ impl Drop for Connection<'_> {
     }
 }
 
+impl Session {
+    pub(crate) fn new(env: &Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
+        let err = Handle::<OCIError>::new(env.env_ptr())?;
+        let inf = Handle::<OCIAuthInfo>::new(env.env_ptr())?;
+        inf.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", err.get())?;
+        inf.set_attr(OCI_ATTR_USERNAME, user, err.get())?;
+        inf.set_attr(OCI_ATTR_PASSWORD, pass, err.get())?;
+        let mut svc = Ptr::null();
+        let mut found = 0u8;
+        oci::session_get(
+            env.env_ptr(), err.get(), svc.as_mut_ptr(), inf.get(), dblink.as_ptr(), dblink.len() as u32,
+            ptr::null(), 0, ptr::null_mut(), ptr::null_mut(), &mut found,
+            OCI_SESSGET_STMTCACHE
+        )?;
+        Ok(Session { env: env.clone_env(), err, svc })
+    }
+
+    pub(crate) fn from_session_pool(pool: &SessionPool) -> Result<Self> {
+        let env = pool.clone_env();        
+        let err = Handle::<OCIError>::new(env.get())?;
+        let svc = pool.get_svc_ctx()?;
+        Ok(Session { env, err, svc })
+    }
+
+    pub(crate) fn from_connection_pool(pool: &ConnectionPool, user: &str, pass: &str) -> Result<Self> {
+        let env = pool.clone_env();
+        let err = Handle::<OCIError>::new(env.get())?;
+        let svc = pool.get_svc_ctx(user, pass)?;
+        Ok(Session { env, err, svc })
+    }
+}
+
 impl<'a> Connection<'a> {
-    pub(crate) fn new(env: &'a Environment, addr: &str, user: &str, pass: &str) -> Result<Self> {
-        connect(env, addr, user, pass)
+    pub(crate) fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
+        let session = Session::new(env, dblink, user, pass)?;
+        let session = Arc::new(session);
+        let usr = attr::get::<Ptr<OCISession>>(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, session.svc_ptr() as *const c_void, session.err_ptr())?;
+        Ok(Self { session, usr, phantom_env: PhantomData })
     }
 
-    pub(crate) fn from_session_pool(env: &'a Environment, pool_name: &str) -> Result<Self> {
-        get_from_session_pool(env, pool_name)
+    pub(crate) fn from_session_pool(pool: &'a SessionPool) -> Result<Self> {
+        let session = Session::from_session_pool(pool)?;
+        let session = Arc::new(session);
+        let usr = attr::get::<Ptr<OCISession>>(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, session.svc_ptr() as *const c_void, session.err_ptr())?;
+        Ok(Self { session, usr, phantom_env: PhantomData })
     }
 
-    pub(crate) fn from_connection_pool(env: &'a Environment, pool_name: &str, user: &str, pass: &str) -> Result<Self> {
-        get_from_connection_pool(env, pool_name, user, pass)
+    pub(crate) fn from_connection_pool(pool: &'a ConnectionPool, user: &str, pass: &str) -> Result<Self> {
+        let session = Session::from_connection_pool(pool, user, pass)?;
+        let session = Arc::new(session);
+        let usr = attr::get::<Ptr<OCISession>>(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, session.svc_ptr() as *const c_void, session.err_ptr())?;
+        Ok(Self { session, usr, phantom_env: PhantomData })
     }
 
     /// Confirms that the connection and the server are active.
@@ -49,7 +92,7 @@ impl<'a> Connection<'a> {
                    )
              WHERE hire_date_rank = 1
         ")?;
-        let mut rows = stmt.query(&[])?;
+        let rows = stmt.query(&[])?;
         let row = rows.next()?.expect("first (and only) row");
         // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
         let id : u32 = row.get(0)?.unwrap();

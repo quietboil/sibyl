@@ -30,7 +30,7 @@ impl Environment {
               FROM v$session_connect_info
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let mut rows = stmt.query(&[])?;
+        let rows = stmt.query(&[])?;
         let row = rows.next()?.unwrap();
         let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
         assert_eq!(client_driver, "sibyl");
@@ -77,7 +77,7 @@ impl Environment {
               FROM v$session_connect_info
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let mut rows = stmt.query(&[])?;
+        let rows = stmt.query(&[])?;
         let row = rows.next()?.unwrap();
         let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
         assert_eq!(client_driver, "sibyl");
@@ -123,7 +123,7 @@ impl Environment {
               FROM v$session_connect_info
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let mut rows = stmt.query(&[])?;
+        let rows = stmt.query(&[])?;
         let row = rows.next()?.unwrap();
         let client_driver : &str = row.get(0)?.unwrap();
         assert_eq!(client_driver, "sibyl");
@@ -132,39 +132,5 @@ impl Environment {
     */
     pub fn create_connection_pool(&self, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<ConnectionPool> {
         ConnectionPool::new(self, dbname, username, password, min, inc, max)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::*;
-
-    /**
-        This test is an almost exact replica of `create_connection_pool` example.
-        For some reason that one - the doctest - might take on occasion quite a while
-        to complete. This one was created to debug that, but it is always "instantaneous"...
-     */
-    #[test]
-    fn connection_pool_client_driver() -> Result<()> {
-        use std::env;
-
-        let dbname = env::var("DBNAME").expect("database name");
-        let dbuser = env::var("DBUSER").expect("schema name");
-        let dbpass = env::var("DBPASS").expect("password");
-
-        let oracle = env()?;
-        let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
-
-        let conn = pool.get_session()?;
-        let stmt = conn.prepare("
-            SELECT DISTINCT client_driver
-              FROM v$session_connect_info
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ")?;
-        let mut rows = stmt.query(&[])?;
-        let row = rows.next()?.unwrap();
-        let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
-        assert_eq!(client_driver, "sibyl");
-        Ok(())
     }
 }

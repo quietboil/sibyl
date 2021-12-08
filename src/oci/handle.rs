@@ -89,14 +89,18 @@ impl<T: HandleType> Handle<T> {
         Self { ptr: Ptr::new(ptr) }
     }
 
-    pub(crate) fn from_handle(handle: &mut Self) -> Self {
+    pub(crate) fn take_over(other: &mut Self) -> Self {
         let mut ptr = Ptr::null();
-        ptr.swap(&mut handle.ptr);
+        ptr.swap(&mut other.ptr);
         Self { ptr }
     }
 
     pub(crate) fn get(&self) -> *mut T {
         self.ptr.get()
+    }
+
+    pub(crate) fn get_ptr(&self) -> Ptr<T> {
+        self.ptr.clone()
     }
 
     pub(crate) fn as_ptr(&self) -> *const *mut T {

@@ -954,7 +954,7 @@ extern "C" {
         svchp:      *mut OCISvcCtx,
         errhp:      *mut OCIError,
         src:        *const OCILobLocator,
-        dst:        *const *mut OCILobLocator,
+        dst:        *mut *mut OCILobLocator,
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-4CA17A83-795F-43B2-8B76-611B13E4C8DE
@@ -2466,7 +2466,7 @@ pub(crate) fn lob_locator_assign(
     svchp:      *mut OCISvcCtx,
     errhp:      *mut OCIError,
     src:        *const OCILobLocator,
-    dst:        *const *mut OCILobLocator,
+    dst:        *mut *mut OCILobLocator,
 ) -> Result<()> {
     ok_or_oci_err!(|errhp|
         OCILobLocatorAssign(svchp, errhp, src, dst)
