@@ -12,6 +12,7 @@ compile_error!("either 'blocking' or 'nonblocking' feature must be explicitly sp
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod task;
 
+mod ptr;
 mod oci;
 mod err;
 mod env;
@@ -24,9 +25,6 @@ mod stmt;
 #[cfg(feature="nonblocking")]
 #[doc(hidden)]
 pub mod test;
-
-#[cfg(feature="nonblocking")]
-mod ptr;
 
 #[cfg(feature="nonblocking")]
 pub use task::{spawn, spawn_blocking, JoinError};

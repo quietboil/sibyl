@@ -114,10 +114,10 @@ impl Environment {
         let dbuser = env::var("DBUSER")?;
         let dbpass = env::var("DBPASS")?;
 
-        let oracle = sibyl::env()?;
+        let oracle = sibyl::env()?;        
         let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 1, 1, 10)?;
 
-        let conn = pool.get_session()?;
+        let conn = pool.get_session(&dbuser, &dbpass)?;
         let stmt = conn.prepare("
             SELECT DISTINCT client_driver
               FROM v$session_connect_info

@@ -30,7 +30,7 @@ fn create_environment() -> Result<Handle<OCIEnv>> {
     }
 }
 
-pub trait Env {
+pub trait Env : Send + Sync {
     fn env_ptr(&self) -> *mut OCIEnv;
     fn err_ptr(&self) -> *mut OCIError;
     fn get_env_ptr(&self) -> Ptr<OCIEnv>;

@@ -93,9 +93,9 @@ impl Params {
         let mut idx = 0;
         for arg in in_args {
             let param_idx = if let Some( name ) = arg.name() { self.get_parameter_index(name)? } else { idx };
-            let (sql_type, data, size) = arg.as_to_sql().to_sql();            
-            self.data_sizes[param_idx] = size as u32;
-            self.bind(stmt, err, param_idx, sql_type, data as *mut c_void, size)?;
+            let in_arg = arg.to_sql();
+            self.data_sizes[param_idx] = in_arg.sql_data_len() as u32;
+            self.bind(stmt, err, param_idx, in_arg.sql_type(), in_arg.sql_data_ptr().get() as _, in_arg.sql_data_len())?;
             args_idxs.remove(&param_idx);
             idx += 1;
         }
@@ -106,8 +106,8 @@ impl Params {
             let mut out_param_idxs = Vec::with_capacity(out_args.len());
             for arg in out_args {
                 let param_idx = if let Some( name ) = arg.name() { self.get_parameter_index(name)? } else { idx };
-                let (sql_type, data, data_buffer_size, in_size) = arg.as_to_sql_out().to_sql_output();
-                if data_buffer_size == 0 {
+                let out_arg = arg.to_sql_out();
+                if out_arg.sql_capacity() == 0 {
                     let msg = if let Some( name ) = arg.name() {
                         format!("Storage capacity of output variable {} is 0", name)
                     } else {
@@ -115,8 +115,8 @@ impl Params {
                     };
                     return Err(Error::new(&msg));
                 }
-                self.data_sizes[param_idx] = in_size as u32;
-                self.bind(stmt, err, param_idx, sql_type, data, data_buffer_size)?;
+                self.data_sizes[param_idx] = out_arg.sql_data_len() as u32;
+                self.bind(stmt, err, param_idx, out_arg.sql_type(), out_arg.sql_mut_data_ptr().get_mut(), out_arg.sql_capacity())?;
                 args_idxs.remove(&param_idx);
                 out_param_idxs.push(param_idx);
                 idx += 1;

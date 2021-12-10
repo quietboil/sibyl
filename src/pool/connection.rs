@@ -49,13 +49,13 @@ impl ConnectionPool<'_> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -66,8 +66,16 @@ impl ConnectionPool<'_> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+        # assert_eq!(pool.idle_timeout()?, 0, "idle timeout is not set");
+        # Ok(()) })
+        # }
         ```
     */
     pub fn idle_timeout(&self) -> Result<u32> {
@@ -79,13 +87,13 @@ impl ConnectionPool<'_> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -98,8 +106,17 @@ impl ConnectionPool<'_> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 1, 1, 10).await?;
+        # pool.set_idle_timeout(600)?;
+        # assert_eq!(pool.idle_timeout()?, 600);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn set_idle_timeout(&self, seconds: u32) -> Result<()> {
@@ -121,13 +138,13 @@ impl ConnectionPool<'_> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -138,8 +155,16 @@ impl ConnectionPool<'_> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+        # assert!(!pool.is_nowait()?);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn is_nowait(&self) -> Result<bool> {
@@ -153,13 +178,13 @@ impl ConnectionPool<'_> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -171,8 +196,17 @@ impl ConnectionPool<'_> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+        # pool.set_nowait()?;
+        # assert!(pool.is_nowait()?);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn set_nowait(&self) -> Result<()> {
@@ -184,26 +218,33 @@ impl ConnectionPool<'_> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 2, 2, 10)?;
 
-        let num_busy = pool.busy_count()?;
-        assert_eq!(num_busy, 0);
+        assert_eq!(pool.busy_count()?, 0);
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 2, 2, 10).await?;
+        # assert_eq!(pool.busy_count()?, 0);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn busy_count(&self) -> Result<usize> {
@@ -216,13 +257,13 @@ impl ConnectionPool<'_> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -234,9 +275,17 @@ impl ConnectionPool<'_> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
-        ```
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 2, 2, 10).await?;
+        # assert_eq!(pool.open_count()?, 2);
+        # Ok(()) })
+        # }
+       ```
     */
     pub fn open_count(&self) -> Result<usize> {
         let count : u32 = self.pool.get_attr(OCI_ATTR_CONN_OPEN_COUNT, self.err.get())?;

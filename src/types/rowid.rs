@@ -1,6 +1,6 @@
 /// The ROWID data type identifies a particular row in a database table.
 
-use crate::{Result, RowID, env::Env, oci::{self, *, attr::AttrGetInto}, stmt::args::{ToSql, ToSqlOut}};
+use crate::{Result, RowID, env::Env, oci::{self, *, attr::AttrGetInto}, stmt::args::{ToSql, ToSqlOut}, ptr::{ScopedPtr, ScopedMutPtr}};
 use libc::c_void;
 
 impl RowID  {
@@ -33,15 +33,15 @@ impl RowID  {
 }
 
 impl ToSql for &RowID {
-    fn to_sql(&self) -> (u16, *const c_void, usize) {
-        ( SQLT_RDD, self.as_ptr() as *const c_void, std::mem::size_of::<*mut OCIRowid>() )
-    }
+    fn sql_type(&self) -> u16 { SQLT_RDD }
+    fn sql_data_ptr(&self) -> ScopedPtr<c_void> { ScopedPtr::new(self.as_ptr() as _) }
+    fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIRowid>() }
 }
 
 impl ToSqlOut for RowID {
-    fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
-        (SQLT_RDD, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCIRowid>(), std::mem::size_of::<*mut OCIRowid>())
-    }
+    fn sql_type(&self) -> u16 { SQLT_RDD }
+    fn sql_mut_data_ptr(&mut self) -> ScopedMutPtr<c_void> { ScopedMutPtr::new(self.as_mut_ptr() as _) }
+    fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIRowid>() }
 }
 
 impl AttrGetInto for RowID {

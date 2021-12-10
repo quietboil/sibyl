@@ -51,7 +51,7 @@ impl<'a> Statement<'a> {
                     if let Some(params) = self.params.as_ref() {
                         let params = params.read();
                         for (out_arg_ix, out_param_ix) in idxs.into_iter().enumerate() {
-                            out_args[out_arg_ix].as_to_sql_out().set_len(params.out_data_len(out_param_ix));
+                            out_args[out_arg_ix].to_sql_out().sql_set_len(params.out_data_len(out_param_ix));
                         }
                     }
                 }

@@ -151,17 +151,18 @@ impl<'a> Row<'a> {
 
         # Example
 
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
         ```
         # use sibyl::Result;
-        // === Blocking mode variant ===
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
         let stmt = conn.prepare("
             SELECT MAX(commission_pct)
               FROM hr.employees
@@ -174,31 +175,25 @@ impl<'a> Row<'a> {
         assert!(!commission_exists);
         # Ok(())
         # }
-
-        // === Nonblocking mode variant ===
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
-        # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-        let stmt = conn.prepare("
-            SELECT MAX(commission_pct)
-              FROM hr.employees
-             WHERE manager_id = :id
-        ").await?;
-        let rows = stmt.query(&[ &120 ]).await?;
-        let row = rows.next().await?.unwrap();
-
-        let commission_exists = !row.is_null(0);
-        assert!(!commission_exists);
+        # let stmt = conn.prepare("
+        #     SELECT MAX(commission_pct)
+        #       FROM hr.employees
+        #      WHERE manager_id = :id
+        # ").await?;
+        # let rows = stmt.query(&[ &120 ]).await?;
+        # let row = rows.next().await?.unwrap();
+        # let commission_exists = !row.is_null(0);
+        # assert!(!commission_exists);
         # Ok(()) })
         # }
-        # fn main() -> Result<()> { test() }
         ```
 
         ## Note
@@ -218,17 +213,19 @@ impl<'a> Row<'a> {
         The returned value is `None` when the SQL value is `NULL`
 
         # Example
+
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest)
+
         ```
         # use sibyl::Result;
-        // === Blocking mode variant ===
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
         let stmt = conn.prepare("
             SELECT manager_id
               FROM hr.employees
@@ -248,36 +245,29 @@ impl<'a> Row<'a> {
         assert_eq!(manager_id.unwrap(), 103);
         # Ok(())
         # }
-
-        // === Nonblocking mode variant ===
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
-        # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-        let stmt = conn.prepare("
-            SELECT manager_id
-              FROM hr.employees
-             WHERE employee_id = :id
-        ").await?;
-        let rows = stmt.query(&[ &107 ]).await?;
-        let row = rows.next().await?.expect("first (and only) row");
-
-        let manager_id: Option<u32> = row.get(0)?;
-        assert!(manager_id.is_some());
-        assert_eq!(manager_id.unwrap(), 103);
-
-        let manager_id: Option<u32> = row.get("MANAGER_ID")?;
-        assert!(manager_id.is_some());
-        assert_eq!(manager_id.unwrap(), 103);
+        # let stmt = conn.prepare("
+        #     SELECT manager_id
+        #       FROM hr.employees
+        #      WHERE employee_id = :id
+        # ").await?;
+        # let rows = stmt.query(&[ &107 ]).await?;
+        # let row = rows.next().await?.expect("first (and only) row");
+        # let manager_id: Option<u32> = row.get(0)?;
+        # assert!(manager_id.is_some());
+        # assert_eq!(manager_id.unwrap(), 103);
+        # let manager_id: Option<u32> = row.get("MANAGER_ID")?;
+        # assert!(manager_id.is_some());
+        # assert_eq!(manager_id.unwrap(), 103);
         # Ok(()) })
         # }
-        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn get<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<Option<T>> {
@@ -302,17 +292,19 @@ impl<'a> Row<'a> {
         For all others the returned `RowID` will be empty (one might think about it as NULL).
 
         # Example
+
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest)
+
         ```
         # use sibyl::Result;
-        // === Blocking mode variant ===
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
         let stmt = conn.prepare("
             SELECT manager_id
               FROM hr.employees
@@ -339,45 +331,38 @@ impl<'a> Row<'a> {
         # conn.rollback()?;
         # Ok(())
         # }
-
-        // === Nonblocking mode variant ===
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
-        # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-        let stmt = conn.prepare("
-            SELECT manager_id
-              FROM hr.employees
-             WHERE employee_id = :id
-               FOR UPDATE
-        ").await?;
-        let rows = stmt.query(&[ &107 ]).await?;
-        let row = rows.next().await?.expect("first (and only) row");
-        let manager_id: u32 = row.get(0)?.unwrap();
-        assert_eq!(manager_id, 103);
-
-        let rowid = row.rowid()?;
-
-        let stmt = conn.prepare("
-            UPDATE hr.employees
-               SET manager_id = :mgr_id
-             WHERE rowid = :row_id
-        ").await?;
-        let num_updated = stmt.execute(&[
-            &( ":MGR_ID", 103 ),
-            &( ":ROW_ID", &rowid )
-        ]).await?;
-        assert_eq!(num_updated, 1);
+        # let stmt = conn.prepare("
+        #     SELECT manager_id
+        #       FROM hr.employees
+        #      WHERE employee_id = :id
+        #        FOR UPDATE
+        # ").await?;
+        # let rows = stmt.query(&[ &107 ]).await?;
+        # let row = rows.next().await?.expect("first (and only) row");
+        # let manager_id: u32 = row.get(0)?.unwrap();
+        # assert_eq!(manager_id, 103);
+        # let rowid = row.rowid()?;
+        # let stmt = conn.prepare("
+        #     UPDATE hr.employees
+        #        SET manager_id = :mgr_id
+        #      WHERE rowid = :row_id
+        # ").await?;
+        # let num_updated = stmt.execute(&[
+        #     &( ":MGR_ID", 103 ),
+        #     &( ":ROW_ID", &rowid )
+        # ]).await?;
+        # assert_eq!(num_updated, 1);
         # conn.rollback().await?;
         # Ok(()) })
         # }
-        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn rowid(&self) -> Result<RowID> {

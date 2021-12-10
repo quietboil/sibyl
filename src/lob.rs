@@ -10,7 +10,7 @@ pub mod nonblocking;
 
 use std::{sync::Arc, marker::PhantomData};
 
-use crate::{Result, Connection, env::Env, oci::{self, *}, stmt::args::{ToSql, ToSqlOut}, conn::Session};
+use crate::{Result, Connection, env::Env, oci::{self, *}, stmt::args::{ToSql, ToSqlOut}, conn::Session, ptr::{ScopedPtr, ScopedMutPtr}};
 use libc::c_void;
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
@@ -55,22 +55,6 @@ impl<T> LobInner<T>
     fn env_ptr(&self) -> *mut OCIEnv {
         self.conn.env_ptr()
     }
-
-    fn get_ptr(&self) -> Ptr<OCILobLocator> {
-        Ptr::new(self.locator.get())
-    }
-
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        Ptr::new(self.conn.err_ptr())
-    }
-
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        Ptr::new(self.conn.env_ptr())
-    }
-
-    fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
-        Ptr::new(self.conn.svc_ptr())
-    }
 }
 
 /// LOB locator.
@@ -106,22 +90,6 @@ impl<'a,T> LOB<'a,T>
 
     fn env_ptr(&self) -> *mut OCIEnv {
         self.inner.env_ptr()
-    }
-
-    fn get_ptr(&self) -> Ptr<OCILobLocator> {
-        self.inner.get_ptr()
-    }
-
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        self.inner.get_err_ptr()
-    }
-
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        self.inner.get_env_ptr()
-    }
-
-    fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
-        self.inner.get_svc_ptr()
     }
 
     pub(crate) fn make(locator: Descriptor<T>, conn: &'a Connection) -> Self {
@@ -169,15 +137,15 @@ impl<'a,T> LOB<'a,T>
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         use sibyl::CLOB;
 
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -235,8 +203,57 @@ impl<'a,T> LOB<'a,T>
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let stmt = conn.prepare("
+        #     declare
+        #         name_already_used exception; pragma exception_init(name_already_used, -955);
+        #     begin
+        #         execute immediate '
+        #             create table test_lobs (
+        #                 id       number generated always as identity,
+        #                 text     clob,
+        #                 data     blob,
+        #                 ext_file bfile
+        #             )
+        #         ';
+        #     exception
+        #         when name_already_used then null;
+        #     end;
+        # ").await?;
+        # stmt.execute(&[]).await?;
+        # let stmt = conn.prepare("
+        #     INSERT INTO test_lobs (text) VALUES (empty_clob())
+        #     RETURN id, text INTO :id, :text
+        # ").await?;
+        # let mut id : usize = 0;
+        # let mut lob = CLOB::new(&conn)?;
+        # stmt.execute_into(&[], &mut [ &mut id, &mut lob ]).await?;
+        # let text = "
+        #     To Mercy, Pity, Peace, and Love
+        #     All pray in their distress;
+        #     And to these virtues of delight
+        #     Return their thankfulness.
+        # ";
+        # lob.append(text).await?;
+        # let stmt = conn.prepare("
+        #     select text from test_lobs where id = :id
+        # ").await?;
+        # let rows = stmt.query(&[ &id ]).await?;
+        # let row = rows.next().await?.expect("selected row");
+        # let lob1 : CLOB = row.get(0)?.expect("CLOB locator");
+        # let rows = stmt.query(&[ &id ]).await?;
+        # let row = rows.next().await?.expect("selected row");
+        # let lob2 : CLOB = row.get(0)?.expect("CLOB locator");
+        # assert!(lob1.is_equal(&lob2)?, "CLOB1 == CLOB2");
+        # assert!(lob2.is_equal(&lob1)?, "CLOB2 == CLOB1");
+        # Ok(()) })
+        # }
         ```
     */
     pub fn is_equal<U>(&self, other: &LOB<'a,U>) -> Result<bool>
@@ -291,15 +308,15 @@ impl<'a, T> LOB<'a,T>
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         use sibyl::{ CLOB };
 
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -332,8 +349,39 @@ impl<'a, T> LOB<'a,T>
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let stmt = conn.prepare("
+        #     declare
+        #         name_already_used exception; pragma exception_init(name_already_used, -955);
+        #     begin
+        #         execute immediate '
+        #             create table test_lobs (
+        #                 id       number generated always as identity,
+        #                 text     clob,
+        #                 data     blob,
+        #                 ext_file bfile
+        #             )
+        #         ';
+        #     exception
+        #         when name_already_used then null;
+        #     end;
+        # ").await?;
+        # stmt.execute(&[]).await?;
+        # let stmt = conn.prepare("
+        #     insert into test_lobs (text) values (:text) returning id into :id
+        # ").await?;
+        # let mut id : usize = 0;
+        # let lob = CLOB::empty(&conn)?;
+        # stmt.execute_into(&[ &lob ], &mut [ &mut id ]).await?;
+        # assert!(id > 0);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn empty(conn: &'a Connection) -> Result<Self> {
@@ -360,15 +408,15 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         use sibyl::{CLOB, Cache, CharSetForm};
 
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -380,8 +428,17 @@ impl<'a> LOB<'a,OCICLobLocator> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let lob = CLOB::temp(&conn, CharSetForm::NChar, Cache::No).await?;
+        # assert!(lob.is_nclob()?);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn is_nclob(&self) -> Result<bool> {
@@ -402,15 +459,15 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         use sibyl::BFile;
 
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -425,8 +482,20 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let file = BFile::new(&conn)?;
+        # file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
+        # let (dir_name, file_name) = file.file_name()?;
+        # assert_eq!(dir_name, "MEDIA_DIR");
+        # assert_eq!(file_name, "hello_world.txt");
+        # Ok(()) })
+        # }
         ```
     */
     pub fn file_name(&self) -> Result<(String,String)> {
@@ -453,15 +522,15 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         use sibyl::BFile;
 
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -474,8 +543,18 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let mut file = BFile::new(&conn)?;
+        # file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
+        # assert!(file.file_exists().await?);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn set_file_name(&self, dir: &str, name: &str) -> Result<()> {
@@ -491,14 +570,14 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 macro_rules! impl_lob_to_sql {
     ($ts:ty => $sqlt:ident) => {
         impl ToSql for LOB<'_, $ts> {
-            fn to_sql(&self) -> (u16, *const c_void, usize) {
-                ( $sqlt, self.as_ptr() as *const c_void, std::mem::size_of::<*mut OCILobLocator>() )
-            }
+            fn sql_type(&self) -> u16 { $sqlt }
+            fn sql_data_ptr(&self) -> ScopedPtr<c_void> { ScopedPtr::new(self.inner.as_ptr() as _) }
+            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
         }
         impl ToSql for &LOB<'_, $ts> {
-            fn to_sql(&self) -> (u16, *const c_void, usize) {
-                ( $sqlt, self.as_ptr() as *const c_void, std::mem::size_of::<*mut OCILobLocator>() )
-            }
+            fn sql_type(&self) -> u16 { $sqlt }
+            fn sql_data_ptr(&self) -> ScopedPtr<c_void> { ScopedPtr::new(self.inner.as_ptr() as _) }
+            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
         }
     };
 }
@@ -510,14 +589,14 @@ impl_lob_to_sql!{ OCIBFileLocator => SQLT_BFILE }
 macro_rules! impl_lob_to_sql_output {
     ($ts:ty => $sqlt:ident) => {
         impl ToSqlOut for Descriptor<$ts> {
-            fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
-                ($sqlt, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCILobLocator>(), std::mem::size_of::<*mut OCILobLocator>())
-            }
+            fn sql_type(&self) -> u16 { $sqlt }
+            fn sql_mut_data_ptr(&mut self) -> ScopedMutPtr<c_void> { ScopedMutPtr::new(self.as_mut_ptr() as _) }
+            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
         }
         impl ToSqlOut for LOB<'_, $ts> {
-            fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
-                self.inner.locator.to_sql_output()
-            }
+            fn sql_type(&self) -> u16 { $sqlt }
+            fn sql_mut_data_ptr(&mut self) -> ScopedMutPtr<c_void> { ScopedMutPtr::new(self.inner.locator.as_mut_ptr() as _) }
+            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
         }
     };
 }

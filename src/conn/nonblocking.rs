@@ -41,7 +41,7 @@ impl Session {
     }
 
     pub(crate) async fn from_session_pool(pool: &SessionPool<'_>) -> Result<Self> {
-        let env = pool.clone_env();        
+        let env = pool.clone_env();
         let err = Handle::<OCIError>::new(env.get())?;
         let svc = pool.get_svc_ctx().await?;
         Ok(Session { env, err, svc })
@@ -52,6 +52,10 @@ impl Session {
         let err = Handle::<OCIError>::new(env.get())?;
         let svc = pool.get_svc_ctx(user, pass).await?;
         Ok(Session { env, err, svc })
+    }
+
+    pub(crate) fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
+        Ptr::new(self.svc.get())
     }
 }
 
@@ -77,9 +81,13 @@ impl<'a> Connection<'a> {
         Ok(Self { session, usr, phantom_env: PhantomData })
     }
 
+    pub(crate) fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
+        self.session.get_svc_ptr()
+    }
+
     /// Confirms that the connection and the server are active.
     pub async fn ping(&self) -> Result<()> {
-        oci::futures::Ping::new(Ptr::new(self.svc_ptr()), Ptr::new(self.err_ptr())).await
+        oci::futures::Ping::new(self.get_svc_ptr(), self.get_err_ptr()).await
     }
 
     /**
@@ -148,7 +156,7 @@ impl<'a> Connection<'a> {
         ```
     */
     pub async fn commit(&self) -> Result<()> {
-        oci::futures::TransCommit::new(Ptr::new(self.svc_ptr()), Ptr::new(self.err_ptr())).await
+        oci::futures::TransCommit::new(self.get_svc_ptr(), self.get_err_ptr()).await
     }
 
     /**
@@ -177,6 +185,6 @@ impl<'a> Connection<'a> {
         ```
     */
     pub async fn rollback(&self) -> Result<()> {
-        oci::futures::TransRollback::new(Ptr::new(self.svc_ptr()), Ptr::new(self.err_ptr())).await
+        oci::futures::TransRollback::new(self.get_svc_ptr(), self.get_err_ptr()).await
     }
 }

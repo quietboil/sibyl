@@ -49,7 +49,9 @@ impl<'a> Rows<'a> {
         if self.last_result.load(Ordering::Relaxed) == OCI_NO_DATA {
             Ok( None )
         } else {
-            let res = oci::futures::StmtFetch::new(Ptr::new(self.stmt_ptr()), Ptr::new(self.err_ptr())).await?;
+            let stmt_ptr = Ptr::new(self.stmt_ptr());
+            let err_ptr = Ptr::new(self.err_ptr());
+            let res = oci::futures::StmtFetch::new(stmt_ptr, err_ptr).await?;
             self.last_result.store(res, Ordering::Relaxed);
             match res {
                 OCI_NO_DATA => Ok( None ),

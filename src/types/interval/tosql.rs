@@ -1,20 +1,20 @@
 /// Implementation of traits that allow Intervals to be used as SQL parameters
 
 use libc::c_void;
-use crate::{ oci::*, stmt::args::{ ToSql, ToSqlOut } };
+use crate::{ oci::*, stmt::args::{ ToSql, ToSqlOut }, ptr::{ScopedPtr, ScopedMutPtr} };
 use super::Interval;
 
 macro_rules! impl_int_to_sql {
     ($ts:ty => $sqlt:ident) => {
         impl ToSql for Interval<'_, $ts> {
-            fn to_sql(&self) -> (u16, *const c_void, usize) {
-                ( $sqlt, self.interval.as_ptr() as *const c_void, std::mem::size_of::<*mut OCIInterval>() )
-            }
+            fn sql_type(&self) -> u16 { $sqlt }
+            fn sql_data_ptr(&self) -> ScopedPtr<c_void> { ScopedPtr::new(self.interval.as_ptr() as _) }
+            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIInterval>() }
         }
         impl ToSql for &Interval<'_, $ts> {
-            fn to_sql(&self) -> (u16, *const c_void, usize) {
-                ( $sqlt, (*self).interval.as_ptr() as *const c_void, std::mem::size_of::<*mut OCIInterval>() )
-            }
+            fn sql_type(&self) -> u16 { $sqlt }
+            fn sql_data_ptr(&self) -> ScopedPtr<c_void> { ScopedPtr::new((*self).interval.as_ptr() as _) }
+            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIInterval>() }
         }
     };
 }
@@ -25,14 +25,14 @@ impl_int_to_sql!{ OCIIntervalDayToSecond => SQLT_INTERVAL_DS }
 macro_rules! impl_int_to_sql_output {
     ($ts:ty => $sqlt:ident) => {
         impl ToSqlOut for Descriptor<$ts> {
-            fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
-                ($sqlt, self.as_ptr() as *mut c_void, std::mem::size_of::<*mut OCIInterval>(), std::mem::size_of::<*mut OCIInterval>())
-            }
+            fn sql_type(&self) -> u16 { $sqlt }
+            fn sql_mut_data_ptr(&mut self) -> ScopedMutPtr<c_void> { ScopedMutPtr::new(self.as_mut_ptr() as _) }
+            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIInterval>() }
         }
         impl ToSqlOut for Interval<'_, $ts> {
-            fn to_sql_output(&mut self) -> (u16, *mut c_void, usize, usize) {
-                self.interval.to_sql_output()
-            }
+            fn sql_type(&self) -> u16 { $sqlt }
+            fn sql_mut_data_ptr(&mut self) -> ScopedMutPtr<c_void> { ScopedMutPtr::new(self.interval.as_mut_ptr() as _) }
+            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIInterval>() }
         }
     };
 }

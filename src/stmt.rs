@@ -125,13 +125,13 @@ impl<'a> Statement<'a> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -146,8 +146,21 @@ impl<'a> Statement<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let stmt = conn.prepare("
+        #     SELECT employee_id, first_name, last_name
+        #       FROM hr.employees
+        #      WHERE manager_id = :id
+        # ").await?;
+        # stmt.set_prefetch_rows(10)?;
+        # Ok(()) })
+        # }
         ```
     */
     pub fn set_prefetch_rows(&self, num_rows: u32) -> Result<()> {
@@ -163,13 +176,13 @@ impl<'a> Statement<'a> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -220,8 +233,57 @@ impl<'a> Statement<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let stmt = conn.prepare("
+        #     DECLARE
+        #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
+        #     BEGIN
+        #         EXECUTE IMMEDIATE '
+        #             CREATE TABLE test_long_and_raw_data (
+        #                 id      NUMBER GENERATED ALWAYS AS IDENTITY,
+        #                 bin     RAW(100),
+        #                 text    LONG
+        #             )
+        #         ';
+        #     EXCEPTION
+        #       WHEN name_already_used THEN
+        #         EXECUTE IMMEDIATE '
+        #             TRUNCATE TABLE test_long_and_raw_data
+        #         ';
+        #     END;
+        # ").await?;
+        # stmt.execute(&[]).await?;
+        # let stmt = conn.prepare("
+        #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
+        #     RETURNING id INTO :ID
+        # ").await?;
+        # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
+        # let mut id = 0;
+        # let count = stmt.execute_into(
+        #     &[
+        #         &(":TEXT", text)
+        #     ], &mut [
+        #         &mut (":ID", &mut id),
+        #     ]
+        # ).await?;
+        # let mut stmt = conn.prepare("
+        #     SELECT text
+        #       FROM test_long_and_raw_data
+        #      WHERE id = :id
+        # ").await?;
+        # stmt.set_max_long_size(100_000);
+        # let rows = stmt.query(&[ &id ]).await?;
+        # let row = rows.next().await?.expect("first (and only) row");
+        # let txt : &str = row.get(0)?.expect("long text");
+        # assert_eq!(txt, text);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn set_max_long_size(&mut self, size: u32) {
@@ -233,13 +295,13 @@ impl<'a> Statement<'a> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -256,8 +318,23 @@ impl<'a> Statement<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let stmt = conn.prepare("
+        #     SELECT employee_id, last_name, first_name
+        #       FROM hr.employees
+        #      WHERE manager_id = :id
+        # ").await?;
+        # let rows = stmt.query(&[ &103 ]).await?;
+        # let num_cols = stmt.column_count()?;
+        # assert_eq!(num_cols, 3);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn column_count(&self) -> Result<usize> {
@@ -272,15 +349,15 @@ impl<'a> Statement<'a> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         use sibyl::ColumnType;
 
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -303,8 +380,29 @@ impl<'a> Statement<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let stmt = conn.prepare("
+        #     SELECT employee_id, last_name, first_name
+        #       FROM hr.employees
+        #      WHERE manager_id = :id
+        # ").await?;
+        # let rows = stmt.query(&[ &103 ]).await?;
+        # let col = stmt.column(0).expect("employee_id column info");
+        # assert_eq!(col.name()?, "EMPLOYEE_ID");
+        # assert_eq!(col.data_type()?, ColumnType::Number);
+        # assert_eq!(col.precision()?, 6);
+        # assert_eq!(col.scale()?, 0);
+        # assert!(!col.is_null()?);
+        # assert!(col.is_visible()?);
+        # assert!(!col.is_identity()?);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
@@ -323,13 +421,13 @@ impl<'a> Statement<'a> {
 
         # Example
 
-        🛈 **Note** The supporting code of this example is written for blocking mode execution.
-        Add `await`s, where needed, to make a nonblocking variant.
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -355,8 +453,31 @@ impl<'a> Statement<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> {
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let stmt = conn.prepare("
+        #     SELECT employee_id, first_name, last_name
+        #       FROM hr.employees
+        #      WHERE manager_id = :id
+        #   ORDER BY employee_id
+        # ").await?;
+        # stmt.set_prefetch_rows(5)?;
+        # let rows = stmt.query(&[ &103 ]).await?;
+        # let mut ids = Vec::new();
+        # while let Some( row ) = rows.next().await? {
+        #     let id : u32 = row.get(0)?.unwrap();
+        #     ids.push(id);
+        # }
+        # assert_eq!(stmt.row_count()?, 4);
+        # assert_eq!(ids.len(), 4);
+        # assert_eq!(ids.as_slice(), &[104 as u32, 105, 106, 107]);
+        # Ok(()) })
+        # }
         ```
     */
     pub fn row_count(&self) -> Result<usize> {

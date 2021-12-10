@@ -24,14 +24,6 @@ impl Session {
     pub(crate) fn svc_ptr(&self) -> *mut OCISvcCtx {
         self.svc.get()
     }
-
-    // fn usr_ptr(&self) -> *mut OCISession {
-    //     self.usr.get()
-    // }
-
-    pub(crate) fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
-        Ptr::new(self.svc.get())
-    }
 }
 
 impl Env for Session {
@@ -51,12 +43,6 @@ impl Env for Session {
         Ptr::new(self.err_ptr())
     }
 }
-
-// impl Ctx for Session {
-//     fn ctx_ptr(&self) -> *mut c_void {
-//         self.usr.get() as *mut c_void
-//     }
-// }
 
 /// Represents a user session
 pub struct Connection<'a> {
@@ -92,15 +78,11 @@ impl Ctx for Connection<'_> {
 impl Connection<'_> {
     pub(crate) fn svc_ptr(&self) -> *mut OCISvcCtx {
         self.session.svc_ptr()
-    }   
+    }
 
     fn usr_ptr(&self) -> *mut OCISession {
         self.usr.get()
     }
-
-    pub(crate) fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
-        self.session.get_svc_ptr()
-    }   
 
     pub(crate) fn clone_session(&self) -> Arc<Session> {
         self.session.clone()
@@ -158,17 +140,18 @@ impl Connection<'_> {
 
         # Example
 
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
         ```
         # use sibyl::Result;
-        // === Blocking mode variant ===
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
         conn.set_module("sibyl");
 
         let stmt = conn.prepare("
@@ -182,10 +165,8 @@ impl Connection<'_> {
         assert_eq!(module, "sibyl");
         # Ok(())
         # }
-
-        // === Nonblocking mode variant ===
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
@@ -193,21 +174,18 @@ impl Connection<'_> {
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-        conn.set_module("sibyl");
-
-        let stmt = conn.prepare("
-            SELECT module
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ").await?;
-        let rows = stmt.query(&[]).await?;
-        let row = rows.next().await?.unwrap();
-        let module : &str = row.get(0)?.unwrap();
-        assert_eq!(module, "sibyl");
+        # conn.set_module("sibyl");
+        # let stmt = conn.prepare("
+        #     SELECT module
+        #       FROM v$session
+        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        # ").await?;
+        # let rows = stmt.query(&[]).await?;
+        # let row = rows.next().await?.unwrap();
+        # let module : &str = row.get(0)?.unwrap();
+        # assert_eq!(module, "sibyl");
         # Ok(()) })
         # }
-        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_module(&self, name: &str) -> Result<()> {
@@ -221,17 +199,18 @@ impl Connection<'_> {
 
         # Example
 
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
         ```
         # use sibyl::Result;
-        // === Blocking mode variant ===
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
         conn.set_action("Session Test");
 
         let stmt = conn.prepare("
@@ -245,10 +224,8 @@ impl Connection<'_> {
         assert_eq!(action, "Session Test");
         # Ok(())
         # }
-
-        // === Nonblocking mode variant ===
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
@@ -256,21 +233,18 @@ impl Connection<'_> {
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-        conn.set_action("Session Test");
-
-        let stmt = conn.prepare("
-            SELECT action
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ").await?;
-        let rows = stmt.query(&[]).await?;
-        let row = rows.next().await?.unwrap();
-        let action : &str = row.get(0)?.unwrap();
-        assert_eq!(action, "Session Test");
+        # conn.set_action("Session Test");
+        # let stmt = conn.prepare("
+        #     SELECT action
+        #       FROM v$session
+        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        # ").await?;
+        # let rows = stmt.query(&[]).await?;
+        # let row = rows.next().await?.unwrap();
+        # let action : &str = row.get(0)?.unwrap();
+        # assert_eq!(action, "Session Test");
         # Ok(()) })
         # }
-        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_action(&self, action: &str) -> Result<()> {
@@ -283,17 +257,18 @@ impl Connection<'_> {
 
         # Example
 
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
         ```
         # use sibyl::Result;
-        // === Blocking mode variant ===
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
         conn.set_client_identifier("Test Wielder");
 
         let stmt = conn.prepare("
@@ -307,32 +282,26 @@ impl Connection<'_> {
         assert_eq!(client_identifier, "Test Wielder");
         # Ok(())
         # }
-
-        // === Nonblocking mode variant ===
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
-        # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-        conn.set_client_identifier("Test Wielder");
-
-        let stmt = conn.prepare("
-            SELECT client_identifier
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ").await?;
-        let rows = stmt.query(&[]).await?;
-        let row = rows.next().await?.unwrap();
-        let client_identifier : &str = row.get(0)?.unwrap();
-        assert_eq!(client_identifier, "Test Wielder");
+        # conn.set_client_identifier("Test Wielder");
+        # let stmt = conn.prepare("
+        #     SELECT client_identifier
+        #       FROM v$session
+        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        # ").await?;
+        # let rows = stmt.query(&[]).await?;
+        # let row = rows.next().await?.unwrap();
+        # let client_identifier : &str = row.get(0)?.unwrap();
+        # assert_eq!(client_identifier, "Test Wielder");
         # Ok(()) })
         # }
-        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_client_identifier(&self, id: &str) -> Result<()> {
@@ -343,19 +312,20 @@ impl Connection<'_> {
         Sets additional client application information (`V$SESSION.CLIENT_INFO`).
         Can be up to 64 bytes long.
 
-        ## Example
+        # Example
+
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
         ```
         # use sibyl::Result;
-        // === Blocking mode variant ===
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
         conn.set_client_info("Nothing to see here, move along folks");
 
         let stmt = conn.prepare("
@@ -369,31 +339,26 @@ impl Connection<'_> {
         assert_eq!(client_info, "Nothing to see here, move along folks");
         # Ok(())
         # }
-
-        // === Nonblocking mode variant ===
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-        conn.set_client_info("Nothing to see here, move along folks");
-
-        let stmt = conn.prepare("
-            SELECT client_info
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ").await?;
-        let rows = stmt.query(&[]).await?;
-        let row = rows.next().await?.unwrap();
-        let client_info : &str = row.get(0)?.unwrap();
-        assert_eq!(client_info, "Nothing to see here, move along folks");
+        # conn.set_client_info("Nothing to see here, move along folks");
+        # let stmt = conn.prepare("
+        #     SELECT client_info
+        #       FROM v$session
+        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        # ").await?;
+        # let rows = stmt.query(&[]).await?;
+        # let row = rows.next().await?.unwrap();
+        # let client_info : &str = row.get(0)?.unwrap();
+        # assert_eq!(client_info, "Nothing to see here, move along folks");
         # Ok(()) })
         # }
-        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_client_info(&self, info: &str) -> Result<()> {
@@ -408,13 +373,12 @@ impl Connection<'_> {
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        #
         let orig_name = conn.current_schema()?;
 
         conn.set_current_schema("HR")?;
@@ -422,12 +386,23 @@ impl Connection<'_> {
 
         conn.set_current_schema(orig_name)?;
         assert_eq!(conn.current_schema()?, orig_name);
-        #
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> { Ok(()) }
-        # fn main() -> Result<()> { test() }
+        # fn main() -> Result<()> { 
+        # sibyl::test::on_single_thread(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let orig_name = conn.current_schema()?;
+        # conn.set_current_schema("HR")?;
+        # assert_eq!(conn.current_schema()?, "HR");
+        # conn.set_current_schema(orig_name)?;
+        # assert_eq!(conn.current_schema()?, orig_name);
+        # Ok(()) })
+        # }        
         ```
     */
     pub fn current_schema(&self) -> Result<&str> {
@@ -443,17 +418,18 @@ impl Connection<'_> {
 
         # Example
 
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    
         ```
         # use sibyl::Result;
-        // === Blocking mode variant ===
         # #[cfg(feature="blocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-
         let orig_name = conn.current_schema()?;
         conn.set_current_schema("HR")?;
         assert_eq!(conn.current_schema()?, "HR");
@@ -472,37 +448,30 @@ impl Connection<'_> {
         assert_eq!(conn.current_schema()?, orig_name);
         # Ok(())
         # }
-
-        // === Nonblocking mode variant ===
         # #[cfg(feature="nonblocking")]
-        # fn test() -> Result<()> {
+        # fn main() -> Result<()> {
         # sibyl::test::on_single_thread(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
         # let dbpass = std::env::var("DBPASS").expect("password");
-        # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-        let orig_name = conn.current_schema()?;
-        conn.set_current_schema("HR")?;
-        assert_eq!(conn.current_schema()?, "HR");
-
-        let stmt = conn.prepare("
-            SELECT schemaname
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ").await?;
-        let rows = stmt.query(&[]).await?;
-        let row = rows.next().await?.unwrap();
-        let schema_name : &str = row.get(0)?.unwrap();
-        assert_eq!(schema_name, "HR");
-
-        conn.set_current_schema(orig_name)?;
-        assert_eq!(conn.current_schema()?, orig_name);
+        # let orig_name = conn.current_schema()?;
+        # conn.set_current_schema("HR")?;
+        # assert_eq!(conn.current_schema()?, "HR");
+        # let stmt = conn.prepare("
+        #     SELECT schemaname
+        #       FROM v$session
+        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+        # ").await?;
+        # let rows = stmt.query(&[]).await?;
+        # let row = rows.next().await?.unwrap();
+        # let schema_name : &str = row.get(0)?.unwrap();
+        # assert_eq!(schema_name, "HR");
+        # conn.set_current_schema(orig_name)?;
+        # assert_eq!(conn.current_schema()?, orig_name);
         # Ok(()) })
         # }
-        # fn main() -> Result<()> { test() }
         ```
     */
     pub fn set_current_schema(&self, schema_name: &str) -> Result<()> {

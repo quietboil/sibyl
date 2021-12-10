@@ -39,6 +39,22 @@ impl<T> Drop for LobInner<T>
 impl<T> LobInner<T>
     where T: DescriptorType<OCIType=OCILobLocator>
 {
+    fn get_ptr(&self) -> Ptr<OCILobLocator> {
+        Ptr::new(self.locator.get())
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        Ptr::new(self.conn.err_ptr())
+    }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        Ptr::new(self.conn.env_ptr())
+    }
+
+    fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
+        Ptr::new(self.conn.svc_ptr())
+    }
+
     async fn clone(&self) -> Result<Self> {
         let mut locator = Descriptor::new(self.env_ptr())?;
         let new_locator_ptr = oci::futures::LobLocatorAssign::new(
@@ -53,6 +69,22 @@ impl<T> LobInner<T>
 impl<'a,T> LOB<'a,T>
     where T: DescriptorType<OCIType=OCILobLocator>
 {
+    fn get_ptr(&self) -> Ptr<OCILobLocator> {
+        self.inner.get_ptr()
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        self.inner.get_err_ptr()
+    }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        self.inner.get_env_ptr()
+    }
+
+    fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
+        self.inner.get_svc_ptr()
+    }
+
     /**
         Creates a new LOB locator that points to the same LOB data as the provided locator.
 

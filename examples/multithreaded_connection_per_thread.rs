@@ -1,16 +1,19 @@
-/*!
-    This example is a variant of `readme` that executes its work in multiple
-    threads where each thread establishes its own connection and then uses it
-    to execute queries. The connection gets dropped once the work is done
-    (i.e. when the closure exits)
-*/
-#![allow(unused_imports)]
-
 use sibyl::*;
-use std::{env, thread, sync::Arc};
+use std::{env, sync::Arc};
+
+/**
+    This example is a variant of `readme` that executes its work in multiple
+    threads (or async tasks) where each thread (or task) establishes its own
+    connection and then uses it to execute queries.
+*/
+fn main() -> Result<()> {
+    example()
+}
 
 #[cfg(feature="blocking")]
-fn main() -> Result<()> {
+fn example() -> Result<()> {
+    use std::thread;
+
     let oracle = sibyl::env()?;
     let oracle = Arc::new(oracle);
 
@@ -60,6 +63,54 @@ fn main() -> Result<()> {
 }
 
 #[cfg(feature="nonblocking")]
-fn main() {
-    unimplemented!()
+fn example() -> Result<()> {
+    tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
+        let oracle = sibyl::env()?;
+        let oracle = Arc::new(oracle);
+    
+        // Start 100 "worker" tasks
+        let mut workers = Vec::with_capacity(100);
+        for _i in 0..workers.capacity() {
+            let oracle = oracle.clone();
+            let handle = sibyl::spawn(async move {
+                let dbname = env::var("DBNAME").expect("database name");
+                let dbuser = env::var("DBUSER").expect("schema name");
+                let dbpass = env::var("DBPASS").expect("password");
+    
+                let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+                let stmt = conn.prepare("
+                    SELECT first_name, last_name, hire_date
+                      FROM (
+                            SELECT first_name, last_name, hire_date
+                                 , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
+                              FROM hr.employees
+                           )
+                     WHERE hire_date_rank = 1
+                ").await?;
+                let rows = stmt.query(&[]).await?;
+                if let Some( row ) = rows.next().await? {
+                    let first_name : Option<&str> = row.get(0)?;
+                    let last_name : &str = row.get(1)?.unwrap();
+                    let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
+                    let hire_date : Date = row.get(2)?.unwrap();
+                    let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
+    
+                    Ok::<_,Error>(Some((name, hire_date)))
+                } else {
+                    Ok(None)
+                }
+            });
+            workers.push(handle);
+        }
+        let mut n = 1;
+        for handle in workers {
+            if let Some((name,hire_date)) = handle.await.expect("task's result")? {
+                println!("{:?}: {} was hired on {}", n, name, hire_date);
+            } else {
+                println!("{:?}: did not find the latest hire", n);
+            }
+            n += 1;
+        }
+        Ok(())
+    })    
 }
