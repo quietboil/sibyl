@@ -16,18 +16,18 @@ impl<T> Drop for LobInner<T>
             let conn = conn;
             let locator = locator;
             let loc_ptr = locator.get_ptr();
-            let svc_ptr = Ptr::new(conn.svc_ptr());
-            let err_ptr = Ptr::new(conn.err_ptr());
+            let svc_ptr = conn.get_svc_ptr();
+            let err_ptr = conn.get_err_ptr();
 
-            match oci::futures::LobIsOpen::new(svc_ptr.clone(), err_ptr.clone(), loc_ptr.clone()).await {
+            match oci::futures::LobIsOpen::new(svc_ptr, err_ptr, loc_ptr).await {
                 Ok(is_open) if is_open => {
-                    let _res = oci::futures::LobClose::new(svc_ptr.clone(), err_ptr.clone(), loc_ptr.clone()).await;
+                    let _res = oci::futures::LobClose::new(svc_ptr, err_ptr, loc_ptr).await;
                 },
                 _ => {}
             };
-            match oci::futures::LobIsTemporary::new(svc_ptr.clone(), err_ptr.clone(), loc_ptr.clone()).await {
+            match oci::futures::LobIsTemporary::new(svc_ptr, err_ptr, loc_ptr).await {
                 Ok(is_temp) if is_temp => {
-                    let _res = oci::futures::LobFreeTemporary::new(svc_ptr.clone(), err_ptr.clone(), loc_ptr.clone()).await;
+                    let _res = oci::futures::LobFreeTemporary::new(svc_ptr, err_ptr, loc_ptr).await;
                 },
                 _ => {}
             };

@@ -100,7 +100,7 @@ impl<T: HandleType> Handle<T> {
     }
 
     pub(crate) fn get_ptr(&self) -> Ptr<T> {
-        self.ptr.clone()
+        self.ptr
     }
 
     pub(crate) fn as_ptr(&self) -> *const *mut T {

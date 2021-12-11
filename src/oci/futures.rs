@@ -458,7 +458,7 @@ impl Future for LobLocatorAssign {
     type Output = Result<Ptr<OCILobLocator>>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut dst_ptr = self.dst.clone();
+        let mut dst_ptr = self.dst;
         wait_val!(|self, cx, dst_ptr| OCILobLocatorAssign(self.svc.get(), self.err.get(), self.src.get(), dst_ptr.as_mut_ptr()))
     }
 }

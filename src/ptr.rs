@@ -14,9 +14,11 @@ impl<T> ScopedPtr<T> {
     }
 }
 
+impl<T> Copy for ScopedPtr<T> {}
+
 impl<T> Clone for ScopedPtr<T> {
     fn clone(&self) -> Self {
-        Self(self.0)
+        *self
     }
 }
 
@@ -41,9 +43,11 @@ impl<T> ScopedMutPtr<T> {
     }
 }
 
+impl<T> Copy for ScopedMutPtr<T> {}
+
 impl<T> Clone for ScopedMutPtr<T> {
     fn clone(&self) -> Self {
-        Self(self.0)
+        *self
     }
 }
 
