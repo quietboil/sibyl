@@ -5,46 +5,70 @@ mod tosql;
 use super::{Ctx, Number};
 use crate::{Result, oci::{self, *}};
 use libc::size_t;
-use std::{mem, cmp::Ordering};
+use std::{mem, cmp::Ordering, ops::{Deref, DerefMut}};
 
-pub(crate) fn to_string(lfprec: u8, fsprec: u8, int: *const OCIInterval, ctx: &dyn Ctx) -> Result<String> {
+pub(crate) fn to_string(int: &OCIInterval, lfprec: u8, fsprec: u8, ctx: &dyn Ctx) -> Result<String> {
     let mut name: [u8;32] = unsafe { mem::MaybeUninit::uninit().assume_init() };
     let mut size = mem::MaybeUninit::<size_t>::uninit();
-    oci::interval_to_text(
-        ctx.ctx_ptr(), ctx.err_ptr(),
-        int, lfprec, fsprec,
-        name.as_mut_ptr(), name.len(), size.as_mut_ptr()
-    )?;
+    oci::interval_to_text(ctx.as_context(), ctx.as_ref(), int, lfprec, fsprec, name.as_mut_ptr(), name.len(), size.as_mut_ptr())?;
     let size = unsafe { size.assume_init() } as usize;
     let txt = &name[0..size];
     Ok( String::from_utf8_lossy(txt).to_string() )
 }
 
-pub(crate) fn to_number(int: *const OCIInterval, ctx: &dyn Ctx) -> Result<OCINumber> {
+pub(crate) fn to_number(int: &OCIInterval, ctx: &dyn Ctx) -> Result<OCINumber> {
     let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-    oci::interval_to_number(ctx.ctx_ptr(), ctx.err_ptr(), int, num.as_mut_ptr())?;
+    oci::interval_to_number(ctx.as_context(), ctx.as_ref(), int, num.as_mut_ptr())?;
     Ok( unsafe { num.assume_init() } )
 }
 
 pub(crate) fn from_interval<'a,T>(int: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<Interval<'a,T>>
     where T: DescriptorType<OCIType=OCIInterval>
 {
-    let interval = Descriptor::new(ctx.env_ptr())?;
-    oci::interval_assign(ctx.ctx_ptr(), ctx.err_ptr(), int.get(), interval.get())?;
+    let mut interval = Descriptor::<T>::new(&ctx)?;
+    oci::interval_assign(ctx.as_context(), ctx.as_ref(), int, &mut interval)?;
     Ok( Interval { ctx, interval } )
 }
 
-pub struct Interval<'a, T: DescriptorType<OCIType=OCIInterval>> {
+pub struct Interval<'a, T> where T: DescriptorType<OCIType=OCIInterval> {
     interval: Descriptor<T>,
     ctx: &'a dyn Ctx,
 }
 
-impl<'a, T> Interval<'a, T>
-    where T: DescriptorType<OCIType=OCIInterval>
-{
+impl<'a,T> AsRef<T::OCIType> for Interval<'a,T> where T: DescriptorType<OCIType=OCIInterval> {
+    fn as_ref(&self) -> &T::OCIType {
+        self.interval.as_ref()
+    }
+}
+
+impl<'a,T> AsMut<T::OCIType> for Interval<'a,T> where T: DescriptorType<OCIType=OCIInterval> {
+    fn as_mut(&mut self) -> &mut T::OCIType {
+        self.interval.as_mut()
+    }
+}
+
+impl<'a,T> Deref for Interval<'a,T> where T: DescriptorType<OCIType=OCIInterval> {
+    type Target = T::OCIType;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl<'a,T> DerefMut for Interval<'a,T> where T: DescriptorType<OCIType=OCIInterval> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
+}
+
+impl<'a, T> Interval<'a, T> where T: DescriptorType<OCIType=OCIInterval> {
+    pub(crate) fn from(interval: Descriptor<T>, ctx: &'a dyn Ctx) -> Self {
+        Self { interval, ctx }
+    }
+
     /// Returns new uninitialized interval.
     pub fn new(ctx: &'a dyn Ctx) -> Result<Self> {
-        let interval = Descriptor::new(ctx.env_ptr())?;
+        let interval = Descriptor::<T>::new(&ctx)?;
         Ok( Self { ctx, interval } )
     }
 
@@ -63,8 +87,8 @@ impl<'a, T> Interval<'a, T>
         ```
     */
     pub fn from_string(txt: &str, ctx: &'a dyn Ctx) -> Result<Self> {
-        let interval = Descriptor::new(ctx.env_ptr())?;
-        oci::interval_from_text(ctx.ctx_ptr(), ctx.err_ptr(), txt.as_ptr(), txt.len(), interval.get())?;
+        let mut interval = Descriptor::<T>::new(&ctx)?;
+        oci::interval_from_text(ctx.as_context(), ctx.as_ref(), txt.as_ptr(), txt.len(), &mut interval)?;
         Ok( Self { ctx, interval } )
     }
 
@@ -86,22 +110,7 @@ impl<'a, T> Interval<'a, T>
         ```
     */
     pub fn from_number(num: &'a Number) -> Result<Self> {
-        let interval = Descriptor::new(num.ctx.env_ptr())?;
-        oci::interval_from_number(num.ctx.ctx_ptr(), num.ctx.err_ptr(), interval.get(), num.as_ptr())?;
-        Ok( Self { ctx: num.ctx, interval } )
-    }
-
-    /// Changes an interval context.
-    pub fn move_to(&mut self, ctx: &'a dyn Ctx) {
-        self.ctx = ctx;
-    }
-
-    pub(crate) fn as_ptr(&self) -> *const OCIInterval {
-        self.interval.get() as *const OCIInterval
-    }
-
-    pub(crate) fn as_mut_ptr(&self) -> *mut OCIInterval {
-        self.interval.get() as *mut OCIInterval
+        num.to_interval()
     }
 
     /**
@@ -143,7 +152,7 @@ impl<'a, T> Interval<'a, T>
     */
     pub fn to_number(&self) -> Result<Number> {
         let mut num = Number::new(self.ctx);
-        oci::interval_to_number(self.ctx.ctx_ptr(), self.ctx.err_ptr(), self.as_ptr(), num.as_mut_ptr())?;
+        oci::interval_to_number(self.ctx.as_context(), self.ctx.as_ref(), self, num.as_mut())?;
         Ok( num )
     }
 
@@ -170,7 +179,7 @@ impl<'a, T> Interval<'a, T>
         ```
     */
     pub fn to_string(&self, lfprec: u8, fsprec: u8) -> Result<String> {
-        to_string(lfprec, fsprec, self.as_ptr(), self.ctx)
+        to_string(self.as_ref(), lfprec, fsprec, self.ctx)
     }
 
     /**
@@ -195,7 +204,7 @@ impl<'a, T> Interval<'a, T>
     */
     pub fn compare(&self, other: &Self) -> Result<Ordering> {
         let mut res = 0i32;
-        oci::interval_compare(self.ctx.ctx_ptr(), self.ctx.err_ptr(), self.as_ptr(), other.as_ptr(), &mut res)?;
+        oci::interval_compare(self.ctx.as_context(), self.ctx.as_ref(), self.as_ref(), other.as_ref(), &mut res)?;
         let ordering = if res < 0 { Ordering::Less } else if res == 0 { Ordering::Equal } else { Ordering::Greater };
         Ok( ordering )
     }
@@ -223,8 +232,8 @@ impl<'a, T> Interval<'a, T>
     */
     pub fn add(&self, other: &Self) -> Result<Self> {
         let ctx = self.ctx;
-        let interval = Descriptor::new(ctx.env_ptr())?;
-        oci::interval_add(ctx.ctx_ptr(), ctx.err_ptr(), self.as_ptr(), other.as_ptr(), interval.get())?;
+        let mut interval = Descriptor::<T>::new(&ctx)?;
+        oci::interval_add(ctx.as_context(), ctx.as_ref(), self.as_ref(), other.as_ref(), interval.as_mut())?;
         Ok( Self { ctx, interval } )
     }
 
@@ -249,8 +258,8 @@ impl<'a, T> Interval<'a, T>
     */
     pub fn sub(&self, other: &Self) -> Result<Self> {
         let ctx = self.ctx;
-        let interval = Descriptor::new(self.ctx.env_ptr())?;
-        oci::interval_subtract(ctx.ctx_ptr(), ctx.err_ptr(), self.as_ptr(), other.as_ptr(), interval.get())?;
+        let mut interval = Descriptor::<T>::new(&ctx)?;
+        oci::interval_subtract(ctx.as_context(), ctx.as_ref(), self.as_ref(), other.as_ref(), interval.as_mut())?;
         Ok( Self { ctx, interval } )
     }
 
@@ -272,8 +281,8 @@ impl<'a, T> Interval<'a, T>
     */
     pub fn mul(&self, num: &Number) -> Result<Self> {
         let ctx = self.ctx;
-        let interval = Descriptor::new(ctx.env_ptr())?;
-        oci::interval_multiply(ctx.ctx_ptr(), ctx.err_ptr(), self.as_ptr(), num.as_ptr(), interval.get())?;
+        let mut interval = Descriptor::<T>::new(&ctx)?;
+        oci::interval_multiply(ctx.as_context(), ctx.as_ref(), self.as_ref(), num.as_ref(), interval.as_mut())?;
         Ok( Self { ctx, interval } )
     }
 
@@ -295,8 +304,8 @@ impl<'a, T> Interval<'a, T>
     */
     pub fn div(&self, num: &Number) -> Result<Self> {
         let ctx = self.ctx;
-        let interval = Descriptor::new(ctx.env_ptr())?;
-        oci::interval_divide(ctx.ctx_ptr(), ctx.err_ptr(), self.as_ptr(), num.as_ptr(), interval.get())?;
+        let mut interval = Descriptor::<T>::new(&ctx)?;
+        oci::interval_divide(ctx.as_context(), ctx.as_ref(), self.as_ref(), num.as_ref(), &mut interval)?;
         Ok( Self { ctx, interval } )
     }
 }
@@ -321,8 +330,8 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
         ```
     */
     pub fn from_tz(txt: &str, ctx: &'a dyn Ctx) -> Result<Self> {
-        let interval = Descriptor::new(ctx.env_ptr())?;
-        oci::interval_from_tz(ctx.ctx_ptr(), ctx.err_ptr(), txt.as_ptr(), txt.len(), interval.get())?;
+        let mut interval = Descriptor::<OCIIntervalDayToSecond>::new(&ctx)?;
+        oci::interval_from_tz(ctx.as_context(), ctx.as_ref(), txt.as_ptr(), txt.len(), &mut interval)?;
         Ok( Self { ctx, interval } )
     }
 
@@ -342,8 +351,8 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
         ```
     */
     pub fn with_duration(dd: i32, hh: i32, mi: i32, ss: i32, ns: i32, ctx: &'a dyn Ctx) -> Result<Self> {
-        let interval = Descriptor::new(ctx.env_ptr())?;
-        oci::interval_set_day_second(ctx.ctx_ptr(), ctx.err_ptr(), dd, hh, mi, ss, ns, interval.get())?;
+        let mut interval = Descriptor::<OCIIntervalDayToSecond>::new(&ctx)?;
+        oci::interval_set_day_second(ctx.as_context(), ctx.as_ref(), dd, hh, mi, ss, ns, &mut interval)?;
         Ok( Self { ctx, interval } )
     }
 
@@ -368,9 +377,9 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
         let mut sec  = 0i32;
         let mut fsec = 0i32;
         oci::interval_get_day_second(
-            self.ctx.ctx_ptr(), self.ctx.err_ptr(),
+            self.ctx.as_context(), self.ctx.as_ref(),
             &mut day, &mut hour, &mut min, &mut sec, &mut fsec,
-            self.as_ptr()
+            self.as_ref()
         )?;
         Ok( (day, hour, min, sec, fsec) )
     }
@@ -392,7 +401,7 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
         ```
     */
     pub fn set_duration(&mut self, dd: i32, hh: i32, mi: i32, ss: i32, ns: i32) -> Result<()> {
-        oci::interval_set_day_second(self.ctx.ctx_ptr(), self.ctx.err_ptr(), dd, hh, mi, ss, ns, self.as_mut_ptr())
+        oci::interval_set_day_second(self.ctx.as_context(), self.ctx.as_ref(), dd, hh, mi, ss, ns, self.as_mut())
     }
 }
 
@@ -413,8 +422,8 @@ impl<'a> Interval<'a, OCIIntervalYearToMonth> {
         ```
     */
     pub fn with_duration(year: i32, month: i32, ctx: &'a dyn Ctx) -> Result<Self> {
-        let interval = Descriptor::new(ctx.env_ptr())?;
-        oci::interval_set_year_month(ctx.ctx_ptr(), ctx.err_ptr(), year, month, interval.get())?;
+        let mut interval = Descriptor::<OCIIntervalYearToMonth>::new(&ctx)?;
+        oci::interval_set_year_month(ctx.as_context(), ctx.as_ref(), year, month, &mut interval)?;
         Ok( Self { ctx, interval } )
     }
 
@@ -436,7 +445,7 @@ impl<'a> Interval<'a, OCIIntervalYearToMonth> {
     pub fn duration(&self) -> Result<(i32,i32)> {
         let mut year  = 0i32;
         let mut month = 0i32;
-        oci::interval_get_year_month(self.ctx.ctx_ptr(), self.ctx.err_ptr(), &mut year, &mut month, self.as_ptr())?;
+        oci::interval_get_year_month(self.ctx.as_context(), self.ctx.as_ref(), &mut year, &mut month, self.as_ref())?;
         Ok( (year, month) )
     }
 
@@ -457,7 +466,7 @@ impl<'a> Interval<'a, OCIIntervalYearToMonth> {
         ```
     */
     pub fn set_duration(&mut self, year: i32, month: i32) -> Result<()> {
-        oci::interval_set_year_month(self.ctx.ctx_ptr(), self.ctx.err_ptr(), year, month, self.as_mut_ptr())
+        oci::interval_set_year_month(self.ctx.as_context(), self.ctx.as_ref(), year, month, self.as_mut())
     }
 }
 

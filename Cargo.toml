@@ -15,11 +15,14 @@ documentation = "https://docs.rs/sibyl"
 libc = "0.2"
 once_cell = "1.8"
 parking_lot = "0.11"
-tokio = { version = "1", features=["rt", "rt-multi-thread"], optional = true }
+tokio-rt = { version = "1", features = ["rt"], optional = true, package = "tokio" }
+
+[dev-dependencies]
+tokio-rt = { version = "1", features = ["rt", "rt-multi-thread"], package = "tokio" }
 
 [features]
 blocking = []
-nonblocking = ["tokio"]
+nonblocking = ["tokio-rt"]
 
 [package.metadata.docs.rs]
 all-features = true

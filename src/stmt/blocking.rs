@@ -1,46 +1,42 @@
 //! Blocking SQL statement methods
 
 use super::{
-    Statement, Cursor, Stmt, Params, SqlInArg, SqlOutArg, Columns, Rows,
+    Statement, Cursor, Params, StmtInArg, StmtOutArg, Columns, Rows,
     cols::DEFAULT_LONG_BUFFER_SIZE,
 };
-use crate::{Error, Result, env::Env, oci::{self, *}, Connection};
-use std::ptr;
-use libc::c_void;
+use crate::{Error, Result, oci::{self, *}, Connection};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
 impl Drop for Statement<'_> {
     fn drop(&mut self) {
-        let _ = self.session;
-        let ocistmt = self.stmt_ptr();
-        if !ocistmt.is_null() {
-            unsafe {
-                OCIStmtRelease(ocistmt, self.err_ptr(), ptr::null(), 0, OCI_DEFAULT);
-            }
-        }
+        let _ = self.svc;
+        oci_stmt_release(&self.stmt, &self.err);
     }
 }
 
 impl<'a> Statement<'a> {
+    pub(crate) fn conn(&self) -> &Connection {
+        self.conn
+    }
+
     /// Creates a new statement
     pub(crate) fn new(sql: &str, conn: &'a Connection) -> Result<Self> {
-        let err = Handle::<OCIError>::new(conn.env_ptr())?;
-        let mut stmt = Ptr::null();
+        let err = Handle::<OCIError>::new(conn)?;
+        let mut stmt = Ptr::<OCIStmt>::null();
         oci::stmt_prepare(
-            conn.svc_ptr(), stmt.as_mut_ptr(), err.get(),
+            conn.as_ref(), stmt.as_mut_ptr(), &err,
             sql.as_ptr(), sql.len() as u32,
-            ptr::null(), 0,
             OCI_NTV_SYNTAX, OCI_DEFAULT
         )?;
-        let params = Params::new(stmt.get(), err.get())?.map(|params| RwLock::new(params));
-        Ok(Self {conn, session: conn.clone_session(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
+        let params = Params::new(&stmt, &err)?.map(|params| RwLock::new(params));
+        Ok(Self {conn, svc: conn.get_svc(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
     }
 
     /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
-    fn bind_args(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<Option<Vec<usize>>> {
+    fn bind_args(&self, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<Option<Vec<usize>>> {
         self.params.as_ref()
-            .map(|params| params.write().bind_args(self.stmt_ptr(), self.err_ptr(), in_args, out_args))
+            .map(|params| params.write().bind_args(&self.stmt, &self.err, in_args, out_args))
             .unwrap_or_else(|| 
                 if in_args.len() == 0 && out_args.len() == 0 {
                     Ok(None)
@@ -51,18 +47,11 @@ impl<'a> Statement<'a> {
     }
 
     /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
-    fn exec(&self, stmt_type: u16, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<i32>{
+    fn exec(&self, stmt_type: u16, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<i32>{
         let out_idxs = self.bind_args(in_args, out_args)?;
 
         let iters: u32 = if stmt_type == OCI_STMT_SELECT { 0 } else { 1 };
-        let res = unsafe {
-            OCIStmtExecute(
-                self.conn.svc_ptr(), self.stmt_ptr(), self.err_ptr(),
-                iters, 0,
-                ptr::null::<c_void>(), ptr::null_mut::<c_void>(),
-                OCI_DEFAULT
-            )
-        };
+        let res = oci::stmt_execute(self.as_ref(), &self.stmt, &self.err, iters, 0, OCI_DEFAULT)?;
         match res {
             OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
                 if let Some(idxs) = out_idxs {
@@ -75,9 +64,6 @@ impl<'a> Statement<'a> {
                 }
                 Ok(res)
             },
-            OCI_ERROR | OCI_INVALID_HANDLE => {
-                Err( Error::oci(self.err_ptr(), res) )
-            }
             _ => Ok(res)
         }
     }
@@ -106,7 +92,7 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn execute(&self, args: &[&dyn SqlInArg]) -> Result<usize> {
+    pub fn execute(&self, args: &[&dyn StmtInArg]) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
@@ -157,7 +143,7 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn execute_into(&self, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<usize> {
+    pub fn execute_into(&self, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
@@ -211,7 +197,7 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn query(&'a self, args: &[&dyn SqlInArg]) -> Result<Rows> {
+    pub fn query(&'a self, args: &[&dyn StmtInArg]) -> Result<Rows> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
             return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
@@ -219,14 +205,14 @@ impl<'a> Statement<'a> {
         let res = self.exec(stmt_type, args, &mut [])?;
 
         if self.cols.get().is_none() {
-            let cols = Columns::new(self, self.max_long)?;
+            let cols = Columns::new(Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), self.max_long)?;
             self.cols.get_or_init(|| RwLock::new(cols));
         };
         match res {
             OCI_SUCCESS | OCI_SUCCESS_WITH_INFO | OCI_NO_DATA => {
                 Ok( Rows::from_query(res, self) )
             }
-            _ => Err( Error::oci(self.err_ptr(), res) )
+            _ => Err( Error::oci(&self.err, res) )
         }
     }
 
@@ -344,15 +330,15 @@ impl<'a> Statement<'a> {
         ```
     */
     pub fn next_result(&'a self) -> Result<Option<Cursor>> {
-        let mut stmt = Ptr::null();
+        let mut stmt = Ptr::<OCIStmt>::null();
         let mut stmt_type = 0u32;
-        let res = unsafe {
-            OCIStmtGetNextResult(self.stmt_ptr(), self.err_ptr(), stmt.as_mut_ptr(), &mut stmt_type, OCI_DEFAULT)
+        let res = unsafe { 
+            OCIStmtGetNextResult(self.stmt.as_ref(), self.err.as_ref(), stmt.as_mut_ptr(), &mut stmt_type, OCI_DEFAULT) 
         };
         match res {
             OCI_NO_DATA => Ok( None ),
             OCI_SUCCESS => Ok( Some ( Cursor::implicit(stmt, self) ) ),
-            _ => Err( Error::oci(self.err_ptr(), res) )
+            _ => Err( Error::oci(&self.err, res) )
         }
     }
 }

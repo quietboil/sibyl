@@ -1,25 +1,10 @@
-use super::{Stmt, Row, fromsql::FromSql};
-use crate::{Result, RowID, oci::{self, *}, types::{date, number, raw, varchar}};
+use crate::{Result, oci::{self, *}, types::{date, number, raw, varchar}, Row};
 use libc::c_void;
 use std::{collections::HashMap, ptr};
 
+use super::data::FromSql;
+
 pub(crate) const DEFAULT_LONG_BUFFER_SIZE: u32 = 32768;
-
-/// Allows column identification by either its numeric position or its name
-pub trait Position {
-    fn index(&self) -> Option<usize>;
-    fn name(&self)  -> Option<&str>;
-}
-
-impl Position for usize {
-    fn index(&self) -> Option<usize> { Some(*self) }
-    fn name(&self)  -> Option<&str>  { None }
-}
-
-impl Position for &str {
-    fn index(&self) -> Option<usize> { None }
-    fn name(&self)  -> Option<&str>  { Some(*self) }
-}
 
 /// Column data type.
 #[derive(Debug, PartialEq)]
@@ -81,21 +66,16 @@ impl std::fmt::Display for ColumnType {
 /// Provides access to the column metadata.
 pub struct ColumnInfo<'a> {
     desc: Ptr<OCIParam>,
-    stmt: &'a dyn Stmt,
+    err:  &'a OCIError,
 }
 
 impl<'a> ColumnInfo<'a> {
-    pub(crate) fn new(desc: *mut OCIParam, stmt: &'a dyn Stmt) -> Self {
-        Self { desc: Ptr::new(desc), stmt }
+    pub(crate) fn new(desc: Ptr<OCIParam>, err: &'a OCIError) -> Self {
+        Self { desc, err }
     }
 
     fn get_attr<T: attr::AttrGet>(&self, attr: u32) -> Result<T> {
-        attr::get(
-            attr,
-            OCI_DTYPE_PARAM,
-            self.desc.get() as *const c_void,
-            self.stmt.err_ptr(),
-        )
+        attr::get(attr, OCI_DTYPE_PARAM, self.desc.as_ref(), self.err)
     }
 
     /// Returns `true` if a column is visible
@@ -216,8 +196,13 @@ impl<'a> ColumnInfo<'a> {
     }
 }
 
+/// Public face of the private column buffer
+pub struct ColumnData {
+    pub(crate) buf: ColumnBuffer
+}
+
 /// Column output buffer
-pub enum ColumnBuffer {
+pub(crate) enum ColumnBuffer {
     Text(Ptr<OCIString>),
     CLOB(Descriptor<OCICLobLocator>),
     Binary(Ptr<OCIRaw>),
@@ -232,12 +217,12 @@ pub enum ColumnBuffer {
     IntervalDS(Descriptor<OCIIntervalDayToSecond>),
     Float(f32),
     Double(f64),
-    Rowid(RowID),
+    Rowid(Descriptor<OCIRowid>),
     Cursor(Handle<OCIStmt>),
 }
 
 impl ColumnBuffer {
-    fn new(data_type: u16, data_size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Self> {
+    fn new(data_type: u16, data_size: u32, env: &impl AsRef<OCIEnv>, err: &impl AsRef<OCIError>) -> Result<Self> {
         let val = match data_type {
             SQLT_DAT => ColumnBuffer::Date(date::new()),
             SQLT_TIMESTAMP => ColumnBuffer::Timestamp(Descriptor::<OCITimestamp>::new(env)?),
@@ -254,18 +239,18 @@ impl ColumnBuffer {
             SQLT_NUM => ColumnBuffer::Number(Box::new(number::new())),
             SQLT_IBFLOAT => ColumnBuffer::Float(0f32),
             SQLT_IBDOUBLE => ColumnBuffer::Double(0f64),
-            SQLT_BIN | SQLT_LBI => ColumnBuffer::Binary(raw::new(data_size, env, err)?),
+            SQLT_BIN | SQLT_LBI => ColumnBuffer::Binary(raw::new(data_size, env.as_ref(), err.as_ref())?),
             SQLT_CLOB => ColumnBuffer::CLOB(Descriptor::<OCICLobLocator>::new(env)?),
             SQLT_BLOB => ColumnBuffer::BLOB(Descriptor::<OCIBLobLocator>::new(env)?),
             SQLT_BFILE => ColumnBuffer::BFile(Descriptor::<OCIBFileLocator>::new(env)?),
-            SQLT_RDD => ColumnBuffer::Rowid(RowID::new(env)?),
+            SQLT_RDD => ColumnBuffer::Rowid(Descriptor::<OCIRowid>::new(env)?),
             SQLT_RSET => ColumnBuffer::Cursor(Handle::<OCIStmt>::new(env)?),
-            _ => ColumnBuffer::Text(varchar::new(data_size, env, err)?),
+            _ => ColumnBuffer::Text(varchar::new(data_size, env.as_ref(), err.as_ref())?),
         };
         Ok(val)
     }
 
-    fn drop(&mut self, env: *mut OCIEnv, err: *mut OCIError) {
+    fn drop(&mut self, env: &OCIEnv, err: &OCIError) {
         match self {
             ColumnBuffer::Text(oci_str_ptr) => {
                 varchar::free(oci_str_ptr, env, err);
@@ -305,7 +290,7 @@ impl ColumnBuffer {
 pub struct Columns {
     names: HashMap<String, usize>,
     info: Vec<Descriptor<OCIParam>>,
-    bufs: Vec<ColumnBuffer>,
+    bufs: Vec<ColumnData>,
     _defs: Vec<Handle<OCIDefine>>,
     /// Length of data fetched
     _lens: Vec<u32>,
@@ -318,26 +303,22 @@ pub struct Columns {
     /// >0 : The length of the item is greater than the length of the output variable; the item has been truncated.
     ///      The positive value returned in the indicator variable is the actual length before truncation.
     inds: Vec<i16>,
-    env_ptr: Ptr<OCIEnv>,
-    err_ptr: Ptr<OCIError>,
+    env:  Ptr<OCIEnv>,
+    err:  Ptr<OCIError>,
 }
 
 impl Drop for Columns {
     fn drop(&mut self) {
-        for buf in self.bufs.iter_mut() {
-            buf.drop(self.env_ptr.get(), self.err_ptr.get());
+        for col in self.bufs.iter_mut() {
+            col.buf.drop(&self.env, &self.err);
         }
     }
 }
 
 impl Columns {
-    pub(crate) fn new(stmt: &dyn Stmt, max_long_fetch_size: u32) -> Result<Self> {
-        let num_columns = attr::get::<u32>(
-            OCI_ATTR_PARAM_COUNT,
-            OCI_HTYPE_STMT,
-            stmt.stmt_ptr() as *const c_void,
-            stmt.err_ptr(),
-        )? as usize;
+    pub(crate) fn new(stmt: Ptr<OCIStmt>, env: Ptr<OCIEnv>, err: Ptr<OCIError>, max_long_fetch_size: u32) -> Result<Self> {
+        let num_columns : u32 = attr::get(OCI_ATTR_PARAM_COUNT, OCI_HTYPE_STMT, stmt.as_ref(), err.as_ref())?;
+        let num_columns = num_columns as usize;
 
         let mut names = HashMap::with_capacity(num_columns);
         let mut info  = Vec::with_capacity(num_columns);
@@ -347,22 +328,23 @@ impl Columns {
         let mut inds  = vec![0i16;num_columns];
 
         for i in 0..num_columns {
-            info.push(param::get::<OCIParam>((i + 1) as u32, OCI_HTYPE_STMT, stmt.stmt_ptr() as *const c_void, stmt.err_ptr())?);
-            let data_type = info[i].get_attr::<u16>(OCI_ATTR_DATA_TYPE, stmt.err_ptr())?;
+            let col_info = param::get((i + 1) as u32, OCI_HTYPE_STMT, stmt.as_ref(), err.as_ref())?;
+            info.push(col_info);
+            let data_type = info[i].get_attr::<u16>(OCI_ATTR_DATA_TYPE, err.as_ref())?;
             let data_size = match data_type {
                 SQLT_LNG | SQLT_LBI => max_long_fetch_size,
-                _ => info[i].get_attr::<u16>(OCI_ATTR_DATA_SIZE, stmt.err_ptr())? as u32,
+                _ => info[i].get_attr::<u16>(OCI_ATTR_DATA_SIZE, err.as_ref())? as u32,
             };
-            bufs.push(ColumnBuffer::new(data_type, data_size, stmt.env_ptr(), stmt.err_ptr())?);
-            defs.push(Handle::from(ptr::null_mut()));
+            bufs.push(ColumnData{ buf: ColumnBuffer::new(data_type, data_size, &env, &err)? });
+            defs.push(Handle::from(Ptr::<OCIDefine>::null()));
 
             // Now, that columns buffers are in the vector and thus their locations in memory are fixed,
             // define the output buffers in OCI
 
-            let (output_type, output_buff_ptr, output_buff_size) = bufs[i].get_output_buffer_def(data_size as usize);
+            let (output_type, output_buff_ptr, output_buff_size) = bufs[i].buf.get_output_buffer_def(data_size as usize);
             unsafe {
                 oci::define_by_pos(
-                    stmt.stmt_ptr(), defs[i].as_ptr(), stmt.err_ptr(),
+                    stmt.as_ref(), defs[i].as_mut_ptr(), err.as_ref(),
                     (i + 1) as u32,
                     output_buff_ptr, output_buff_size as i64, output_type,
                     inds.get_unchecked_mut(i),
@@ -372,11 +354,11 @@ impl Columns {
                 )?;
             }
 
-            let name = info[i].get_attr::<&str>(OCI_ATTR_NAME, stmt.err_ptr())?;
+            let name : &str = info[i].get_attr(OCI_ATTR_NAME, err.as_ref())?;
             let name = name.to_string();
             names.insert(name, i);
         }
-        Ok(Self { names, info, _defs: defs, bufs, _lens: lens, inds, env_ptr: Ptr::new(stmt.env_ptr()), err_ptr: Ptr::new(stmt.err_ptr()) })
+        Ok(Self { names, info, _defs: defs, bufs, _lens: lens, inds, env, err })
     }
 
     pub(crate) fn col_index(&self, name: &str) -> Option<usize> {
@@ -388,8 +370,9 @@ impl Columns {
         self.inds.get(pos).map_or(true, |ind| *ind == OCI_IND_NULL)
     }
 
-    pub(crate) fn column_info<'a>(&self, stmt: &'a dyn Stmt, pos: usize) -> Option<ColumnInfo<'a>> {
-        self.info.get(pos).map(|desc| ColumnInfo::new(desc.get(), stmt)) }
+    pub(crate) fn column_param<'a>(&'a self, pos: usize) -> Option<Ptr<OCIParam>> {
+        self.info.get(pos).map(|desc| desc.get_ptr())
+    }
 
     pub(crate) fn get<'a, T: FromSql<'a>>(&mut self, row: &'a Row<'a>, pos: usize) -> Result<Option<T>> {
         self.bufs.get_mut(pos).map(|col| FromSql::value(row, col)).transpose()

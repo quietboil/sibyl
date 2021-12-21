@@ -2,54 +2,30 @@
 
 use crate::{Result, Error, oci};
 use super::*;
-use libc::c_void;
-use std::ptr;
+use std::ops::{Deref, DerefMut};
 
-pub trait HandleType : OCIStruct {
-    fn get_type() -> u32;
+pub(crate) struct Handle<T: HandleType> (Ptr<T>);
+
+impl<T: HandleType> Deref for Handle<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-macro_rules! impl_handle_type {
-    ($($oci_handle:ty => $id:ident),+) => {
-        $(
-            impl HandleType for $oci_handle {
-                fn get_type() -> u32 { $id }
-            }
-        )+
-    };
+impl<T: HandleType> DerefMut for Handle<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
 }
 
-impl_handle_type!{
-    OCIEnv      => OCI_HTYPE_ENV,
-    OCIError    => OCI_HTYPE_ERROR,
-    OCIServer   => OCI_HTYPE_SERVER,
-    OCISvcCtx   => OCI_HTYPE_SVCCTX,
-    OCISession  => OCI_HTYPE_SESSION,
-    OCISPool    => OCI_HTYPE_SPOOL,
-    OCICPool    => OCI_HTYPE_CPOOL,
-    OCIAuthInfo => OCI_HTYPE_AUTHINFO,
-    OCIStmt     => OCI_HTYPE_STMT,
-    OCIBind     => OCI_HTYPE_BIND,
-    OCIDefine   => OCI_HTYPE_DEFINE,
-    OCIDescribe => OCI_HTYPE_DESCRIBE
+impl<T: HandleType> AsRef<T> for Handle<T> {
+    fn as_ref(&self) -> &T {
+        self.0.deref()
+    }
 }
 
-pub struct Handle<T: HandleType> {
-    ptr: Ptr<T>
-}
-
-/*
-    All but OCIStmt handles are read-only (as far as Rust is concerned).
-    They also do not use interior mutability. Most importantly, because
-    OCI environment is created by sibyl in OCI_THREADED mode, the internal
-    OCI structures are protected by OCI itself from concurrent access by
-    multiple threads.
-
-    `Handle<OCIStmt>` on the other hand needs to be mutable to allow FromSql
-    to swap cursor handles and thus it would have to be put behind a RwLock.
-    As long as we are locking OCIStmt we might as well lock the entire
-    Statement and thus keep Bind, Define and Describe as !Sync.
-*/
 unsafe impl Sync for Handle<OCIEnv> {}
 unsafe impl Sync for Handle<OCIError> {}
 unsafe impl Sync for Handle<OCISPool> {}
@@ -60,73 +36,67 @@ unsafe impl Sync for Handle<OCISession> {}
 
 impl<T: HandleType> Drop for Handle<T> {
     fn drop(&mut self) {
-        let ptr = self.ptr.get();
-        if !ptr.is_null() {
+        if !self.0.is_null() {
             unsafe {
-                OCIHandleFree(ptr as *mut c_void, T::get_type());
+                OCIHandleFree(self.0.get() as _, T::get_type());
             }
         }
     }
 }
 
 impl<T: HandleType> Handle<T> {
-    fn alloc(env: *mut OCIEnv) -> Result<*mut T> {
-        let mut handle = ptr::null_mut::<T>();
-        oci::handle_alloc(env, &mut handle as *mut *mut T as *mut *mut c_void, T::get_type(), 0, ptr::null())?;
-        if handle.is_null() {
+    fn alloc(env: &impl AsRef<OCIEnv>) -> Result<Ptr<T>> {
+        let mut handle_ptr = Ptr::<T>::null();
+        oci::handle_alloc(env.as_ref(), handle_ptr.as_mut_ptr(), T::get_type())?;
+        if handle_ptr.is_null() {
             Err( Error::new(&format!("OCI returned NULL for handle {}", T::get_type())) )
         } else {
-            Ok( handle )
+            Ok( handle_ptr )
         }
     }
 
-    pub(crate) fn new(env: *mut OCIEnv) -> Result<Self> {
-        let ptr = Self::alloc(env)?;
-        Ok( Self { ptr: Ptr::new(ptr) } )
+    pub(crate) fn new(env: &impl AsRef<OCIEnv>) -> Result<Self> {
+        let handle_ptr = Self::alloc(env)?;
+        Ok( Self(handle_ptr) )
     }
 
-    pub(crate) fn from(ptr: *mut T) -> Self {
-        Self { ptr: Ptr::new(ptr) }
+    // Some handles (like OCIEnv) are allocated by their respective OCI*Create* APIs.
+    // But we need to dispose of them (as handles) when it is time to drop them.
+    pub(crate) fn from(handle_ptr: Ptr<T>) -> Self {
+        Self(handle_ptr)
     }
 
     pub(crate) fn take_over(other: &mut Self) -> Self {
-        let mut ptr = Ptr::null();
-        ptr.swap(&mut other.ptr);
-        Self { ptr }
-    }
-
-    pub(crate) fn get(&self) -> *mut T {
-        self.ptr.get()
+        let mut handle_ptr = Ptr::<T>::null();
+        handle_ptr.swap(&mut other.0);
+        Self(handle_ptr)
     }
 
     pub(crate) fn get_ptr(&self) -> Ptr<T> {
-        self.ptr
+        self.0
     }
 
     pub(crate) fn as_ptr(&self) -> *const *mut T {
-        self.ptr.as_ptr()
+        self.0.as_ptr()
     }
 
     pub(crate) fn as_mut_ptr(&mut self) -> *mut *mut T {
-        self.ptr.as_mut_ptr()
+        self.0.as_mut_ptr()
     }
 
     pub(crate) fn swap(&mut self, other: &mut Self) {
-        self.ptr.swap(&mut other.ptr);
+        self.0.swap(&mut other.0);
     }
 
-    pub(crate) fn get_attr<V: attr::AttrGet>(&self, attr_type: u32, err: *mut OCIError) -> Result<V> {
-        let ptr = self.ptr.get();
-        attr::get::<V>(attr_type, T::get_type(), ptr as *const c_void, err)
+    pub(crate) fn get_attr<V: attr::AttrGet>(&self, attr_type: u32, err: &OCIError) -> Result<V> {
+        attr::get::<T, V>(attr_type, T::get_type(), &self.0, err)
     }
 
-    pub(crate) fn get_attr_into<V: attr::AttrGetInto>(&self, attr_type: u32, into: &mut V, err: *mut OCIError) -> Result<()> {
-        let ptr = self.ptr.get();
-        attr::get_into::<V>(attr_type, into, T::get_type(), ptr as *const c_void, err)
+    pub(crate) fn get_attr_into<V: attr::AttrGetInto>(&self, attr_type: u32, into: &mut V, err: &OCIError) -> Result<()> {
+        attr::get_into::<T, V>(attr_type, into, T::get_type(), &self.0, err)
     }
 
-    pub(crate) fn set_attr<V: attr::AttrSet>(&self, attr_type: u32, attr_val: V, err: *mut OCIError) -> Result<()> {
-        let ptr = self.ptr.get();
-        attr::set::<V>(attr_type, attr_val, T::get_type(), ptr as *mut c_void, err)
+    pub(crate) fn set_attr<V: attr::AttrSet>(&self, attr_type: u32, attr_val: V, err: &OCIError) -> Result<()> {
+        attr::set::<T, V>(attr_type, attr_val, T::get_type(), &self.0, err)
     }
 }

@@ -1,16 +1,17 @@
 //! Send-able pointers to OCI handles and descriptors
 
-use std::ptr;
+use std::{ptr, ops::{Deref, DerefMut}};
+
 use libc::c_void;
 
-use super::{OCIStruct, attr::{AttrGet, AttrGetInto}};
+use super::attr::{AttrGetInto, AttrGet, AttrSet};
 
 /// Send-able cell-like wrapper around a pointer to OCI handle or descriptor.
-pub struct Ptr<T: OCIStruct> (*mut T);
+pub struct Ptr<T> (*mut T);
 
-impl<T: OCIStruct> Ptr<T> {
-    pub(crate) fn new(ptr: *mut T) -> Self {
-        Self(ptr)
+impl<T> Ptr<T> {
+    pub(crate) fn new(ptr: *const T) -> Self {
+        Self(ptr as _)
     }
 
     pub(crate) fn null() -> Self {
@@ -29,7 +30,11 @@ impl<T: OCIStruct> Ptr<T> {
         self.0.is_null()
     }
 
-    pub(crate) fn get(&self) -> *mut T {
+    pub(crate) fn get(&self) -> *const T {
+        self.0
+    }
+
+    pub(crate) fn get_mut(&self) -> *mut T {
         self.0
     }
 
@@ -42,26 +47,78 @@ impl<T: OCIStruct> Ptr<T> {
     }
 }
 
-impl<T: OCIStruct> Copy for Ptr<T> {}
+impl<T> From<&T> for Ptr<T> {
+    fn from(oci_ref: &T) -> Self {
+        Self(oci_ref as *const T as _)
+    }
+}
 
-impl<T: OCIStruct> Clone for Ptr<T> {
+impl<T> Copy for Ptr<T> {}
+
+impl<T> Clone for Ptr<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T: OCIStruct> AttrGetInto for Ptr<T> {
-    fn as_val_ptr(&mut self) -> *mut c_void { self.as_mut_ptr() as _ }
-    fn capacity(&self) -> usize             { 0 }
-    fn set_len(&mut self, _new_len: usize)  { }
+impl<T> Deref for Ptr<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe {
+            &*self.0
+        }
+    }
 }
 
-impl<T: OCIStruct> AttrGet for Ptr<T> {
+impl<T> DerefMut for Ptr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe {
+            &mut *self.0
+        }
+    }
+}
+
+impl<T> AsRef<T> for Ptr<T> {
+    fn as_ref(&self) -> &T {
+        unsafe {
+            &*self.0
+        }
+    }
+}
+
+impl<T> AsMut<T> for Ptr<T> {
+    fn as_mut(&mut self) -> &mut T {
+        unsafe {
+            &mut *self.0
+        }
+    }
+}
+
+impl<T> std::fmt::Pointer for Ptr<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Pointer::fmt(&self.0, f)
+    }
+}
+
+impl<T> AttrGet for Ptr<T> {
     type ValueType = *mut T;
     fn new(ptr: Self::ValueType, _len: usize) -> Self {
         Ptr::new(ptr)
     }
 }
 
-unsafe impl<T: OCIStruct> Send for Ptr<T> {}
-unsafe impl<T: OCIStruct> Sync for Ptr<T> {}
+impl<T> AttrGetInto for Ptr<T> {
+    fn as_mut_ptr(&mut self) -> *mut c_void {
+        self.as_mut_ptr() as _
+    }
+}
+
+impl<T> AttrSet for Ptr<T> {
+    fn as_ptr(&self) -> *const c_void {
+        self.get() as _
+    }
+}
+
+unsafe impl<T> Send for Ptr<T> {}
+unsafe impl<T> Sync for Ptr<T> {}

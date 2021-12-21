@@ -10,140 +10,137 @@ mod nonblocking;
 
 use std::sync::atomic::AtomicI32;
 
-use super::{ResultSetColumns, cols::{Columns, Position}, fromsql::FromSql, ResultSetConnection};
-use crate::{Cursor, Error, Result, RowID, Statement, env::Env, oci::{*, attr}, stmt::Stmt, types::Ctx, Connection};
-use libc::c_void;
+use super::{cols::Columns, data::FromSql, Position};
+use crate::{Cursor, Error, Result, RowID, Statement, oci::{*, attr}, types::Ctx};
 use parking_lot::{RwLockReadGuard, RwLockWriteGuard};
 
-pub(crate) enum ResultSetSource<'a> {
+pub(crate) enum DataSource<'a> {
     Statement(&'a Statement<'a>),
     Cursor(&'a Cursor<'a>)
 }
 
-impl ResultSetColumns for ResultSetSource<'_> {
-    fn read_columns(&self) -> RwLockReadGuard<Columns> {
+impl AsRef<OCIEnv> for DataSource<'_> {
+    fn as_ref(&self) -> &OCIEnv {
         match self {
-            &Self::Statement(stmt) => stmt.read_columns(),
-            &Self::Cursor(cursor) => cursor.read_columns(),
-        }
-    }
-
-    fn write_columns(&self) -> RwLockWriteGuard<Columns> {
-        match self {
-            &Self::Statement(stmt) => stmt.write_columns(),
-            &Self::Cursor(cursor) => cursor.write_columns(),
+            &Self::Statement(stmt) => stmt.as_ref(),
+            &Self::Cursor(cursor)  => cursor.as_ref(),
         }
     }
 }
 
-impl ResultSetConnection for ResultSetSource<'_> {
-    fn conn(&self) -> &Connection {
+impl AsRef<OCIError> for DataSource<'_> {
+    fn as_ref(&self) -> &OCIError {
         match self {
-            &Self::Statement(stmt) => stmt.conn(),
-            &Self::Cursor(cursor) => cursor.conn(),
+            &Self::Statement(stmt) => stmt.as_ref(),
+            &Self::Cursor(cursor)  => cursor.as_ref(),
+        }
+    }
+}
+
+impl AsRef<OCISvcCtx> for DataSource<'_> {
+    fn as_ref(&self) -> &OCISvcCtx {
+        match self {
+            &Self::Statement(stmt) => stmt.as_ref(),
+            &Self::Cursor(cursor)  => cursor.as_ref(),
+        }
+    }
+}
+
+impl AsRef<OCIStmt> for DataSource<'_> {
+    fn as_ref(&self) -> &OCIStmt {
+        match self {
+            &Self::Statement(stmt) => stmt.as_ref(),
+            &Self::Cursor(cursor)  => cursor.as_ref(),
+        }
+    }
+}
+
+impl Ctx for DataSource<'_> {
+    fn try_as_session(&self) -> Option<&OCISession> {
+        match self {
+            &Self::Statement(stmt) => stmt.try_as_session(),
+            &Self::Cursor(cursor)  => cursor.try_as_session(),
+        }
+    }
+}
+
+impl DataSource<'_> {
+    pub(crate) fn read_columns(&self) -> RwLockReadGuard<Columns> {
+        match self {
+            &Self::Statement(stmt) => stmt.read_columns(),
+            &Self::Cursor(cursor)  => cursor.read_columns(),
+        }
+    }
+
+    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<Columns> {
+        match self {
+            &Self::Statement(stmt) => stmt.write_columns(),
+            &Self::Cursor(cursor)  => cursor.write_columns(),
         }
     }
 }
 
 /// Result set of a query
 pub struct Rows<'a> {
-    rset: ResultSetSource<'a>,
+    rset: DataSource<'a>,
     last_result: AtomicI32,
-}
-
-impl Env for Rows<'_> {
-    fn env_ptr(&self) -> *mut OCIEnv {
-        match &self.rset {
-            &ResultSetSource::Statement(stmt) => stmt.env_ptr(),
-            &ResultSetSource::Cursor(cursor)  => cursor.env_ptr(),
-        }
-    }
-
-    fn err_ptr(&self) -> *mut OCIError {
-        match &self.rset {
-            &ResultSetSource::Statement(stmt) => stmt.err_ptr(),
-            &ResultSetSource::Cursor(cursor)  => cursor.err_ptr(),
-        }
-    }
-
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        Ptr::new(self.env_ptr())
-    }
-
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        Ptr::new(self.err_ptr())
-    }
-}
-
-impl Ctx for Rows<'_> {
-    fn ctx_ptr(&self) -> *mut c_void {
-        match &self.rset {
-            &ResultSetSource::Statement(stmt) => stmt.ctx_ptr(),
-            &ResultSetSource::Cursor(cursor)  => cursor.ctx_ptr(),
-        }
-    }
-}
-
-impl Stmt for Rows<'_> {
-    fn stmt_ptr(&self) -> *mut OCIStmt {
-        match &self.rset {
-            &ResultSetSource::Statement(stmt) => stmt.stmt_ptr(),
-            &ResultSetSource::Cursor(cursor)  => cursor.stmt_ptr(),
-        }
-    }
-
-    fn get_stmt_ptr(&self) -> Ptr<OCIStmt> {
-        Ptr::new(self.stmt_ptr())
-    }
 }
 
 impl<'a> Rows<'a> {
     pub(crate) fn from_query(query_result: i32, stmt: &'a Statement<'a>) -> Self {
-        Self { rset: ResultSetSource::Statement(stmt), last_result: AtomicI32::new(query_result) }
+        Self { rset: DataSource::Statement(stmt), last_result: AtomicI32::new(query_result) }
     }
 
     pub(crate) fn from_cursor(query_result: i32, cursor: &'a Cursor<'a>) -> Self {
-        Self { rset: ResultSetSource::Cursor(cursor), last_result: AtomicI32::new(query_result) }
+        Self { rset: DataSource::Cursor(cursor), last_result: AtomicI32::new(query_result) }
     }
 }
 
 /// A row in the returned result set
 pub struct Row<'a> {
-    rows: &'a Rows<'a>,
+    rset: &'a DataSource<'a>,
+}
+
+impl AsRef<OCIEnv> for Row<'_> {
+    fn as_ref(&self) -> &OCIEnv {
+        self.rset.as_ref()
+    }
+}
+
+impl AsRef<OCIError> for Row<'_> {
+    fn as_ref(&self) -> &OCIError {
+        self.rset.as_ref()
+    }
+}
+
+impl AsRef<OCISvcCtx> for Row<'_> {
+    fn as_ref(&self) -> &OCISvcCtx {
+        self.rset.as_ref()
+    }
+}
+
+impl AsRef<OCIStmt> for Row<'_> {
+    fn as_ref(&self) -> &OCIStmt {
+        self.rset.as_ref()
+    }
+}
+
+impl Ctx for Row<'_> {
+    fn try_as_session(&self) -> Option<&OCISession> {
+        self.rset.try_as_session()
+    }
 }
 
 impl<'a> Row<'a> {
     fn new(rows: &'a Rows) -> Self {
-        Self { rows }
+        Self { rset: &rows.rset }
     }
 
-    fn get_col_index(&self, pos: impl Position) -> Option<usize> {
-        let cols = self.rows.rset.read_columns();
+    // `get` helper to ensure that the read lock is released when we have the index
+    fn col_index_if_not_null(&self, pos: impl Position) -> Option<(usize, bool)> {
+        let cols = self.rset.read_columns();
         pos.name().and_then(|name| cols.col_index(name)).or(pos.index())
-    }
-
-    fn col_is_null(&self, ix: usize) -> bool {
-        self.rows.rset.read_columns().is_null(ix)
-    }
-
-    pub(crate) fn err_ptr(&self) -> *mut OCIError {
-        self.rows.err_ptr()
-    }
-
-    pub(crate) fn env_ptr(&self) -> *mut OCIEnv {
-        self.rows.env_ptr()
-    }
-
-    pub(crate) fn get_ctx(&self) -> &dyn Ctx {
-        self.rows
-    }
-
-    pub(crate) fn get_env(&self) -> &dyn Env {
-        self.rows
-    }
-
-    pub(crate) fn conn(&self) -> &Connection {
-        self.rows.rset.conn()
+            .map(|ix| (ix, cols.is_null(ix)))
     }
 
     /**
@@ -177,7 +174,7 @@ impl<'a> Row<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -202,7 +199,7 @@ impl<'a> Row<'a> {
         "columns" to be NULL.
     */
     pub fn is_null(&self, pos: impl Position) -> bool {
-        let cols = self.rows.rset.read_columns();
+        let cols = self.rset.read_columns();
         pos.name().and_then(|name| cols.col_index(name)).or(pos.index())
             .map(|ix| cols.is_null(ix))
             .unwrap_or(true)
@@ -247,7 +244,7 @@ impl<'a> Row<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -271,13 +268,13 @@ impl<'a> Row<'a> {
         ```
     */
     pub fn get<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<Option<T>> {
-        match self.get_col_index(pos) {
+        match self.col_index_if_not_null(pos) {
             None => Err(Error::new("no such column")),
-            Some(ix) => {
-                if self.col_is_null(ix) {
+            Some((ix, is_null)) => {
+                if is_null {
                     Ok(None)
                 } else {
-                    self.rows.rset.write_columns().get(self, ix)
+                    self.rset.write_columns().get(self, ix)
                 }
             }
         }
@@ -333,7 +330,7 @@ impl<'a> Row<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -366,8 +363,9 @@ impl<'a> Row<'a> {
         ```
     */
     pub fn rowid(&self) -> Result<RowID> {
-        let mut rowid = RowID::new(self.get_env().env_ptr())?;
-        attr::get_into(OCI_ATTR_ROWID, &mut rowid, OCI_HTYPE_STMT, self.rows.stmt_ptr() as *const c_void, self.err_ptr())?;
+        let mut rowid = RowID::new(self)?;
+        let stmt : &OCIStmt = self.as_ref();
+        attr::get_into(OCI_ATTR_ROWID, &mut rowid, OCI_HTYPE_STMT, stmt, self.as_ref())?;
         Ok( rowid )
     }
 }

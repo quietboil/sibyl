@@ -2,7 +2,18 @@
 
 use std::sync::atomic::Ordering;
 
-use crate::{Result, Error, Rows, Row, env::Env, stmt::Stmt, oci::*};
+use crate::{Result, Error, Rows, Row, oci::*, Connection};
+
+use super::DataSource;
+
+impl DataSource<'_> {
+    pub(crate) fn conn(&self) -> &Connection {
+        match self {
+            &Self::Statement(stmt) => stmt.conn(),
+            &Self::Cursor(cursor)  => cursor.conn(),
+        }
+    }
+}
 
 impl<'a> Rows<'a> {
     /**
@@ -47,14 +58,20 @@ impl<'a> Rows<'a> {
             Ok( None )
         } else {
             let res = unsafe {
-                OCIStmtFetch2(self.stmt_ptr(), self.err_ptr(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
+                OCIStmtFetch2(self.rset.as_ref(), self.rset.as_ref(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
             };
             self.last_result.store(res, Ordering::Relaxed);
             match res {
                 OCI_NO_DATA => Ok( None ),
                 OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::new(self)) ),
-                _ => Err( Error::oci(self.err_ptr(), res) )
+                _ => Err( Error::oci(self.rset.as_ref(), res) )
             }
         }
+    }
+}
+
+impl<'a> Row<'a> {
+    pub(crate) fn conn(&self) -> &Connection {
+        self.rset.conn()
     }
 }

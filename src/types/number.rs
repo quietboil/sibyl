@@ -4,63 +4,11 @@
 mod convert;
 mod tosql;
 
-use super::Ctx;
-use crate::{
-    oci::{self, *},
-    Result,
-};
-use convert::{FromNumber, IntoNumber};
-use libc::c_void;
-use std::{cmp::Ordering, mem, ptr};
+pub(crate) use self::convert::{Integer, Real, from_number, to_string, to_real};
 
-/// Marker trait for integer numbers
-pub trait Integer: IntoNumber + FromNumber {}
-
-macro_rules! impl_int {
-    ($($t:ty),+) => {
-        $(
-            impl Integer for $t {}
-        )+
-    };
-}
-
-impl_int!(i8, i16, i32, i64, i128, isize);
-impl_int!(u8, u16, u32, u64, u128, usize);
-
-/// Marker trait for floating ppoint numbers
-pub trait Real: IntoNumber + FromNumber {}
-impl Real for f32 {}
-impl Real for f64 {}
-
-pub(crate) fn to_string(fmt: &str, num: *const OCINumber, err: *mut OCIError) -> Result<String> {
-    let mut txt: [u8; 64] = unsafe { mem::MaybeUninit::uninit().assume_init() };
-    let mut txt_len = txt.len() as u32;
-    oci::number_to_text(
-        err,
-        num,
-        fmt.as_ptr(),
-        fmt.len() as u32,
-        ptr::null(),
-        0,
-        &mut txt_len,
-        txt.as_mut_ptr(),
-    )?;
-    let txt = &txt[0..txt_len as usize];
-    Ok(String::from_utf8_lossy(txt).to_string())
-}
-
-pub(crate) fn from_number<'a>(from_num: &OCINumber, ctx: &'a dyn Ctx) -> Result<Number<'a>> {
-    let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-    oci::number_assign(
-        ctx.err_ptr(),
-        from_num as *const OCINumber,
-        num.as_mut_ptr(),
-    )?;
-    Ok(Number {
-        ctx,
-        num: unsafe { num.assume_init() },
-    })
-}
+use super::{Ctx, interval::Interval};
+use crate::{Result, oci::{self, *}};
+use std::{cmp::Ordering, mem, ops::{Deref, DerefMut}};
 
 /**
     Creates an OCI number initialized as zero. This simplified version of `u128_into_number`
@@ -79,40 +27,13 @@ pub(crate) fn new() -> OCINumber {
     }
 }
 
-pub(crate) fn new_number<'a>(num: OCINumber, ctx: &'a dyn Ctx) -> Number<'a> {
-    Number { ctx, num }
-}
+// pub(crate) fn new_number<'a>(num: OCINumber, ctx: &'a dyn Ctx) -> Number<'a> {
+//     Number { ctx, num }
+// }
 
-pub(crate) fn real_into_number<T: Real>(val: T, err: *mut OCIError) -> Result<OCINumber> {
-    let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-    oci::number_from_real(
-        err,
-        &val as *const T as *const c_void,
-        mem::size_of::<T>() as u32,
-        num.as_mut_ptr(),
-    )?;
-    Ok(unsafe { num.assume_init() })
-}
-
-pub(crate) fn to_real<T: Real>(num: &OCINumber, err: *mut OCIError) -> Result<T> {
-    let mut res = mem::MaybeUninit::<T>::uninit();
-    oci::number_to_real(
-        err,
-        num as *const OCINumber,
-        mem::size_of::<T>() as u32,
-        res.as_mut_ptr() as *mut c_void,
-    )?;
-    Ok(unsafe { res.assume_init() })
-}
-
-fn compare(num1: &OCINumber, num2: &OCINumber, err: *mut OCIError) -> Result<Ordering> {
+fn compare(num1: &OCINumber, num2: &OCINumber, err: &OCIError) -> Result<Ordering> {
     let mut cmp = 0i32;
-    oci::number_cmp(
-        err,
-        num1 as *const OCINumber,
-        num2 as *const OCINumber,
-        &mut cmp,
-    )?;
+    oci::number_cmp(err, num1, num2, &mut cmp)?;
     let ordering = if cmp < 0 {
         Ordering::Less
     } else if cmp == 0 {
@@ -124,61 +45,91 @@ fn compare(num1: &OCINumber, num2: &OCINumber, err: *mut OCIError) -> Result<Ord
 }
 
 macro_rules! impl_query {
-    ($this:ident => $f:path) => {
+    ($this:ident => $f:path) => {{
         let mut res: i32 = 0;
-        $f($this.ctx.err_ptr(), $this.as_ptr(), &mut res)?;
+        $f($this.ctx.as_ref(), &$this.num, &mut res)?;
         Ok(res != 0)
-    };
+    }};
 }
 
 macro_rules! impl_fn {
-    ($this:ident => $f:path) => {
+    ($this:ident => $f:path) => {{
         let ctx = $this.ctx;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        $f(ctx.err_ptr(), $this.as_ptr(), num.as_mut_ptr())?;
-        Ok(Number {
-            ctx,
-            num: unsafe { num.assume_init() },
-        })
-    };
+        $f(ctx.as_ref(), &$this.num, num.as_mut_ptr())?;
+        let num = unsafe { num.assume_init() };
+        Ok(Number { num, ctx })
+    }};
 }
 
 macro_rules! impl_op {
-    ($this:ident, $arg:ident => $f:path) => {
+    ($this:ident, $other:ident => $f:path) => {{
         let ctx = $this.ctx;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        $f(
-            ctx.err_ptr(),
-            $this.as_ptr(),
-            $arg.as_ptr(),
-            num.as_mut_ptr(),
-        )?;
-        Ok(Number {
-            ctx,
-            num: unsafe { num.assume_init() },
-        })
-    };
+        $f(ctx.as_ref(), &$this.num, &$other.num, num.as_mut_ptr())?;
+        let num = unsafe { num.assume_init() };
+        Ok(Number { num, ctx })
+    }};
 }
 
 macro_rules! impl_opi {
-    ($this:ident, $arg:ident => $f:path) => {
+    ($this:ident, $int:ident => $f:path) => {{
         let ctx = $this.ctx;
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        $f(ctx.err_ptr(), $this.as_ptr(), $arg, num.as_mut_ptr())?;
-        Ok(Number {
-            ctx,
-            num: unsafe { num.assume_init() },
-        })
-    };
+        $f(ctx.as_ref(), &$this.num, $int, num.as_mut_ptr())?;
+        let num = unsafe { num.assume_init() };
+        Ok(Number { num, ctx })
+    }};
 }
 
 /// Represents OTS types NUMBER, NUMERIC, INT, SHORTINT, REAL, DOUBLE PRECISION, FLOAT and DECIMAL.
 pub struct Number<'a> {
-    pub(crate) ctx: &'a dyn Ctx,
+    ctx: &'a dyn Ctx,
     num: OCINumber,
 }
 
+impl AsRef<OCINumber> for Number<'_> {
+    fn as_ref(&self) -> &OCINumber {
+        &self.num
+    }
+}
+
+impl AsMut<OCINumber> for Number<'_> {
+    fn as_mut(&mut self) -> &mut OCINumber {
+        &mut self.num
+    }
+}
+
+impl Deref for Number<'_> {
+    type Target = OCINumber;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl DerefMut for Number<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
+}
+
 impl<'a> Number<'a> {
+    pub(crate) fn to_interval<T: DescriptorType<OCIType=OCIInterval>>(&self) -> Result<Interval<'a, T>> {
+        let mut interval = Descriptor::<T>::new(&self.ctx)?;
+        oci::interval_from_number(self.ctx.as_context(), self.ctx.as_ref(), &mut interval, &self.num)?;
+        Ok(Interval::from(interval, self.ctx))
+    }
+
+    pub(crate) fn from(src: &OCINumber, ctx: &'a dyn Ctx) -> Result<Self> {
+        let num = from_number(src, ctx.as_ref())?;
+        Ok(Self {num, ctx})
+    }
+
+    pub(crate) fn make(num: OCINumber, ctx: &'a dyn Ctx) -> Self {
+        Self {num, ctx}
+    }
+
     /// Returns a new uninitialized number.
     pub fn new(ctx: &'a dyn Ctx) -> Self {
         Self { ctx, num: new() }
@@ -200,7 +151,7 @@ impl<'a> Number<'a> {
     */
     pub fn zero(ctx: &'a dyn Ctx) -> Result<Self> {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        oci::number_set_zero(ctx.err_ptr(), num.as_mut_ptr())?;
+        oci::number_set_zero(ctx.as_ref(), num.as_mut_ptr())?;
         let num = unsafe { num.assume_init() };
         Ok(Self { ctx, num })
     }
@@ -221,7 +172,7 @@ impl<'a> Number<'a> {
     */
     pub fn pi(ctx: &'a dyn Ctx) -> Result<Self> {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        oci::number_set_pi(ctx.err_ptr(), num.as_mut_ptr())?;
+        oci::number_set_pi(ctx.as_ref(), num.as_mut_ptr())?;
         let num = unsafe { num.assume_init() };
         Ok(Self { ctx, num })
     }
@@ -243,13 +194,11 @@ impl<'a> Number<'a> {
     pub fn from_string(txt: &str, fmt: &str, ctx: &'a dyn Ctx) -> Result<Self> {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
         oci::number_from_text(
-            ctx.err_ptr(),
+            ctx.as_ref(),
             txt.as_ptr(),
             txt.len() as u32,
             fmt.as_ptr(),
             fmt.len() as u32,
-            ptr::null(),
-            0,
             num.as_mut_ptr(),
         )?;
         Ok(Self {
@@ -274,7 +223,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn from_int<T: Integer>(val: T, ctx: &'a dyn Ctx) -> Result<Self> {
-        let num = val.into_number(ctx.err_ptr())?;
+        let num = val.into_number(ctx.as_ref())?;
         Ok(Self { ctx, num })
     }
 
@@ -293,7 +242,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn from_real<T: Real>(val: T, ctx: &'a dyn Ctx) -> Result<Self> {
-        let num = val.into_number(ctx.err_ptr())?;
+        let num = val.into_number(ctx.as_ref())?;
         Ok(Self { ctx, num })
     }
 
@@ -313,27 +262,8 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn from_number(other: &'a Number) -> Result<Self> {
-        from_number(&other.num, other.ctx)
-    }
-
-    /**
-        Returns a raw pointer to the OCINumber struct.
-
-        The caller must ensure that the Number outlives the pointer this function returns,
-        or else it will end up pointing to garbage.
-    */
-    pub(crate) fn as_ptr(&self) -> *const OCINumber {
-        &self.num
-    }
-
-    /**
-        Returns an unsafe mutable pointer to the OCINumber struct.
-
-        The caller must ensure that the Number outlives the pointer this function returns,
-        or else it will end up pointing to garbage.
-    */
-    pub(crate) fn as_mut_ptr(&mut self) -> *mut OCINumber {
-        &mut self.num
+        let num = from_number(&other.num, other.ctx.as_ref())?;
+        Ok(Self {num, ..*other})
     }
 
     /**
@@ -353,8 +283,8 @@ impl<'a> Number<'a> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn assign(&mut self, num: &Number) -> Result<()> {
-        oci::number_assign(self.ctx.err_ptr(), num.as_ptr(), self.as_mut_ptr())
+    pub fn assign(&mut self, src: &Number) -> Result<()> {
+        oci::number_assign(self.ctx.as_ref(), &src.num, &mut self.num)
     }
 
     /**
@@ -373,7 +303,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn to_string(&self, fmt: &str) -> Result<String> {
-        to_string(fmt, self.as_ptr(), self.ctx.err_ptr())
+        to_string(fmt, &self.num, self.ctx.as_ref())
     }
 
     /**
@@ -392,7 +322,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn to_int<T: Integer>(&self) -> Result<T> {
-        <T>::from_number(&self.num, self.ctx.err_ptr())
+        <T>::from_number(&self.num, self.ctx.as_ref())
     }
 
     /**
@@ -411,7 +341,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn to_real<T: Real>(&self) -> Result<T> {
-        to_real(&self.num, self.ctx.err_ptr())
+        to_real(&self.num, self.ctx.as_ref())
     }
 
     /**
@@ -433,7 +363,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn is_zero(&self) -> Result<bool> {
-        impl_query! { self => oci::number_is_zero }
+        impl_query!(self => oci::number_is_zero)
     }
 
     /**
@@ -455,7 +385,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn is_int(&self) -> Result<bool> {
-        impl_query! { self => oci::number_is_int }
+        impl_query!(self => oci::number_is_int)
     }
 
     /**
@@ -478,7 +408,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn inc(&mut self) -> Result<()> {
-        oci::number_inc(self.ctx.err_ptr(), self.as_mut_ptr())
+        oci::number_inc(self.ctx.as_ref(), &mut self.num)
     }
 
     /**
@@ -501,7 +431,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn dec(&mut self) -> Result<()> {
-        oci::number_dec(self.ctx.err_ptr(), self.as_mut_ptr())
+        oci::number_dec(self.ctx.as_ref(), &mut self.num)
     }
 
     /**
@@ -529,7 +459,7 @@ impl<'a> Number<'a> {
     */
     pub fn sign(&self) -> Result<Ordering> {
         let mut res = 0i32;
-        oci::number_sign(self.ctx.err_ptr(), self.as_ptr(), &mut res)?;
+        oci::number_sign(self.ctx.as_ref(), &self.num, &mut res)?;
         let ordering = if res == 0 {
             Ordering::Equal
         } else if res < 0 {
@@ -558,7 +488,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn compare(&self, other: &Self) -> Result<Ordering> {
-        compare(&self.num, &other.num, self.ctx.err_ptr())
+        compare(&self.num, &other.num, self.ctx.as_ref())
     }
 
     /**
@@ -578,7 +508,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn add(&self, num: &Number) -> Result<Self> {
-        impl_op! { self, num => oci::number_add }
+        impl_op!(self, num => oci::number_add)
     }
 
     /**
@@ -598,7 +528,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn sub(&self, num: &Number) -> Result<Self> {
-        impl_op! { self, num => oci::number_sub }
+        impl_op!(self, num => oci::number_sub)
     }
 
     /**
@@ -619,7 +549,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn mul(&self, num: &Number) -> Result<Self> {
-        impl_op! { self, num => oci::number_mul }
+        impl_op!(self, num => oci::number_mul)
     }
 
     /**
@@ -640,7 +570,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn div(&self, num: &Number) -> Result<Self> {
-        impl_op! { self, num => oci::number_div }
+        impl_op!(self, num => oci::number_div)
     }
 
     /**
@@ -661,7 +591,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn rem(&self, num: &Number) -> Result<Self> {
-        impl_op! { self, num => oci::number_mod }
+        impl_op!(self, num => oci::number_mod)
     }
 
     /**
@@ -682,7 +612,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn pow(&self, num: &Number) -> Result<Self> {
-        impl_op! { self, num => oci::number_power }
+        impl_op!(self, num => oci::number_power)
     }
 
     /**
@@ -702,7 +632,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn powi(&self, num: i32) -> Result<Self> {
-        impl_opi! { self, num => oci::number_int_power }
+        impl_opi!(self, num => oci::number_int_power)
     }
 
     /**
@@ -723,7 +653,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn pow10(&self, num: i32) -> Result<Self> {
-        impl_opi! { self, num => oci::number_shift }
+        impl_opi!(self, num => oci::number_shift)
     }
 
     /**
@@ -749,7 +679,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn trunc(&self, num: i32) -> Result<Self> {
-        impl_opi! { self, num => oci::number_trunc }
+        impl_opi!(self, num => oci::number_trunc)
     }
 
     /**
@@ -770,7 +700,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn round(&self, num: i32) -> Result<Self> {
-        impl_opi! { self, num => oci::number_round }
+        impl_opi!(self, num => oci::number_round)
     }
 
     /**
@@ -792,7 +722,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn prec(&self, num: i32) -> Result<Self> {
-        impl_opi! { self, num => oci::number_prec }
+        impl_opi!(self, num => oci::number_prec)
     }
 
     /**
@@ -811,7 +741,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn neg(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_neg }
+        impl_fn!(self => oci::number_neg)
     }
 
     /**
@@ -830,7 +760,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn abs(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_abs }
+        impl_fn!(self => oci::number_abs)
     }
 
     /**
@@ -850,7 +780,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn ceil(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_ceil }
+        impl_fn!(self => oci::number_ceil)
     }
 
     /**
@@ -870,7 +800,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn floor(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_floor }
+        impl_fn!(self => oci::number_floor)
     }
 
     /**
@@ -890,7 +820,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn sqrt(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_sqrt }
+        impl_fn!(self => oci::number_sqrt)
     }
 
     /**
@@ -910,7 +840,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn sin(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_sin }
+        impl_fn!(self => oci::number_sin)
     }
 
     /**
@@ -930,7 +860,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn asin(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_arc_sin }
+        impl_fn!(self => oci::number_arc_sin)
     }
 
     /**
@@ -950,7 +880,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn sinh(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_hyp_sin }
+        impl_fn!(self => oci::number_hyp_sin)
     }
 
     /**
@@ -970,7 +900,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn cos(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_cos }
+        impl_fn!(self => oci::number_cos)
     }
 
     /**
@@ -990,7 +920,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn acos(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_arc_cos }
+        impl_fn!(self => oci::number_arc_cos)
     }
 
     /**
@@ -1010,7 +940,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn cosh(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_hyp_cos }
+        impl_fn!(self => oci::number_hyp_cos)
     }
 
     /**
@@ -1030,7 +960,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn tan(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_tan }
+        impl_fn!(self => oci::number_tan)
     }
 
     /**
@@ -1050,7 +980,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn atan(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_arc_tan }
+        impl_fn!(self => oci::number_arc_tan)
     }
 
     /**
@@ -1071,7 +1001,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn atan2(&self, num: &Number) -> Result<Self> {
-        impl_op! { self, num => oci::number_arc_tan2 }
+        impl_op!(self, num => oci::number_arc_tan2)
     }
 
     /**
@@ -1091,7 +1021,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn tanh(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_hyp_tan }
+        impl_fn!(self => oci::number_hyp_tan)
     }
 
     /**
@@ -1111,7 +1041,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn exp(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_exp }
+        impl_fn!(self => oci::number_exp)
     }
 
     /**
@@ -1131,7 +1061,7 @@ impl<'a> Number<'a> {
         ```
     */
     pub fn ln(&self) -> Result<Self> {
-        impl_fn! { self => oci::number_ln }
+        impl_fn!(self => oci::number_ln)
     }
 
     /**
@@ -1153,11 +1083,9 @@ impl<'a> Number<'a> {
     pub fn log(&self, num: &Number) -> Result<Self> {
         let ctx = self.ctx;
         let mut res = mem::MaybeUninit::<OCINumber>::uninit();
-        oci::number_log(ctx.err_ptr(), num.as_ptr(), self.as_ptr(), res.as_mut_ptr())?;
-        Ok(Number {
-            ctx,
-            num: unsafe { res.assume_init() },
-        })
+        oci::number_log(ctx.as_ref(), &num.num, &self.num, res.as_mut_ptr())?;
+        let num = unsafe { res.assume_init() }; 
+        Ok(Number {num, ctx})
     }
 
     pub fn size(&self) -> usize {

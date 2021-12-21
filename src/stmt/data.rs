@@ -1,14 +1,15 @@
-use super::{cursor::Cursor, cols::ColumnBuffer, rows::Row};
+use super::{cursor::Cursor, cols::{ColumnBuffer, ColumnData}, rows::Row};
 use crate::{
     Error,
     IntervalDS, IntervalYM, Result, RowID, Timestamp, TimestampLTZ, TimestampTZ,
     oci::*,
     types::{
         date, interval, number, raw, timestamp, varchar,
-        Date, Varchar
+        Date, Varchar, rowid
     },
-    lob::{ self, LOB },
 };
+#[cfg(feature="blocking")]
+use crate::lob::{ self, LOB };
 
 /// A trait for types which instances can be created from the returned Oracle values.
 pub trait FromSql<'a> : Sized {
@@ -18,79 +19,86 @@ pub trait FromSql<'a> : Sized {
         or conversion from the type of the column buffer into a requested type is
         not defined.
     */
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self>;
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self>;
 }
 
 impl<'a> FromSql<'a> for String {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Text( oci_str_ptr )   => Ok( varchar::to_string(oci_str_ptr.get(), row.env_ptr()) ),
-            ColumnBuffer::Number( oci_num_box ) => number::to_string("TM", oci_num_box.as_ref() as *const OCINumber, row.err_ptr()),
-            ColumnBuffer::Date( oci_date )      => date::to_string("YYYY-MM-DD HH24::MI:SS", oci_date as *const OCIDate, row.err_ptr()),
-            ColumnBuffer::Timestamp( ts )       => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF", 3, ts.get(), row.get_ctx()),
-            ColumnBuffer::TimestampTZ( ts )     => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF TZH:TZM", 3, ts.get(), row.get_ctx()),
-            ColumnBuffer::TimestampLTZ( ts )    => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF TZH:TZM", 3, ts.get(), row.get_ctx()),
-            ColumnBuffer::IntervalYM( int )     => interval::to_string(4, 3, int.get(), row.get_ctx()),
-            ColumnBuffer::IntervalDS( int )     => interval::to_string(9, 5, int.get(), row.get_ctx()),
-            ColumnBuffer::Float( val )          => Ok( val.to_string() ),
-            ColumnBuffer::Double( val )         => Ok( val.to_string() ),
-            ColumnBuffer::Rowid( rowid )        => rowid.to_string(row.get_env()),
-            _                                   => Err( Error::new("cannot convert") )
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Text( oci_str_ptr )       => Ok( varchar::to_string(&oci_str_ptr, row.as_ref()) ),
+            ColumnBuffer::Number( ref oci_num_box ) => number::to_string("TM", oci_num_box.as_ref(), row.as_ref()),
+            ColumnBuffer::Date( ref oci_date )      => date::to_string("YYYY-MM-DD HH24::MI:SS", oci_date, row.as_ref()),
+            ColumnBuffer::Timestamp( ref ts )       => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF", 3, ts.as_ref(), row),
+            ColumnBuffer::TimestampTZ( ref ts )     => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF TZH:TZM", 3, ts.as_ref(), row),
+            ColumnBuffer::TimestampLTZ( ref ts )    => timestamp::to_string("YYYY-MM-DD HH24:MI:SSXFF TZH:TZM", 3, ts.as_ref(), row),
+            ColumnBuffer::IntervalYM( ref int )     => interval::to_string(int.as_ref(), 4, 3, row),
+            ColumnBuffer::IntervalDS( ref int )     => interval::to_string(int.as_ref(), 9, 5, row),
+            ColumnBuffer::Float( val )              => Ok( val.to_string() ),
+            ColumnBuffer::Double( val )             => Ok( val.to_string() ),
+            ColumnBuffer::Rowid( ref rowid )        => rowid::to_string(rowid, row.as_ref()),
+            _                                       => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for Varchar<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        if let ColumnBuffer::Text( oci_str_ptr ) = col {
-            Varchar::from_ocistring(oci_str_ptr.get(), row.get_env())
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        if let ColumnBuffer::Text( oci_str_ptr ) = col.buf {
+            Varchar::from_ocistring(&oci_str_ptr, row)
         } else {
             let text : String = FromSql::value(row, col)?;
-            Varchar::from(&text, row.get_env())
+            Varchar::from(&text, row)
         }
     }
 }
 
 impl<'a> FromSql<'a> for &'a str {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Text( oci_str_ptr ) => Ok( varchar::as_str(oci_str_ptr.get(), row.get_ctx().env_ptr()) ),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Text( oci_str_ptr ) => Ok( varchar::as_str(&oci_str_ptr, row.as_ref()) ),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for &'a [u8] {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Binary( oci_raw_ptr ) => Ok( raw::as_bytes(oci_raw_ptr.get(), row.get_ctx().env_ptr()) ),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Binary( oci_raw_ptr ) => Ok( {
+                // inlined Raw::as_bytes to deal with the buffer lifetime issue
+                let ptr = raw::as_ptr(&oci_raw_ptr, row.as_ref());
+                let len = raw::len(&oci_raw_ptr, row.as_ref());
+                unsafe {
+                    std::slice::from_raw_parts(ptr, len)
+                }
+            }),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a, T: number::Integer> FromSql<'a> for T {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Number( oci_num_box ) => <T>::from_number(oci_num_box, row.err_ptr()),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Number( ref oci_num_box ) => <T>::from_number(oci_num_box, row.as_ref()),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for f32 {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Number( oci_num_box ) => number::to_real(oci_num_box, row.err_ptr()),
-            ColumnBuffer::Float( val )          => Ok( *val ),
-            ColumnBuffer::Double( val )         => Ok( *val as f32 ),
-            ColumnBuffer::IntervalYM( int )     => {
-                let num = interval::to_number(int.get(), row.get_ctx())?;
-                number::to_real(&num, row.err_ptr())
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Number( ref oci_num_box ) => number::to_real(oci_num_box, row.as_ref()),
+            ColumnBuffer::Float( val )              => Ok( val ),
+            ColumnBuffer::Double( val )             => Ok( val as f32 ),
+            ColumnBuffer::IntervalYM( ref int )     => {
+                let num = interval::to_number(int, row)?;
+                number::to_real(&num, row.as_ref())
             }
-            ColumnBuffer::IntervalDS( int )     => {
-                let num = interval::to_number(int.get(), row.get_ctx())?;
-                number::to_real(&num, row.err_ptr())
+            ColumnBuffer::IntervalDS( ref int )     => {
+                let num = interval::to_number(int, row)?;
+                number::to_real(&num, row.as_ref())
             }
             _ => Err( Error::new("cannot convert") )
         }
@@ -98,18 +106,18 @@ impl<'a> FromSql<'a> for f32 {
 }
 
 impl<'a> FromSql<'a> for f64 {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Number( oci_num_box ) => number::to_real(oci_num_box, row.err_ptr()),
-            ColumnBuffer::Float( val )          => Ok( *val as f64 ),
-            ColumnBuffer::Double( val )         => Ok( *val ),
-            ColumnBuffer::IntervalYM( int )     => {
-                let num = interval::to_number(int.get(), row.get_ctx())?;
-                number::to_real(&num, row.err_ptr())
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Number( ref oci_num_box ) => number::to_real(oci_num_box, row.as_ref()),
+            ColumnBuffer::Float( val )              => Ok( val as f64 ),
+            ColumnBuffer::Double( val )             => Ok( val ),
+            ColumnBuffer::IntervalYM( ref int )     => {
+                let num = interval::to_number(int, row)?;
+                number::to_real(&num, row.as_ref())
             }
-            ColumnBuffer::IntervalDS( int )     => {
-                let num = interval::to_number(int.get(), row.get_ctx())?;
-                number::to_real(&num, row.err_ptr())
+            ColumnBuffer::IntervalDS( ref int )     => {
+                let num = interval::to_number(int, row)?;
+                number::to_real(&num, row.as_ref())
             }
             _ => Err( Error::new("cannot convert") )
         }
@@ -117,18 +125,18 @@ impl<'a> FromSql<'a> for f64 {
 }
 
 impl<'a> FromSql<'a> for number::Number<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Number( oci_num_box ) => number::from_number(oci_num_box, row.get_ctx()),
-            ColumnBuffer::Float( val )          => number::Number::from_real(*val, row.get_ctx()),
-            ColumnBuffer::Double( val )         => number::Number::from_real(*val, row.get_ctx()),
-            ColumnBuffer::IntervalYM( int )     => {
-                let num = interval::to_number(int.get(), row.get_ctx())?;
-                Ok( number::new_number(num, row.get_ctx()) )
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Number( ref oci_num_box ) => number::Number::from(oci_num_box, row),
+            ColumnBuffer::Float( val )              => number::Number::from_real(val, row),
+            ColumnBuffer::Double( val )             => number::Number::from_real(val, row),
+            ColumnBuffer::IntervalYM( ref int )     => {
+                let num = interval::to_number(int, row)?;
+                Ok( number::Number::make(num, row) )
             }
-            ColumnBuffer::IntervalDS( int )     => {
-                let num = interval::to_number(int.get(), row.get_ctx())?;
-                Ok( number::new_number(num, row.get_ctx()) )
+            ColumnBuffer::IntervalDS( ref int )     => {
+                let num = interval::to_number(int, row)?;
+                Ok( number::Number::make(num, row) )
             }
             _ => Err( Error::new("cannot convert") )
         }
@@ -136,70 +144,70 @@ impl<'a> FromSql<'a> for number::Number<'a> {
 }
 
 impl<'a> FromSql<'a> for Date<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Date( oci_date ) => date::from_date(oci_date, row.get_env()),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf  {
+            ColumnBuffer::Date( ref oci_date ) => date::from_date(oci_date, row.as_ref()),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for Timestamp<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Timestamp( ts )    => timestamp::from_timestamp(ts, row.get_ctx()),
-            ColumnBuffer::TimestampTZ( ts )  => timestamp::convert_into(ts, row.get_ctx()),
-            ColumnBuffer::TimestampLTZ( ts ) => timestamp::convert_into(ts, row.get_ctx()),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Timestamp( ref ts )    => timestamp::from_timestamp(ts, row),
+            ColumnBuffer::TimestampTZ( ref ts )  => timestamp::convert_into(ts, row),
+            ColumnBuffer::TimestampLTZ( ref ts ) => timestamp::convert_into(ts, row),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for TimestampTZ<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Timestamp( ts )    => timestamp::convert_into(ts, row.get_ctx()),
-            ColumnBuffer::TimestampTZ( ts )  => timestamp::from_timestamp(ts, row.get_ctx()),
-            ColumnBuffer::TimestampLTZ( ts ) => timestamp::convert_into(ts, row.get_ctx()),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Timestamp( ref ts )    => timestamp::convert_into(ts, row),
+            ColumnBuffer::TimestampTZ( ref ts )  => timestamp::from_timestamp(ts, row),
+            ColumnBuffer::TimestampLTZ( ref ts ) => timestamp::convert_into(ts, row),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for TimestampLTZ<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Timestamp( ts )    => timestamp::convert_into(ts, row.get_ctx()),
-            ColumnBuffer::TimestampTZ( ts )  => timestamp::convert_into(ts, row.get_ctx()),
-            ColumnBuffer::TimestampLTZ( ts ) => timestamp::from_timestamp(ts, row.get_ctx()),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Timestamp( ref ts )    => timestamp::convert_into(ts, row),
+            ColumnBuffer::TimestampTZ( ref ts )  => timestamp::convert_into(ts, row),
+            ColumnBuffer::TimestampLTZ( ref ts ) => timestamp::from_timestamp(ts, row),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for IntervalYM<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::IntervalYM( int )  => interval::from_interval(int, row.get_ctx()),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::IntervalYM( ref int )  => interval::from_interval(int, row),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for IntervalDS<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::IntervalDS( int )  => interval::from_interval(int, row.get_ctx()),
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::IntervalDS( ref int )  => interval::from_interval(int, row),
             _ => Err( Error::new("cannot convert") )
         }
     }
 }
 
 impl<'a> FromSql<'a> for Cursor<'a> {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Cursor( handle ) => {
-                let mut ref_cursor : Handle<OCIStmt> = Handle::new(row.env_ptr())?;
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Cursor( ref mut handle ) => {
+                let mut ref_cursor : Handle<OCIStmt> = Handle::new(row)?;
                 ref_cursor.swap(handle);
                 Ok( Cursor::explicit(ref_cursor, row) )
             }
@@ -208,14 +216,15 @@ impl<'a> FromSql<'a> for Cursor<'a> {
     }
 }
 
+#[cfg(feature="blocking")]
 macro_rules! impl_from_lob {
     ($var:path => $t:ident ) => {
         impl<'a> FromSql<'a> for LOB<'a,$t> {
-            fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-                match col {
-                    $var ( lob ) => {
-                        if lob::is_initialized(lob, row.env_ptr(), row.err_ptr())? {
-                            let mut loc : Descriptor<$t> = Descriptor::new(row.env_ptr())?;
+            fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+                match col.buf {
+                    $var ( ref mut lob ) => {
+                        if lob::is_initialized(lob, row.as_ref(), row.as_ref())? {
+                            let mut loc : Descriptor<$t> = Descriptor::new(row)?;
                             loc.swap(lob);
                             Ok( LOB::<$t>::make(loc, row.conn()) )
                         } else {
@@ -229,18 +238,21 @@ macro_rules! impl_from_lob {
     };
 }
 
+#[cfg(feature="blocking")]
 impl_from_lob!{ ColumnBuffer::CLOB  => OCICLobLocator  }
+#[cfg(feature="blocking")]
 impl_from_lob!{ ColumnBuffer::BLOB  => OCIBLobLocator  }
+#[cfg(feature="blocking")]
 impl_from_lob!{ ColumnBuffer::BFile => OCIBFileLocator }
 
 impl<'a> FromSql<'a> for RowID {
-    fn value(row: &'a Row<'a>, col: &mut ColumnBuffer) -> Result<Self> {
-        match col {
-            ColumnBuffer::Rowid( rowid )  => {
-                if rowid.is_initialized() {
-                    let mut res = RowID::new(row.env_ptr())?;
+    fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
+        match col.buf {
+            ColumnBuffer::Rowid( ref mut rowid )  => {
+                if rowid::is_initialized(rowid) {
+                    let mut res = Descriptor::<OCIRowid>::new(row)?;
                     res.swap(rowid);
-                    Ok(res)
+                    Ok(RowID::from(res))
                 } else {
                     Err(Error::new("already consumed"))
                 }

@@ -10,73 +10,67 @@ mod nonblocking;
 
 use std::{ptr, sync::Arc};
 
-use libc::c_void;
-
 use crate::{Error, Result, oci::*, types::Ctx};
-
-fn create_environment() -> Result<Handle<OCIEnv>> {
-    let mut env = ptr::null_mut::<OCIEnv>();
-    let res = unsafe {
-        OCIEnvNlsCreate(
-            &mut env, OCI_OBJECT | OCI_THREADED,
-            ptr::null(), ptr::null(), ptr::null(), ptr::null(), 0, ptr::null(),
-            AL32UTF8, UTF8
-        )
-    };
-    if res != OCI_SUCCESS {
-        Err( Error::new("Cannot create OCI environment") )
-    } else {
-        Ok( Handle::from(env) )
-    }
-}
-
-pub trait Env : Send + Sync {
-    fn env_ptr(&self) -> *mut OCIEnv;
-    fn err_ptr(&self) -> *mut OCIError;
-    fn get_env_ptr(&self) -> Ptr<OCIEnv>;
-    fn get_err_ptr(&self) -> Ptr<OCIError>;
-}
 
 /// Represents an OCI environment.
 pub struct Environment {
-    env: Arc<Handle<OCIEnv>>,
+    // `OCIEnv` handle must be behind Arc as it needs to survive the Environment drop,
+    // so that `OCIEnv` is still available to async-drop used, for example, in `Session`.
+    env: Arc<Handle<OCIEnv>>, 
     err: Handle<OCIError>,
 }
 
-impl Env for Environment {
-    fn env_ptr(&self) -> *mut OCIEnv {
-        self.env.get()
+impl AsRef<OCIEnv> for Environment {
+    fn as_ref(&self) -> &OCIEnv {
+        &*self.env
     }
+}
 
-    fn err_ptr(&self) -> *mut OCIError {
-        self.err.get()
-    }
-
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        Ptr::new(self.env_ptr())
-    }
-
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        Ptr::new(self.err_ptr())
+impl AsRef<OCIError> for Environment {
+    fn as_ref(&self) -> &OCIError {
+        &*self.err
     }
 }
 
 impl Ctx for Environment {
-    fn ctx_ptr(&self) -> *mut c_void {
-        self.env.get() as *mut c_void
+    fn try_as_session(&self) -> Option<&OCISession> {
+        None
     }
 }
 
 impl Environment {
-    pub(crate) fn new() -> Result<Self> {
-        let env = create_environment()?;
+    pub fn new() -> Result<Self> {
+        let mut env = Ptr::<OCIEnv>::null();
+        let res = unsafe {
+            OCIEnvNlsCreate(
+                env.as_mut_ptr(), OCI_OBJECT | OCI_THREADED,
+                ptr::null(), ptr::null(), ptr::null(), ptr::null(), 0, ptr::null(),
+                AL32UTF8, UTF8
+            )
+        };
+        if res != OCI_SUCCESS {
+            return Err( Error::new("Cannot create OCI environment") );
+        }
+        let env = Handle::from(env);
+        let err = Handle::<OCIError>::new(&env)?;
         let env = Arc::new(env);
-        let err = Handle::<OCIError>::new(env.get())?;
         Ok(Self { env, err })
     }
 
-    pub(crate) fn clone_env(&self) -> Arc<Handle<OCIEnv>> {
+    pub(crate) fn get_env(&self) -> Arc<Handle<OCIEnv>> {
         self.env.clone()
+    }
+
+    fn get_attr<V: attr::AttrGet>(&self, attr_type: u32) -> Result<V> {
+        self.env.get_attr(attr_type, self.as_ref())
+    }
+
+    fn get_attr_into<V: attr::AttrGetInto>(&self, attr_type: u32, into: &mut V) -> Result<()> {
+        self.env.get_attr_into(attr_type, into, self.as_ref())
+    }
+
+    fn set_attr<V: attr::AttrSet>(&self, attr_type: u32, attr_val: V) -> Result<()> {
+        self.env.set_attr(attr_type, attr_val, self.as_ref())
     }
 
     /**
@@ -93,7 +87,7 @@ impl Environment {
         ```
     */
     pub fn max_cache_size(&self) -> Result<u32> {
-        self.env.get_attr::<u32>(OCI_ATTR_CACHE_MAX_SIZE, self.err_ptr())
+        self.get_attr(OCI_ATTR_CACHE_MAX_SIZE)
     }
 
     /**
@@ -126,7 +120,7 @@ impl Environment {
         ```
     */
     pub fn set_cache_max_size(&self, size: u32) -> Result<()> {
-        self.env.set_attr(OCI_ATTR_CACHE_MAX_SIZE, size, self.err_ptr())
+        self.set_attr(OCI_ATTR_CACHE_MAX_SIZE, size)
     }
 
     /**
@@ -142,7 +136,7 @@ impl Environment {
         ```
     */
     pub fn optimal_cache_size(&self) -> Result<u32> {
-        self.env.get_attr::<u32>(OCI_ATTR_CACHE_OPT_SIZE, self.err_ptr())
+        self.get_attr(OCI_ATTR_CACHE_OPT_SIZE)
     }
 
     /**
@@ -160,7 +154,7 @@ impl Environment {
         ```
     */
     pub fn set_cache_opt_size(&self, size: u32) -> Result<()> {
-        self.env.set_attr(OCI_ATTR_CACHE_OPT_SIZE, size, self.err_ptr())
+        self.set_attr(OCI_ATTR_CACHE_OPT_SIZE, size)
     }
 
     /**
@@ -181,8 +175,8 @@ impl Environment {
     */
     pub fn nls_language(&self) -> Result<String> {
         let mut lang = String::with_capacity(32);
-        self.env.get_attr_into(OCI_ATTR_ENV_NLS_LANGUAGE, &mut lang, self.err_ptr())?;
-        Ok( lang )
+        self.get_attr_into(OCI_ATTR_ENV_NLS_LANGUAGE, &mut lang)?;
+        Ok(lang)
     }
 
     /**
@@ -197,7 +191,7 @@ impl Environment {
         # Ok::<(),Box<dyn std::error::Error>>(())
     */
     pub fn set_nls_language(&self, lang: &str) -> Result<()> {
-        self.env.set_attr(OCI_ATTR_ENV_NLS_LANGUAGE, lang, self.err_ptr())
+        self.set_attr(OCI_ATTR_ENV_NLS_LANGUAGE, lang)
     }
 
     /**
@@ -218,8 +212,8 @@ impl Environment {
     */
     pub fn nls_territory(&self) -> Result<String> {
         let mut territory = String::with_capacity(24);
-        self.env.get_attr_into(OCI_ATTR_ENV_NLS_TERRITORY, &mut territory, self.err_ptr())?;
-        Ok( territory )
+        self.get_attr_into(OCI_ATTR_ENV_NLS_TERRITORY, &mut territory)?;
+        Ok(territory)
     }
 
     /**
@@ -236,6 +230,6 @@ impl Environment {
         ```
     */
     pub fn set_nls_territory(&self, territory: &str) -> Result<()> {
-        self.env.set_attr(OCI_ATTR_ENV_NLS_TERRITORY, territory, self.err_ptr())
+        self.set_attr(OCI_ATTR_ENV_NLS_TERRITORY, territory)
     }
 }

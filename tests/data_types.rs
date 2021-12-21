@@ -159,10 +159,10 @@ mod blocking {
         ")?;
         let mut id = 0;
 
-        let dt  = Date::with_datetime(1969, 7, 24, 16, 50, 35, &conn)?;
-        let ts  = Timestamp::with_datetime(1969, 7, 24, 16, 50, 35, 1, "", &conn)?;
-        let tsz = TimestampTZ::with_datetime(1969, 7, 24, 16, 50, 35, 2, "UTC", &conn)?;
-        let tsl = TimestampLTZ::with_datetime(1969, 7, 24, 16, 50, 35, 3, "UTC", &conn)?;
+        let dt  = Date::with_date_and_time(1969, 7, 24, 16, 50, 35, &conn);
+        let ts  = Timestamp::with_date_and_time(1969, 7, 24, 16, 50, 35, 1, "", &conn)?;
+        let tsz = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 2, "UTC", &conn)?;
+        let tsl = TimestampLTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 3, "UTC", &conn)?;
         let iym = IntervalYM::with_duration(123, 11, &conn)?;
         let ids = IntervalDS::with_duration(256, 16, 15, 37, 123456789, &conn)?;
 
@@ -223,10 +223,10 @@ mod blocking {
         assert!(id > 0);
 
         // IN arguments have just been moved. Re-create them for comparisons:
-        let dt2  = Date::with_datetime(1969, 7, 24, 16, 50, 35, &conn)?;
-        let ts2  = Timestamp::with_datetime(1969, 7, 24, 16, 50, 35, 1, "", &conn)?;
-        let tsz2 = TimestampTZ::with_datetime(1969, 7, 24, 16, 50, 35, 2, "UTC", &conn)?;
-        let tsl2 = TimestampLTZ::with_datetime(1969, 7, 24, 16, 50, 35, 3, "UTC", &conn)?;
+        let dt2  = Date::with_date_and_time(1969, 7, 24, 16, 50, 35, &conn);
+        let ts2  = Timestamp::with_date_and_time(1969, 7, 24, 16, 50, 35, 1, "", &conn)?;
+        let tsz2 = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 2, "UTC", &conn)?;
+        let tsl2 = TimestampLTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 3, "UTC", &conn)?;
         let iym2 = IntervalYM::with_duration(123, 11, &conn)?;
         let ids2 = IntervalDS::with_duration(256, 16, 15, 37, 123456789, &conn)?;
 
@@ -867,7 +867,7 @@ mod nonblocking {
 
     #[test]
     fn character_datatypes() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -991,7 +991,7 @@ mod nonblocking {
 
     #[test]
     fn datetime_datatypes() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use std::cmp::Ordering::Equal;
             use once_cell::sync::OnceCell;
 
@@ -1037,10 +1037,10 @@ mod nonblocking {
 
             let mut id = 0;
 
-            let dt  = Date::with_datetime(1969, 7, 24, 16, 50, 35, &conn)?;
-            let ts  = Timestamp::with_datetime(1969, 7, 24, 16, 50, 35, 1, "", &conn)?;
-            let tsz = TimestampTZ::with_datetime(1969, 7, 24, 16, 50, 35, 2, "UTC", &conn)?;
-            let tsl = TimestampLTZ::with_datetime(1969, 7, 24, 16, 50, 35, 3, "UTC", &conn)?;
+            let dt  = Date::with_date_and_time(1969, 7, 24, 16, 50, 35, &conn);
+            let ts  = Timestamp::with_date_and_time(1969, 7, 24, 16, 50, 35, 1, "", &conn)?;
+            let tsz = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 2, "UTC", &conn)?;
+            let tsl = TimestampLTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 3, "UTC", &conn)?;
             let iym = IntervalYM::with_duration(123, 11, &conn)?;
             let ids = IntervalDS::with_duration(256, 16, 15, 37, 123456789, &conn)?;
 
@@ -1101,10 +1101,10 @@ mod nonblocking {
             assert!(id > 0);
 
             // IN arguments have just been moved. Re-create them for comparisons:
-            let dt2  = Date::with_datetime(1969, 7, 24, 16, 50, 35, &conn)?;
-            let ts2  = Timestamp::with_datetime(1969, 7, 24, 16, 50, 35, 1, "", &conn)?;
-            let tsz2 = TimestampTZ::with_datetime(1969, 7, 24, 16, 50, 35, 2, "UTC", &conn)?;
-            let tsl2 = TimestampLTZ::with_datetime(1969, 7, 24, 16, 50, 35, 3, "UTC", &conn)?;
+            let dt2  = Date::with_date_and_time(1969, 7, 24, 16, 50, 35, &conn);
+            let ts2  = Timestamp::with_date_and_time(1969, 7, 24, 16, 50, 35, 1, "", &conn)?;
+            let tsz2 = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 2, "UTC", &conn)?;
+            let tsl2 = TimestampLTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 3, "UTC", &conn)?;
             let iym2 = IntervalYM::with_duration(123, 11, &conn)?;
             let ids2 = IntervalDS::with_duration(256, 16, 15, 37, 123456789, &conn)?;
 
@@ -1139,159 +1139,8 @@ mod nonblocking {
     }
 
     #[test]
-    fn large_object_datatypes() -> Result<()> {
-        test::on_single_thread(async {
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-
-            let stmt = conn.prepare("
-                DECLARE
-                    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-                BEGIN
-                    EXECUTE IMMEDIATE '
-                        CREATE TABLE test_large_object_data (
-                            id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                            bin     BLOB,
-                            text    CLOB,
-                            ntxt    NCLOB,
-                            fbin    BFILE
-                        )
-                    ';
-                EXCEPTION
-                WHEN name_already_used THEN
-                    EXECUTE IMMEDIATE '
-                        TRUNCATE TABLE test_large_object_data
-                    ';
-                END;
-            ").await?;
-            stmt.execute(&[]).await?;
-
-            let stmt = conn.prepare("
-                INSERT INTO test_large_object_data (bin, text, ntxt, fbin)
-                VALUES (Empty_Blob(), Empty_Clob(), Empty_Clob(), BFileName(:DIR,:NAME))
-                RETURNING id INTO :ID
-            ").await?;
-
-            let mut id = 0;
-            let count = stmt.execute_into(
-                &[
-                    &(":DIR", "MEDIA_DIR"),
-                    &(":NAME", "hello_world.txt")
-                ], &mut [
-                    &mut (":ID", &mut id)
-                ]
-            ).await?;
-            assert_eq!(count, 1);
-            assert!(id > 0);
-
-            // Content of `hello_world.txt`:
-            let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
-
-            // Can only read BFILEs
-            let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
-            let lob : BFile = row.get("FBIN")?.expect("BFILE locator");
-
-            assert!(lob.file_exists().await?);
-            let (dir, name) = lob.file_name()?; // if we forgot :-)
-            assert_eq!(dir, "MEDIA_DIR");
-            assert_eq!(name, "hello_world.txt");
-
-            assert!(!lob.is_file_open().await?);
-            lob.open_file().await?;
-            let mut lob_data = Vec::new();
-            lob.read(0, 28, &mut lob_data).await?;
-            lob.close_file().await?;
-            assert_eq!(lob_data, data);
-
-            // Note: To modify a LOB column or attribute (write, copy, trim, and so forth), you must lock the row containing the LOB.
-            // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
-
-            let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
-            let lob : BLOB = row.get(0)?.expect("BLOB locator");
-
-            lob.open().await?;
-            let count = lob.append(&data).await?;
-            assert_eq!(count, 28);
-            lob.close().await?;
-
-            // Read it (in another transaction)
-
-            let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
-            let lob : BLOB = row.get(0)?.expect("BLOB locator");
-            let mut lob_data = Vec::new();
-            lob.read(0, 28, &mut lob_data).await?;
-            assert_eq!(lob_data, data);
-
-
-            let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
-            let lob : CLOB = row.get(0)?.expect("BLOB locator");
-            assert!(!lob.is_nclob()?);
-
-            let text = "Two roads diverged in a yellow wood, And sorry I could not travel both And be one traveler, long I stood And looked down one as far as I could To where it bent in the undergrowth; Then took the other, as just as fair, And having perhaps the better claim, Because it was grassy and wanted wear; Though as for that the passing there Had worn them really about the same, And both that morning equally lay In leaves no step had trodden black. Oh, I kept the first for another day! Yet knowing how way leads on to way, I doubted if I should ever come back. I shall be telling this with a sigh Somewhere ages and ages hence: Two roads diverged in a wood, and I— I took the one less traveled by, And that has made all the difference.";
-
-            lob.open().await?;
-            let count = lob.append(text).await?;
-            assert_eq!(count, 728); // bytes
-            assert_eq!(lob.len().await?, 726); // characters
-            lob.close().await?;
-
-            let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
-            let lob : CLOB = row.get(0)?.expect("CLOB locator");
-            assert!(!lob.is_nclob()?);
-            let mut lob_text = String::new();
-            lob.read(0, 726, &mut lob_text).await?;
-            assert_eq!(lob_text, text);
-
-
-            let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
-            let lob : CLOB = row.get(0)?.expect("CLOB locator");
-            assert!(lob.is_nclob()?);
-
-            lob.open().await?;
-            let count = lob.append(text).await?;
-            assert_eq!(count, 728); // bytes
-            assert_eq!(lob.len().await?, 726); // characters
-            lob.close().await?;
-
-            let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
-            let lob : CLOB = row.get(0)?.expect("CLOB locator");
-            assert!(lob.is_nclob()?);
-            let mut lob_text = String::new();
-            lob.read(0, 726, &mut lob_text).await?;
-            assert_eq!(lob_text, text);
-
-            Ok(())
-        })
-    }
-
-
-    #[test]
     fn long_and_raw_datatypes() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -1363,7 +1212,7 @@ mod nonblocking {
 
     #[test]
     fn long_raw_datatype() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -1425,7 +1274,7 @@ mod nonblocking {
 
     #[test]
     fn numeric_datatypes() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use std::cmp::Ordering::Equal;
             use once_cell::sync::OnceCell;
 
@@ -1503,7 +1352,7 @@ mod nonblocking {
 
     #[test]
     fn rowid_datatype() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -1554,7 +1403,7 @@ mod nonblocking {
 
     #[test]
     fn ref_cursor() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use std::cmp::Ordering::Equal;
             use once_cell::sync::OnceCell;
 
@@ -1657,7 +1506,7 @@ mod nonblocking {
 
     #[test]
     fn ref_cursor_result() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use std::cmp::Ordering::Equal;
             use once_cell::sync::OnceCell;
 
@@ -1765,7 +1614,7 @@ mod nonblocking {
 
     #[test]
     fn ref_cursor_column() -> Result<()> {
-        test::on_single_thread(async {
+        sibyl::current_thread_block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();

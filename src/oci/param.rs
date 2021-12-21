@@ -1,15 +1,10 @@
 //! OCI Parameter descriptor functions
 
 use crate::{Result, oci};
-use super::*;
-use std::ptr;
-use libc::c_void;
+use super::{*, desc::Descriptor};
 
-pub(crate) fn get<T>(pos: u32, obj_type: u32, obj: *const c_void, err: *mut OCIError) -> Result<Descriptor<T>>
-    where T: DescriptorType
-        , T::OCIType : OCIStruct
-{
-    let mut descr = ptr::null_mut::<T>();
-    oci::param_get(obj, obj_type, err, &mut descr as *mut *mut T as *mut *mut c_void, pos)?;
+pub(crate) fn get(pos: u32, obj_type: u32, obj: &OCIStmt, err: &OCIError) -> Result<Descriptor<OCIParam>> {
+    let mut descr = Ptr::<OCIParam>::null();
+    oci::param_get(obj, obj_type, err, descr.as_mut_ptr(), pos)?;
     Ok( Descriptor::from(descr) )
 }

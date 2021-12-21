@@ -1,8 +1,9 @@
 /// Convertion between Oracle Numbers and Rust numerics
 
 use std::mem;
-use crate::{ Result, err::Error, oci::* };
-use super::{ real_into_number, to_real };
+use libc::c_void;
+
+use crate::{Result, err::Error, oci::{self, *}};
 
 fn u128_into_number(mut val: u128) -> OCINumber {
     let mut num = mem::MaybeUninit::<OCINumber>::uninit();
@@ -134,17 +135,17 @@ fn i128_from_number(num: &OCINumber) -> Result<i128> {
 
 /// Trait for types that can be converted into `OCINumber`
 pub trait IntoNumber : Sized + Copy {
-    fn into_number(self, err: *mut OCIError) -> Result<OCINumber>;
+    fn into_number(self, err: &OCIError) -> Result<OCINumber>;
 }
 
 impl IntoNumber for i128 {
-    fn into_number(self, _err: *mut OCIError) -> Result<OCINumber> {
+    fn into_number(self, _err: &OCIError) -> Result<OCINumber> {
         Ok(i128_into_number(self))
     }
 }
 
 impl IntoNumber for u128 {
-    fn into_number(self, _err: *mut OCIError) -> Result<OCINumber> {
+    fn into_number(self, _err: &OCIError) -> Result<OCINumber> {
         Ok(u128_into_number(self))
     }
 }
@@ -153,7 +154,7 @@ macro_rules! impl_int_into_num {
     ($($t:ty),+ => $dt:ty) => {
         $(
             impl IntoNumber for $t {
-                fn into_number(self, err: *mut OCIError) -> Result<OCINumber> {
+                fn into_number(self, err: &OCIError) -> Result<OCINumber> {
                     let val = self as $dt;
                     val.into_number(err)
                 }
@@ -167,17 +168,17 @@ impl_int_into_num!(u8, u16, u32, u64, usize => u128);
 
 /// Trait for types that can be created from `OCINumber`
 pub trait FromNumber : Sized + Copy {
-    fn from_number(num: &OCINumber, err: *mut OCIError) -> Result<Self>;
+    fn from_number(num: &OCINumber, err: &OCIError) -> Result<Self>;
 }
 
 impl FromNumber for i128 {
-    fn from_number(num: &OCINumber, _err: *mut OCIError) -> Result<Self> {
+    fn from_number(num: &OCINumber, _err: &OCIError) -> Result<Self> {
         i128_from_number(&num)
     }
 }
 
 impl FromNumber for u128 {
-    fn from_number(num: &OCINumber, _err: *mut OCIError) -> Result<Self> {
+    fn from_number(num: &OCINumber, _err: &OCIError) -> Result<Self> {
         u128_from_number(&num)
     }
 }
@@ -186,7 +187,7 @@ macro_rules! impl_int_from_num {
     ($($t:ty),+ => $dt:ty, $f:ident) => {
         $(
             impl FromNumber for $t {
-                fn from_number(num: &OCINumber, _err: *mut OCIError) -> Result<Self> {
+                fn from_number(num: &OCINumber, _err: &OCIError) -> Result<Self> {
                     let val = $f(num)?;
                     if <$t>::min_value() as $dt <= val && val <= <$t>::max_value() as $dt {
                         Ok( val as $t)
@@ -203,27 +204,68 @@ impl_int_from_num!(i8, i16, i32, i64, isize => i128, i128_from_number);
 impl_int_from_num!(u8, u16, u32, u64, usize => u128, u128_from_number);
 
 impl IntoNumber for f64 {
-    fn into_number(self, err: *mut OCIError) -> Result<OCINumber> {
+    fn into_number(self, err: &OCIError) -> Result<OCINumber> {
         real_into_number(self, err)
     }
 }
 
 impl IntoNumber for f32 {
-    fn into_number(self, err: *mut OCIError) -> Result<OCINumber> {
+    fn into_number(self, err: &OCIError) -> Result<OCINumber> {
         real_into_number(self, err)
     }
 }
 
 impl FromNumber for f64 {
-    fn from_number(num: &OCINumber, err: *mut OCIError) -> Result<Self> {
+    fn from_number(num: &OCINumber, err: &OCIError) -> Result<Self> {
         to_real::<f64>(num, err)
     }
 }
 
 impl FromNumber for f32 {
-    fn from_number(num: &OCINumber, err: *mut OCIError) -> Result<Self> {
+    fn from_number(num: &OCINumber, err: &OCIError) -> Result<Self> {
         to_real::<f32>(num, err)
     }
+}
+
+/// Marker trait for integer numbers
+pub trait Integer: IntoNumber + FromNumber {}
+
+macro_rules! impl_int {
+    ($($t:ty),+) => { $( impl Integer for $t {} )+ };
+}
+
+impl_int!(i8, i16, i32, i64, i128, isize);
+impl_int!(u8, u16, u32, u64, u128, usize);
+
+/// Marker trait for floating ppoint numbers
+pub trait Real: IntoNumber + FromNumber {}
+impl Real for f32 {}
+impl Real for f64 {}
+
+pub(crate) fn real_into_number<T: Real>(val: T, err: &OCIError) -> Result<OCINumber> {
+    let mut num = mem::MaybeUninit::<OCINumber>::uninit();
+    oci::number_from_real(err, &val as *const T as *const c_void, mem::size_of::<T>() as u32, num.as_mut_ptr())?;
+    Ok(unsafe { num.assume_init() })
+}
+
+pub(crate) fn to_real<T: Real>(num: &OCINumber, err: &OCIError) -> Result<T> {
+    let mut res = mem::MaybeUninit::<T>::uninit();
+    oci::number_to_real(err, num, mem::size_of::<T>() as u32, res.as_mut_ptr() as *mut c_void)?;
+    Ok(unsafe { res.assume_init() })
+}
+
+pub(crate) fn to_string(fmt: &str, num: &OCINumber, err: &OCIError) -> Result<String> {
+    let mut txt: [u8; 64] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let mut txt_len = txt.len() as u32;
+    oci::number_to_text(err, num, fmt.as_ptr(), fmt.len() as u32, &mut txt_len, txt.as_mut_ptr())?;
+    let txt = &txt[0..txt_len as usize];
+    Ok(String::from_utf8_lossy(txt).to_string())
+}
+
+pub(crate) fn from_number<'a>(from_num: &OCINumber, err: &OCIError) -> Result<OCINumber> {
+    let mut num = mem::MaybeUninit::<OCINumber>::uninit();
+    oci::number_assign(err, from_num, num.as_mut_ptr())?;
+    Ok(unsafe { num.assume_init() })
 }
 
 #[cfg(test)]

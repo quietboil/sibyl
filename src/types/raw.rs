@@ -2,37 +2,31 @@
 
 mod tosql;
 
-use crate::{ Result, oci::{self, *}, env::Env };
+use crate::{ Result, oci::{self, *} };
 
-pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Ptr<OCIRaw>> {
-    let bin = Ptr::null();
-    oci::raw_resize(env, err, size, bin.as_ptr())?;
+use super::Ctx;
+
+pub(crate) fn new(size: u32, env: &OCIEnv, err: &OCIError) -> Result<Ptr<OCIRaw>> {
+    let mut bin = Ptr::<OCIRaw>::null();
+    oci::raw_resize(env, err, size, bin.as_mut_ptr())?;
     Ok( bin )
 }
 
-pub(crate) fn free(raw: &Ptr<OCIRaw>, env: *mut OCIEnv, err: *mut OCIError) {
+pub(crate) fn free(raw: &mut Ptr<OCIRaw>, env: &OCIEnv, err: &OCIError) {
     unsafe {
-        OCIRawResize(env, err, 0, raw.as_ptr());
+        OCIRawResize(env, err, 0, raw.as_mut_ptr());
     }
 }
 
-pub(crate) fn as_raw_ptr(raw: *const OCIRaw, env: *mut OCIEnv) -> *mut u8 {
+pub(crate) fn as_ptr(raw: &OCIRaw, env: &OCIEnv) -> *const u8 {
     unsafe {
         OCIRawPtr(env, raw)
     }
 }
 
-pub(crate) fn len(raw: *const OCIRaw, env: *mut OCIEnv) -> usize {
+pub(crate) fn len(raw: &OCIRaw, env: &OCIEnv) -> usize {
     unsafe {
         OCIRawSize(env, raw) as usize
-    }
-}
-
-pub(crate) fn as_bytes<'a>(raw: *const OCIRaw, env: *mut OCIEnv) -> &'a [u8] {
-    let ptr = as_raw_ptr(raw, env);
-    let len = len(raw, env);
-    unsafe {
-        std::slice::from_raw_parts(ptr, len)
     }
 }
 
@@ -45,12 +39,12 @@ pub(crate) fn as_bytes<'a>(raw: *const OCIRaw, env: *mut OCIEnv) -> &'a [u8] {
 */
 pub struct Raw<'a> {
     raw: Ptr<OCIRaw>,
-    env: &'a dyn Env,
+    ctx: &'a dyn Ctx,
 }
 
 impl Drop for Raw<'_> {
     fn drop(&mut self) {
-        free(&mut self.raw, self.env.env_ptr(), self.env.err_ptr());
+        free(&mut self.raw, self.ctx.as_ref(), self.ctx.as_ref());
     }
 }
 
@@ -71,10 +65,10 @@ impl<'a> Raw<'a> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_bytes(data: &[u8], env: &'a dyn Env) -> Result<Self> {
-        let mut raw = Ptr::null();
-        oci::raw_assign_bytes(env.env_ptr(), env.err_ptr(), data.as_ptr(), data.len() as u32, raw.as_mut_ptr())?;
-        Ok( Self { env, raw } )
+    pub fn from_bytes(data: &[u8], ctx: &'a dyn Ctx) -> Result<Self> {
+        let mut raw = Ptr::<OCIRaw>::null();
+        oci::raw_assign_bytes(ctx.as_ref(), ctx.as_ref(), data.as_ptr(), data.len() as u32, raw.as_mut_ptr())?;
+        Ok( Self { raw, ctx } )
     }
 
     /**
@@ -94,10 +88,9 @@ impl<'a> Raw<'a> {
         ```
     */
     pub fn from_raw(other: &Raw<'a>) -> Result<Self> {
-        let env = other.env;
-        let mut raw = Ptr::null();
-        oci::raw_assign_raw(env.env_ptr(), env.err_ptr(), other.as_ptr(), raw.as_mut_ptr())?;
-        Ok( Self { env, raw } )
+        let mut raw = Ptr::<OCIRaw>::null();
+        oci::raw_assign_raw(other.ctx.as_ref(), other.ctx.as_ref(), &other.raw, raw.as_mut_ptr())?;
+        Ok( Self { raw, ..*other } )
     }
 
     /**
@@ -115,9 +108,9 @@ impl<'a> Raw<'a> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_capacity(size: usize, env: &'a dyn Env) -> Result<Self> {
-        let raw = new(size as u32, env.env_ptr(), env.err_ptr())?;
-        Ok( Self { env, raw } )
+    pub fn with_capacity(size: usize, ctx: &'a dyn Ctx) -> Result<Self> {
+        let raw = new(size as u32, ctx.as_ref(), ctx.as_ref())?;
+        Ok( Self { raw, ctx } )
     }
 
     /**
@@ -136,7 +129,7 @@ impl<'a> Raw<'a> {
     */
     pub fn capacity(&self) -> Result<usize> {
         let mut size = 0u32;
-        oci::raw_alloc_size(self.env.env_ptr(), self.env.err_ptr(), self.as_ptr(), &mut size)?;
+        oci::raw_alloc_size(self.ctx.as_ref(), self.ctx.as_ref(), &self.raw, &mut size)?;
         Ok( size as usize )
     }
 
@@ -164,15 +157,7 @@ impl<'a> Raw<'a> {
         ```
     */
     pub fn resize(&mut self, new_size: usize) -> Result<()> {
-        oci::raw_resize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, self.raw.as_ptr())
-    }
-
-    pub(crate) fn as_ptr(&self) -> *const OCIRaw {
-        self.raw.get()
-    }
-
-    pub(crate) fn as_mut_ptr(&self) -> *mut OCIRaw {
-        self.raw.get()
+        oci::raw_resize(self.ctx.as_ref(), self.ctx.as_ref(), new_size as u32, self.raw.as_mut_ptr())
     }
 
     /**
@@ -190,7 +175,7 @@ impl<'a> Raw<'a> {
         ```
     */
     pub fn len(&self) -> usize {
-        len(self.as_ptr(), self.env.env_ptr())
+        len(&self.raw, self.ctx.as_ref())
     }
 
     /**
@@ -208,7 +193,11 @@ impl<'a> Raw<'a> {
         ```
     */
     pub fn as_bytes(&self) -> &[u8] {
-        as_bytes(self.as_ptr(), self.env.env_ptr())
+        let ptr = as_ptr(&self.raw, self.ctx.as_ref());
+        let len = len(&self.raw, self.ctx.as_ref());
+        unsafe {
+            std::slice::from_raw_parts(ptr, len)
+        }
     }
 }
 
@@ -219,7 +208,7 @@ impl std::fmt::Debug for Raw<'_> {
         if data.len() > MAX_LEN {
             f.write_fmt(format_args!("RAW {:?}...", &data[..MAX_LEN]))
         } else {
-            f.write_fmt(format_args!("RAW {:?}...", data))
+            f.write_fmt(format_args!("RAW {:?}", data))
         }
     }
 }

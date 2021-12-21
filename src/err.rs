@@ -4,6 +4,9 @@ use crate::oci::*;
 use std::{ptr, cmp, fmt, error, io, ffi::CStr};
 use libc::c_void;
 
+#[cfg(feature="nonblocking")]
+use  crate::task::JoinError;
+
 fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
     let mut errcode = rc;
     let mut errmsg : Vec<u8> = Vec::with_capacity(OCI_ERROR_MAXMSG_SIZE);
@@ -32,6 +35,13 @@ pub enum Error {
     Oracle(i32,String),
     #[cfg(feature="nonblocking")]
     JoinError(JoinError),
+}
+
+#[cfg(feature="nonblocking")]
+impl From<JoinError> for Error {
+    fn from(err: JoinError) -> Self {
+        Error::JoinError(err)
+    }
 }
 
 impl fmt::Display for Error {
@@ -68,23 +78,13 @@ impl Error {
         Error::Interface( msg.to_owned() )
     }
 
-    pub(crate) fn env(env: *mut OCIEnv, rc: i32) -> Self {
-        let (code, msg) = get_oracle_error(rc, env as *mut c_void, OCI_HTYPE_ENV);
+    pub(crate) fn env(env: &OCIEnv, rc: i32) -> Self {
+        let (code, msg) = get_oracle_error(rc, env as *const OCIEnv as _, OCI_HTYPE_ENV);
         Error::Oracle(code, msg)
     }
 
-    pub(crate) fn oci(err: *mut OCIError, rc: i32) -> Self {
-        let (code, msg) = get_oracle_error(rc, err as *mut c_void, OCI_HTYPE_ERROR);
+    pub(crate) fn oci(err: &OCIError, rc: i32) -> Self {
+        let (code, msg) = get_oracle_error(rc, err as *const OCIError as _, OCI_HTYPE_ERROR);
         Error::Oracle(code, msg)
-    }
-}
-
-#[cfg(feature="nonblocking")]
-use crate::task::JoinError;
-
-#[cfg(feature="nonblocking")]
-impl From<JoinError> for Error {
-    fn from(err: JoinError) -> Self {
-        Error::JoinError(err)
     }
 }

@@ -2,48 +2,50 @@
 
 mod tosql;
 
-use crate::{Result, oci::{self, *}, env::Env};
+use crate::{Result, oci::{self, *}};
 
-pub(crate) fn new(size: u32, env: *mut OCIEnv, err: *mut OCIError) -> Result<Ptr<OCIString>> {
-    let mut txt = Ptr::null();
+use super::Ctx;
+
+pub(crate) fn new(size: u32, env: &OCIEnv, err: &OCIError) -> Result<Ptr<OCIString>> {
+    let mut txt = Ptr::<OCIString>::null();
     oci::string_resize(env, err, size, txt.as_mut_ptr())?;
     Ok( txt )
 }
 
-pub(crate) fn free(txt: &Ptr<OCIString>, env: *mut OCIEnv, err: *mut OCIError) {
+pub(crate) fn free(txt: &mut Ptr<OCIString>, env: &OCIEnv, err: &OCIError) {
     unsafe {
-        OCIStringResize(env, err, 0, txt.as_ptr());
+        OCIStringResize(env, err, 0, txt.as_mut_ptr());
     }
 }
 
-pub(crate) fn capacity(txt: *const OCIString, env: *mut OCIEnv, err: *mut OCIError) -> Result<usize> {
+pub(crate) fn capacity(txt: &OCIString, env: &OCIEnv, err: &OCIError) -> Result<usize> {
     let mut size = 0u32;
     oci::string_alloc_size(env, err, txt, &mut size)?;
     Ok( size as usize )
 }
 
-pub(crate) fn to_string(txt: *const OCIString, env: *mut OCIEnv) -> String {
+pub(crate) fn to_string(txt: &OCIString, env: &OCIEnv) -> String {
+    let ptr = raw_ptr(txt, env);
+    let len = len(txt, env);
     let txt = unsafe {
-        let ptr = OCIStringPtr(env, txt);
-        let len = OCIStringSize(env, txt) as usize;
         std::slice::from_raw_parts(ptr, len)
     };
     String::from_utf8_lossy(txt).to_string()
 }
 
-pub(crate) fn raw_ptr(txt: *const OCIString, env: *mut OCIEnv) -> *mut u8 {
+pub(crate) fn raw_ptr(txt: &OCIString, env: &OCIEnv) -> *const u8 {
     unsafe {
         OCIStringPtr(env, txt)
     }
 }
 
-pub(crate) fn len(txt: *const OCIString, env: *mut OCIEnv) -> usize {
+pub(crate) fn len(txt: &OCIString, env: &OCIEnv) -> usize {
     unsafe {
         OCIStringSize(env, txt) as usize
     }
 }
 
-pub(crate) fn as_str<'a>(txt: *const OCIString, env: *mut OCIEnv) -> &'a str {
+pub(crate) fn as_str<'a>(txt: &OCIString, env: &OCIEnv) -> &'a str {
     unsafe {
         std::str::from_utf8_unchecked(
             std::slice::from_raw_parts(
@@ -57,12 +59,12 @@ pub(crate) fn as_str<'a>(txt: *const OCIString, env: *mut OCIEnv) -> &'a str {
 /// Represents Oracle character types - VARCHAR, LONG, etc.
 pub struct Varchar<'a> {
     txt: Ptr<OCIString>,
-    env: &'a dyn Env,
+    ctx: &'a dyn Ctx,
 }
 
 impl Drop for Varchar<'_> {
     fn drop(&mut self) {
-        free(&self.txt, self.env.env_ptr(), self.env.err_ptr());
+        free(&mut self.txt, self.ctx.as_ref(), self.ctx.as_ref());
     }
 }
 
@@ -83,10 +85,10 @@ impl<'a> Varchar<'a> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from(text: &str, env: &'a dyn Env) -> Result<Self> {
-        let mut txt = Ptr::null();
-        oci::string_assign_text(env.env_ptr(), env.err_ptr(), text.as_ptr(), text.len() as u32, txt.as_mut_ptr())?;
-        Ok( Self { env, txt } )
+    pub fn from(text: &str, ctx: &'a dyn Ctx) -> Result<Self> {
+        let mut txt = Ptr::<OCIString>::null();
+        oci::string_assign_text(ctx.as_ref(), ctx.as_ref(), text.as_ptr(), text.len() as u32, txt.as_mut_ptr())?;
+        Ok( Self { ctx, txt } )
     }
 
     /**
@@ -106,16 +108,16 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn from_varchar(other: &'a Varchar) -> Result<Self> {
-        let env = other.env;
-        let mut txt = Ptr::null();
-        oci::string_assign(env.env_ptr(), env.err_ptr(), other.as_ptr(), txt.as_mut_ptr())?;
-        Ok( Self { env, txt } )
+        let ctx = other.ctx;
+        let mut txt = Ptr::<OCIString>::null();
+        oci::string_assign(ctx.as_ref(), ctx.as_ref(), &other.txt, txt.as_mut_ptr())?;
+        Ok( Self { ctx, txt } )
     }
 
-    pub(crate) fn from_ocistring(oci_str: *const OCIString, env: &'a dyn Env) -> Result<Self> {
-        let mut txt = Ptr::null();
-        oci::string_assign(env.env_ptr(), env.err_ptr(), oci_str, txt.as_mut_ptr())?;
-        Ok( Self { env, txt } )
+    pub(crate) fn from_ocistring(oci_str: &OCIString, ctx: &'a dyn Ctx) -> Result<Self> {
+        let mut txt = Ptr::<OCIString>::null();
+        oci::string_assign(ctx.as_ref(), ctx.as_ref(), oci_str, txt.as_mut_ptr())?;
+        Ok( Self { ctx, txt } )
     }
 
     /**
@@ -133,17 +135,9 @@ impl<'a> Varchar<'a> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_capacity(size: usize, env: &'a dyn Env) -> Result<Self> {
-        let txt = new(size as u32, env.env_ptr(), env.err_ptr())?;
-        Ok( Self { env, txt } )
-    }
-
-    pub(crate) fn as_ptr(&self) -> *const OCIString {
-        self.txt.get()
-    }
-
-    pub(crate) fn as_mut_ptr(&self) -> *mut OCIString {
-        self.txt.get()
+    pub fn with_capacity(size: usize, ctx: &'a dyn Ctx) -> Result<Self> {
+        let txt = new(size as u32, ctx.as_ref(), ctx.as_ref())?;
+        Ok( Self { ctx, txt } )
     }
 
     /**
@@ -163,7 +157,7 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn set(&mut self, text: &str) -> Result<()> {
-        oci::string_assign_text(self.env.env_ptr(), self.env.err_ptr(), text.as_ptr(), text.len() as u32, self.txt.as_ptr())
+        oci::string_assign_text(self.ctx.as_ref(), self.ctx.as_ref(), text.as_ptr(), text.len() as u32, self.txt.as_mut_ptr())
     }
 
     /**
@@ -181,7 +175,7 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn len(&self) -> usize {
-        len(self.as_ptr(), self.env.env_ptr())
+        len(&self.txt, self.ctx.as_ref())
     }
 
     /**
@@ -199,7 +193,7 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn capacity(&self) -> Result<usize> {
-        capacity(self.as_ptr(), self.env.env_ptr(), self.env.err_ptr())
+        capacity(&self.txt, self.ctx.as_ref(), self.ctx.as_ref())
     }
 
     /**
@@ -234,7 +228,7 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn resize(&mut self, new_size: usize) -> Result<()> {
-        oci::string_resize(self.env.env_ptr(), self.env.err_ptr(), new_size as u32, self.txt.as_ptr())
+        oci::string_resize(self.ctx.as_ref(), self.ctx.as_ref(), new_size as u32, self.txt.as_mut_ptr())
     }
 
     /**
@@ -252,12 +246,7 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn as_str(&self) -> &str {
-        as_str(self.as_ptr(), self.env.env_ptr())
-    }
-
-    /// Returns unsafe pointer to the string data
-    pub fn as_raw_ptr(&self) -> *mut u8 {
-        raw_ptr(self.as_ptr(), self.env.env_ptr())
+        as_str(&self.txt, self.ctx.as_ref())
     }
 }
 
@@ -277,6 +266,6 @@ impl std::fmt::Debug for Varchar<'_> {
 
 impl std::string::ToString for Varchar<'_> {
     fn to_string(&self) -> String {
-        to_string(self.as_ptr(), self.env.env_ptr())
+        to_string(&self.txt, self.ctx.as_ref())
     }
 }

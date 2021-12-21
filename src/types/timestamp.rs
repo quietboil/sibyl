@@ -4,15 +4,14 @@ mod tosql;
 
 use super::{ Ctx, interval::Interval };
 use crate::{ Result, oci::{self, *} };
-use std::{ mem, ptr, cmp::Ordering };
+use std::{ mem, ptr, cmp::Ordering, ops::{Deref, DerefMut} };
 
-pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: *const OCIDateTime, ctx: &dyn Ctx) -> Result<String> {
+pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: &OCIDateTime, ctx: &dyn Ctx) -> Result<String> {
     let mut name: [u8;128] = unsafe { mem::MaybeUninit::uninit().assume_init() };
     let mut size = name.len() as u32;
     oci::date_time_to_text(
-        ctx.ctx_ptr(), ctx.err_ptr(), ts,
+        ctx.as_context(), ctx.as_ref(), ts,
         if fmt.len() == 0 { ptr::null() } else { fmt.as_ptr() }, fmt.len() as u8, fsprec,
-        ptr::null(), 0,
         &mut size as *mut u32, name.as_mut_ptr()
     )?;
     let txt = &name[0..size as usize];
@@ -20,32 +19,54 @@ pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: *const OCIDateTime, ctx: &dyn
 }
 
 pub(crate) fn from_timestamp<'a,T>(ts: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<Timestamp<'a, T>>
-    where T: DescriptorType<OCIType=OCIDateTime>
+where T: DescriptorType<OCIType=OCIDateTime>
 {
-    let datetime = Descriptor::new(ctx.env_ptr())?;
-    oci::date_time_assign(ctx.ctx_ptr(), ctx.err_ptr(), ts.get(), datetime.get())?;
+    let mut datetime = Descriptor::<T>::new(&ctx)?;
+    oci::date_time_assign(ctx.as_context(), ctx.as_ref(), ts, datetime.as_mut())?;
     Ok( Timestamp { ctx, datetime } )
 }
 
 pub(crate) fn convert_into<'a,T,U>(ts: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<Timestamp<'a, U>>
-    where T: DescriptorType<OCIType=OCIDateTime>
-        , U: DescriptorType<OCIType=OCIDateTime>
+where T: DescriptorType<OCIType=OCIDateTime>
+    , U: DescriptorType<OCIType=OCIDateTime>
 {
-    let datetime: Descriptor<U> = Descriptor::new(ctx.env_ptr())?;
-    oci::date_time_convert(ctx.ctx_ptr(), ctx.err_ptr(), ts.get(), datetime.get())?;
+    let mut datetime: Descriptor<U> = Descriptor::new(&ctx)?;
+    oci::date_time_convert(ctx.as_context(), ctx.as_ref(), ts.as_ref(), datetime.as_mut())?;
     Ok( Timestamp { ctx, datetime } )
 }
 
-pub struct Timestamp<'e, T>
-    where T: DescriptorType<OCIType=OCIDateTime>
-{
+pub struct Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
     datetime: Descriptor<T>,
-    ctx: &'e dyn Ctx,
+    ctx: &'a dyn Ctx,
 }
 
-impl<'e, T> Timestamp<'e, T>
-    where T: DescriptorType<OCIType=OCIDateTime>
-{
+impl<'a,T> AsRef<T::OCIType> for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
+    fn as_ref(&self) -> &T::OCIType {
+        self.datetime.as_ref()
+    }
+}
+
+impl<'a,T> AsMut<T::OCIType> for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
+    fn as_mut(&mut self) -> &mut T::OCIType {
+        self.datetime.as_mut()
+    }
+}
+
+impl<'a,T> Deref for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
+    type Target = T::OCIType;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_ref()
+    }
+}
+
+impl<'a,T> DerefMut for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_mut()
+    }
+}
+
+impl<'a, T> Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
     /**
         Creates an uninitialized timestamp.
 
@@ -58,14 +79,9 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn new(ctx: &'e dyn Ctx) -> Result<Self> {
-        let datetime = Descriptor::new(ctx.env_ptr())?;
+    pub fn new(ctx: &'a dyn Ctx) -> Result<Self> {
+        let datetime = Descriptor::<T>::new(&ctx)?;
         Ok( Self { ctx, datetime } )
-    }
-
-    /// Changes a timestamp context.
-    pub fn move_to(&mut self, ctx: &'e dyn Ctx) {
-        self.ctx = ctx;
     }
 
     /**
@@ -85,7 +101,7 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, Timestamp, TimestampTZ, TimestampLTZ };
         let env = oracle::env()?;
 
-        let ts = Timestamp::with_datetime(1969, 7, 20, 20, 18, 4, 0, "", &env)?;
+        let ts = Timestamp::with_date_and_time(1969, 7, 20, 20, 18, 4, 0, "", &env)?;
         assert_eq!(ts.date()?, (1969, 7, 20));
         assert_eq!(ts.time()?, (20, 18, 4,0));
 
@@ -96,7 +112,7 @@ impl<'e, T> Timestamp<'e, T>
             _ => panic!("unexpected error")
         }
 
-        let ts = oracle::TimestampTZ::with_datetime(1969, 7, 20, 20, 18, 4, 0, "UTC", &env)?;
+        let ts = oracle::TimestampTZ::with_date_and_time(1969, 7, 20, 20, 18, 4, 0, "UTC", &env)?;
         assert_eq!(ts.date()?, (1969, 7, 20));
         assert_eq!(ts.time()?, (20, 18, 4,0));
         assert_eq!(ts.tz_offset()?, (0,0));
@@ -107,15 +123,15 @@ impl<'e, T> Timestamp<'e, T>
         // To create the same timestamp using `from_datetime` we need to know that time zone
         let tzn = ts1.tz_name()?;
         // And then provide it to the `from_datetime` method
-        let ts2 = TimestampLTZ::with_datetime(1969, 7, 20, 20, 18, 4, 0, &tzn, &env)?;
+        let ts2 = TimestampLTZ::with_date_and_time(1969, 7, 20, 20, 18, 4, 0, &tzn, &env)?;
         assert_eq!(ts2.compare(&ts1)?, Ordering::Equal);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn with_datetime(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, fsec: u32, tz: &str, ctx: &'e dyn Ctx) -> Result<Self> {
-        let datetime = Descriptor::new(ctx.env_ptr())?;
+    pub fn with_date_and_time(year: i16, month: u8, day: u8, hour: u8, min: u8, sec: u8, fsec: u32, tz: &str, ctx: &'a dyn Ctx) -> Result<Self> {
+        let mut datetime = Descriptor::<T>::new(&ctx)?;
         oci::date_time_construct(
-            ctx.ctx_ptr(), ctx.err_ptr(), datetime.get(),
+            ctx.as_context(), ctx.as_ref(), &mut datetime,
             year, month, day, hour, min, sec, fsec, tz.as_ptr(), tz.len()
         )?;
         Ok( Self { ctx, datetime } )
@@ -142,13 +158,13 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_string(txt: &str, fmt: &str, ctx: &'e dyn Ctx) -> Result<Self> {
-        let datetime = Descriptor::new(ctx.env_ptr())?;
+    pub fn from_string(txt: &str, fmt: &str, ctx: &'a dyn Ctx) -> Result<Self> {
+        let mut datetime = Descriptor::<T>::new(&ctx)?;
         oci::date_time_from_text(
-            ctx.ctx_ptr(), ctx.err_ptr(),
+            ctx.as_context(), ctx.as_ref(),
             txt.as_ptr(), txt.len(), fmt.as_ptr(), fmt.len() as u8,
             ptr::null(), 0,
-            datetime.get()
+            &mut datetime
         )?;
         Ok( Self { ctx, datetime } )
     }
@@ -164,7 +180,7 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, Timestamp, TimestampTZ, TimestampLTZ };
         let env = oracle::env()?;
 
-        let tzts = TimestampTZ::with_datetime(1969, 7, 24, 16, 50, 35, 0, "UTC", &env)?;
+        let tzts = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 0, "UTC", &env)?;
 
         let ts : Timestamp = tzts.convert_into(&env)?;
         // It just discards the timezone
@@ -179,14 +195,10 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn convert_into<U>(&self, ctx: &'e dyn Ctx) -> Result<Timestamp<'e, U>>
-        where U: DescriptorType<OCIType=OCIDateTime>
+    pub fn convert_into<U>(&self, ctx: &'a dyn Ctx) -> Result<Timestamp<'a, U>>
+    where U: DescriptorType<OCIType=OCIDateTime>
     {
         convert_into(&self.datetime, ctx)
-    }
-
-    pub(crate) fn as_ptr(&self) -> *const OCIDateTime {
-        self.datetime.get() as *const OCIDateTime
     }
 
     /**
@@ -205,7 +217,7 @@ impl<'e, T> Timestamp<'e, T>
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_timestamp(other: &Self, ctx: &'e dyn Ctx) -> Result<Self> {
+    pub fn from_timestamp(other: &Self, ctx: &'a dyn Ctx) -> Result<Self> {
         from_timestamp(&other.datetime, ctx)
     }
 
@@ -217,7 +229,7 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, TimestampTZ, IntervalDS };
         let env = oracle::env()?;
 
-        let ts1 = TimestampTZ::with_datetime(1969,7,20,20,18,4,0,"UTC", &env)?;
+        let ts1 = TimestampTZ::with_date_and_time(1969,7,20,20,18,4,0,"UTC", &env)?;
         let int = IntervalDS::with_duration(0,21,35,56,0,&env)?;
         let ts2 = ts1.add(&int)?;
 
@@ -227,8 +239,8 @@ impl<'e, T> Timestamp<'e, T>
     */
     pub fn add<I: DescriptorType<OCIType=OCIInterval>>(&self, interval: &Interval<I>) -> Result<Self> {
         let ctx = self.ctx;
-        let datetime = Descriptor::new(ctx.env_ptr())?;
-        oci::date_time_interval_add(ctx.ctx_ptr(), ctx.err_ptr(), self.as_ptr(), interval.as_ptr(), datetime.get())?;
+        let mut datetime = Descriptor::<T>::new(&ctx)?;
+        oci::date_time_interval_add(ctx.as_context(), ctx.as_ref(), &self.datetime, interval, &mut datetime)?;
         Ok( Self { ctx, datetime } )
     }
 
@@ -240,7 +252,7 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, TimestampTZ, IntervalDS };
         let env = oracle::env()?;
 
-        let ts1 = TimestampTZ::with_datetime(1969,7,21,17,54,0,0,"UTC", &env)?;
+        let ts1 = TimestampTZ::with_date_and_time(1969,7,21,17,54,0,0,"UTC", &env)?;
         let int = IntervalDS::with_duration(0,21,35,56,0,&env)?;
         let ts2 = ts1.sub(&int)?;
 
@@ -250,8 +262,8 @@ impl<'e, T> Timestamp<'e, T>
     */
     pub fn sub<I: DescriptorType<OCIType=OCIInterval>>(&self, interval: &Interval<I>) -> Result<Self> {
         let ctx = self.ctx;
-        let datetime = Descriptor::new(ctx.env_ptr())?;
-        oci::date_time_interval_sub(ctx.ctx_ptr(), ctx.err_ptr(), self.as_ptr(), interval.as_ptr(), datetime.get())?;
+        let mut datetime = Descriptor::<T>::new(&ctx)?;
+        oci::date_time_interval_sub(ctx.as_context(), ctx.as_ref(), &self.datetime, interval, &mut datetime)?;
         Ok( Self { ctx, datetime } )
     }
 
@@ -263,8 +275,8 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, TimestampTZ, IntervalDS };
         let env = oracle::env()?;
 
-        let ts1 = TimestampTZ::with_datetime(1969,7,20,20,18,4,0,"UTC", &env)?;
-        let ts2 = TimestampTZ::with_datetime(1969,7,21,17,54,0,0,"UTC", &env)?;
+        let ts1 = TimestampTZ::with_date_and_time(1969,7,20,20,18,4,0,"UTC", &env)?;
+        let ts2 = TimestampTZ::with_date_and_time(1969,7,21,17,54,0,0,"UTC", &env)?;
         let int: IntervalDS = ts2.subtract(&ts1)?;
         let (days, hours, min, sec, nanosec) = int.duration()?;
 
@@ -273,12 +285,12 @@ impl<'e, T> Timestamp<'e, T>
         ```
     */
     pub fn subtract<U, I>(&self, other: &Timestamp<U>) -> Result<Interval<I>>
-        where U: DescriptorType<OCIType=OCIDateTime>
-            , I: DescriptorType<OCIType=OCIInterval>
+    where U: DescriptorType<OCIType=OCIDateTime>
+        , I: DescriptorType<OCIType=OCIInterval>
     {
         let ctx = self.ctx;
-        let interval: Interval<I> = Interval::new(self.ctx)?;
-        oci::date_time_subtract(ctx.ctx_ptr(), ctx.err_ptr(), self.as_ptr(), other.as_ptr(), interval.as_mut_ptr())?;
+        let mut interval: Interval<I> = Interval::new(self.ctx)?;
+        oci::date_time_subtract(ctx.as_context(), ctx.as_ref(), &self.datetime, &other.datetime, &mut interval)?;
         Ok( interval )
     }
 
@@ -291,18 +303,18 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, TimestampTZ };
         let env = oracle::env()?;
 
-        let ts1 = TimestampTZ::with_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
-        let ts2 = TimestampTZ::with_datetime(1969,7,20,16,18,4,0,"-04:00", &env)?;
+        let ts1 = TimestampTZ::with_date_and_time(1969,7,20,20,18,4,0,"+00:00", &env)?;
+        let ts2 = TimestampTZ::with_date_and_time(1969,7,20,16,18,4,0,"-04:00", &env)?;
 
         assert_eq!(ts2.compare(&ts1)?, Ordering::Equal);
         # Ok::<(),oracle::Error>(())
         ```
     */
     pub fn compare<U>(&self, other: &Timestamp<U>) -> Result<Ordering>
-        where U: DescriptorType<OCIType=OCIDateTime>
+    where U: DescriptorType<OCIType=OCIDateTime>
     {
         let mut cmp = 0i32;
-        oci::date_time_compare(self.ctx.ctx_ptr(), self.ctx.err_ptr(), self.as_ptr(), other.as_ptr(), &mut cmp)?;
+        oci::date_time_compare(self.ctx.as_context(), self.ctx.as_ref(), self, other, &mut cmp)?;
         let ordering = if cmp < 0 { Ordering::Less } else if cmp == 0 { Ordering::Equal } else { Ordering::Greater };
         Ok( ordering )
     }
@@ -315,7 +327,7 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, Timestamp };
         let env = oracle::env()?;
 
-        let ts = Timestamp::with_datetime(1969,7,20,20,18,4,0,"", &env)?;
+        let ts = Timestamp::with_date_and_time(1969,7,20,20,18,4,0,"", &env)?;
 
         assert_eq!(ts.date()?, (1969, 7, 20));
         # Ok::<(),oracle::Error>(())
@@ -325,10 +337,7 @@ impl<'e, T> Timestamp<'e, T>
         let mut year  = 0i16;
         let mut month = 0u8;
         let mut day   = 0u8;
-        oci::date_time_get_date(
-            self.ctx.ctx_ptr(), self.ctx.err_ptr(), self.as_ptr(),
-            &mut year, &mut month, &mut day
-        )?;
+        oci::date_time_get_date(self.ctx.as_context(), self.ctx.as_ref(), self, &mut year, &mut month, &mut day)?;
         Ok( (year, month, day) )
     }
 
@@ -340,7 +349,7 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, Timestamp };
         let env = oracle::env()?;
 
-        let ts = Timestamp::with_datetime(1969,7,20,20,18,4,0,"", &env)?;
+        let ts = Timestamp::with_date_and_time(1969,7,20,20,18,4,0,"", &env)?;
 
         assert_eq!(ts.time()?, (20, 18, 4, 0));
         # Ok::<(),oracle::Error>(())
@@ -351,10 +360,7 @@ impl<'e, T> Timestamp<'e, T>
         let mut min  = 0u8;
         let mut sec  = 0u8;
         let mut fsec = 0u32;
-        oci::date_time_get_time(
-            self.ctx.ctx_ptr(), self.ctx.err_ptr(), self.as_ptr(),
-            &mut hour, &mut min, &mut sec, &mut fsec
-        )?;
+        oci::date_time_get_time(self.ctx.as_context(), self.ctx.as_ref(), self, &mut hour, &mut min, &mut sec, &mut fsec)?;
         Ok( (hour, min, sec, fsec) )
     }
 
@@ -367,7 +373,7 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, Timestamp };
         let env = oracle::env()?;
 
-        let ts = Timestamp::with_datetime(1969,7,20,20,18,4,0,"", &env)?;
+        let ts = Timestamp::with_date_and_time(1969,7,20,20,18,4,0,"", &env)?;
 
         assert_eq!(ts.date_and_time()?, (1969, 7, 20, 20, 18, 4, 0));
         # Ok::<(),oracle::Error>(())
@@ -390,10 +396,10 @@ impl<'e, T> Timestamp<'e, T>
         let ts = TimestampTZ::from_string("July 20, 1969 8:18:04.16 pm UTC", "MONTH DD, YYYY HH:MI:SS.FF PM TZR", &env)?;
         assert_eq!(ts.tz_name()?, "UTC");
 
-        let ts = TimestampTZ::with_datetime(1969,7,20,20,18,4,0,"+00:00", &env)?;
+        let ts = TimestampTZ::with_date_and_time(1969,7,20,20,18,4,0,"+00:00", &env)?;
         assert_eq!(ts.tz_name()?, "+00:00");
 
-        let ts = TimestampTZ::with_datetime(1969,7,20,20,18,4,0,"EST", &env)?;
+        let ts = TimestampTZ::with_date_and_time(1969,7,20,20,18,4,0,"EST", &env)?;
         assert_eq!(ts.tz_name()?, "EST");
         # Ok::<(),oracle::Error>(())
         ```
@@ -401,10 +407,7 @@ impl<'e, T> Timestamp<'e, T>
     pub fn tz_name(&self) -> Result<String> {
         let mut name: [u8;64] = unsafe { mem::MaybeUninit::uninit().assume_init() };
         let mut size = name.len() as u32;
-        oci::date_time_get_time_zone_name(
-            self.ctx.ctx_ptr(), self.ctx.err_ptr(), self.as_ptr(),
-            name.as_mut_ptr(), &mut size
-        )?;
+        oci::date_time_get_time_zone_name(self.ctx.as_context(), self.ctx.as_ref(), self, name.as_mut_ptr(), &mut size)?;
         let txt = &name[0..size as usize];
         Ok( String::from_utf8_lossy(txt).to_string() )
     }
@@ -427,10 +430,7 @@ impl<'e, T> Timestamp<'e, T>
     pub fn tz_offset(&self) -> Result<(i8, i8)> {
         let mut hours = 0i8;
         let mut min   = 0i8;
-        oci::date_time_get_time_zone_offset(
-            self.ctx.ctx_ptr(), self.ctx.err_ptr(), self.as_ptr(),
-            &mut hours, &mut min
-        )?;
+        oci::date_time_get_time_zone_offset(self.ctx.as_context(), self.ctx.as_ref(), self, &mut hours, &mut min)?;
         Ok( (hours, min) )
     }
 
@@ -452,7 +452,7 @@ impl<'e, T> Timestamp<'e, T>
         use sibyl::{ self as oracle, TimestampTZ };
         let env = oracle::env()?;
 
-        let ts = TimestampTZ::with_datetime(1969,7,20,20,18,4,0, "UTC", &env)?;
+        let ts = TimestampTZ::with_date_and_time(1969,7,20,20,18,4,0, "UTC", &env)?;
         let txt = ts.to_string("Dy, Mon DD, YYYY HH:MI:SS.FF PM TZR", 3)?;
 
         assert_eq!(txt, "Sun, Jul 20, 1969 08:18:04.000 PM UTC");
@@ -460,7 +460,7 @@ impl<'e, T> Timestamp<'e, T>
         ```
     */
     pub fn to_string(&self, fmt: &str, fsprec: u8) -> Result<String> {
-        to_string(fmt, fsprec, self.as_ptr(), self.ctx)
+        to_string(fmt, fsprec, self, self.ctx)
     }
 }
 
@@ -474,7 +474,7 @@ impl<'e, T> Timestamp<'e, T>
 //   of the same type, one of which was created via OCIDateTimeSysTimeStamp, are compared.
 // For now, let's just limit `from_systimestamp` to `TimestampTZ` where it produces the expected
 // results.
-impl<'e> Timestamp<'e, OCITimestampTZ> {
+impl<'a> Timestamp<'a, OCITimestampTZ> {
     /**
         Creates new timestamp from the system current date and time.
 
@@ -490,9 +490,9 @@ impl<'e> Timestamp<'e, OCITimestampTZ> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn from_systimestamp(ctx: &'e dyn Ctx) -> Result<Self> {
-        let datetime = Descriptor::new(ctx.env_ptr())?;
-        oci::date_time_sys_time_stamp(ctx.ctx_ptr(), ctx.err_ptr(), datetime.get())?;
+    pub fn from_systimestamp(ctx: &'a dyn Ctx) -> Result<Self> {
+        let mut datetime = Descriptor::<OCITimestampTZ>::new(&ctx)?;
+        oci::date_time_sys_time_stamp(ctx.as_context(), ctx.as_ref(), &mut datetime)?;
         Ok( Self { ctx, datetime } )
     }
 }

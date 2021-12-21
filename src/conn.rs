@@ -10,127 +10,188 @@ mod nonblocking;
 
 use std::{sync::Arc, marker::PhantomData};
 
-use libc::c_void;
+use crate::{Result, Environment, oci::*, types::Ctx};
 
-use crate::{Result, env::Env, oci::{*, attr::{AttrGet, AttrSet}}, types::Ctx, Environment};
-
-pub(crate) struct Session {
+/// Representation of the service context.
+/// It will be behinfd `Arc` as it needs to survive beyond the `Connection`
+/// drop to allow statements and cursors to be dropped asynchronously.
+pub(crate) struct SvcCtx {
     env: Arc<Handle<OCIEnv>>,
     err: Handle<OCIError>,
     svc: Ptr<OCISvcCtx>,
 }
 
-impl Session {
-    pub(crate) fn svc_ptr(&self) -> *mut OCISvcCtx {
-        self.svc.get()
+impl AsRef<OCIEnv> for SvcCtx {
+    fn as_ref(&self) -> &OCIEnv {
+        &*self.env
     }
 }
 
-impl Env for Session {
-    fn env_ptr(&self) -> *mut OCIEnv {
-        self.env.get()
+impl AsRef<OCIError> for SvcCtx {
+    fn as_ref(&self) -> &OCIError {
+        &*self.err
     }
+}
 
-    fn err_ptr(&self) -> *mut OCIError {
-        self.err.get()
-    }
-
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        Ptr::new(self.env_ptr())
-    }
-
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        Ptr::new(self.err_ptr())
+impl AsRef<OCISvcCtx> for SvcCtx {
+    fn as_ref(&self) -> &OCISvcCtx {
+        &*self.svc
     }
 }
 
 /// Represents a user session
 pub struct Connection<'a> {
-    session:      Arc<Session>,
-    usr:          Ptr<OCISession>,
+    ctx: Arc<SvcCtx>,
+    usr: Ptr<OCISession>,
     phantom_env:  PhantomData<&'a Environment>
 }
 
-impl Env for Connection<'_> {
-    fn env_ptr(&self) -> *mut OCIEnv {
-        self.session.env_ptr()
+impl AsRef<OCIEnv> for Connection<'_> {
+    fn as_ref(&self) -> &OCIEnv {
+        self.ctx.as_ref().as_ref()
     }
+}
 
-    fn err_ptr(&self) -> *mut OCIError {
-        self.session.err_ptr()
+impl AsRef<OCIError> for Connection<'_> {
+    fn as_ref(&self) -> &OCIError {
+        self.ctx.as_ref().as_ref()
     }
+}
 
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        self.session.get_env_ptr()
-    }
-
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        self.session.get_err_ptr()
+impl AsRef<OCISvcCtx> for Connection<'_> {
+    fn as_ref(&self) -> &OCISvcCtx {
+        self.ctx.as_ref().as_ref()
     }
 }
 
 impl Ctx for Connection<'_> {
-    fn ctx_ptr(&self) -> *mut c_void {
-        self.usr_ptr() as *mut c_void
+    fn try_as_session(&self) -> Option<&OCISession> {
+        Some(&self.usr)
     }
 }
 
 impl Connection<'_> {
-    pub(crate) fn svc_ptr(&self) -> *mut OCISvcCtx {
-        self.session.svc_ptr()
+    fn set_attr<T: attr::AttrSet>(&self, attr_type: u32, attr_val: T) -> Result<()> {
+        attr::set(attr_type, attr_val, OCI_HTYPE_SESSION, self.usr.as_ref(), self.as_ref())
     }
 
-    fn usr_ptr(&self) -> *mut OCISession {
-        self.usr.get()
+    fn get_attr<T: attr::AttrGet>(&self, attr_type: u32) -> Result<T> {
+        attr::get(attr_type, OCI_HTYPE_SESSION, self.usr.as_ref(), self.as_ref())
     }
 
-    pub(crate) fn clone_session(&self) -> Arc<Session> {
-        self.session.clone()
-    }
-
-    fn set_session_attr<T: AttrSet>(&self, attr_type: u32, attr_val: T) -> Result<()> {
-        attr::set(attr_type, attr_val, OCI_HTYPE_SESSION, self.usr_ptr() as *mut c_void, self.err_ptr())
-    }
-
-    fn get_session_attr<T: AttrGet>(&self, attr_type: u32) -> Result<T> {
-        attr::get(attr_type, OCI_HTYPE_SESSION, self.usr_ptr() as *const c_void, self.err_ptr())
+    pub(crate) fn get_svc(&self) -> Arc<SvcCtx> {
+        self.ctx.clone()
     }
 
     /// Reports whether self is connected to the server
     pub fn is_connected(&self) -> Result<bool> {
-        attr::get::<Ptr<OCIServer>>(OCI_ATTR_SERVER, OCI_HTYPE_SVCCTX, self.svc_ptr() as *const c_void, self.err_ptr())
-        .and_then(|srv|
-            attr::get::<u32>(OCI_ATTR_SERVER_STATUS, OCI_HTYPE_SERVER, srv.get() as *const c_void, self.err_ptr())
-        )
-        .map(|status|
-            status == OCI_SERVER_NORMAL
-        )
+        let srv : Ptr<OCIServer> = attr::get(OCI_ATTR_SERVER, OCI_HTYPE_SVCCTX, self.ctx.svc.as_ref(), self.as_ref())?;
+        let status : u32 = attr::get(OCI_ATTR_SERVER_STATUS, OCI_HTYPE_SERVER, srv.as_ref(), self.as_ref())?;
+        Ok(status == OCI_SERVER_NORMAL)
     }
 
     /// Reports whether connection is established in non-blocking mode.
     pub fn is_async(&self) -> Result<bool> {
-        attr::get::<Ptr<OCIServer>>(OCI_ATTR_SERVER, OCI_HTYPE_SVCCTX, self.svc_ptr() as *const c_void, self.err_ptr())
-        .and_then(|srv|
-            attr::get::<u8>(OCI_ATTR_NONBLOCKING_MODE, OCI_HTYPE_SERVER, srv.get() as *const c_void, self.err_ptr())
-        )
-        .map(|mode|
-            mode != 0
-        )
+        let srv : Ptr<OCIServer> = attr::get(OCI_ATTR_SERVER, OCI_HTYPE_SVCCTX, self.ctx.svc.as_ref(), self.as_ref())?;
+        let mode : u8 = attr::get(OCI_ATTR_NONBLOCKING_MODE, OCI_HTYPE_SERVER, srv.as_ref(), self.as_ref())?;
+        Ok(mode != 0)
     }
 
-    /// Causes the server to measure call time, in milliseconds, for each subsequent OCI call.
+    /**
+        Sets the statement cache size.
+
+        The default value of the statement cache size is 20 statements, for a statement cache-enabled session.
+        Statement caching can be enabled by setting the attribute to a nonzero size and disabled by setting it to zero.
+    */
+    pub fn set_stmt_cache_size(&self, num_stmts: u32) -> Result<()> {
+        let ctx : &OCISvcCtx = self.as_ref();
+        attr::set(OCI_ATTR_STMTCACHESIZE, num_stmts, OCI_HTYPE_SVCCTX, ctx, self.as_ref())
+    }
+
+    /// Returns the statement cache size.
+    pub fn stmt_cache_size(&self) -> Result<u32> {
+        let ctx : &OCISvcCtx = self.as_ref();
+        attr::get(OCI_ATTR_STMTCACHESIZE, OCI_HTYPE_SVCCTX, ctx, self.as_ref())
+    }
+
+    /**
+        Sets the time (in milliseconds) for a database round-trip call to time out. When the call times out,
+        a network timeout error is returned. Setting this value stays effective for all subsequent round-trip
+        calls until a different value is set. To remove the timeout, the value must be set to 0.
+
+        The Call timeout is on each individual round-trip between OCI and Oracle Database. Each OCI method or
+        operation may require zero or more round-trips to Oracle Database. The timeout value applies to each
+        round-trip individually, not to the sum of all round-trips. Time spent processing in OCI before or
+        after the completion of each round-trip is not counted.
+    */
+    pub fn set_call_timeout(&self, milliseconds: u32) -> Result<()> {
+        let ctx : &OCISvcCtx = self.as_ref();
+        attr::set(OCI_ATTR_CALL_TIMEOUT, milliseconds, OCI_HTYPE_SVCCTX, ctx, self.as_ref())
+    }
+
+    /**
+        Returns time (in milliseconds) for a database round-trip call to time out.
+    */
+    pub fn call_timeout(&self) -> Result<u32> {
+        let ctx : &OCISvcCtx = self.as_ref();
+        attr::get(OCI_ATTR_CALL_TIMEOUT, OCI_HTYPE_SVCCTX, ctx, self.as_ref())
+    }
+
+    /**
+        Causes the server to measure call time, in milliseconds, for each subsequent OCI call.
+    */
     pub fn start_call_time_measurements(&self) -> Result<()> {
-        self.set_session_attr(OCI_ATTR_COLLECT_CALL_TIME, 1u8)
+        self.set_attr(OCI_ATTR_COLLECT_CALL_TIME, 1u32)
     }
 
-    /// Returns the server-side time for the preceding call in microseconds.
+    /**
+        Returns the server-side time for the preceding call in microseconds.
+
+        # Example
+
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
+        ```
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn main() -> Result<()> {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        conn.start_call_time_measurements()?;
+        conn.ping()?;
+        let dt = conn.call_time()?;
+        conn.stop_call_time_measurements()?;
+        assert!(dt > 0);
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn main() -> Result<()> {
+        # sibyl::current_thread_block_on(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # conn.start_call_time_measurements()?;
+        # conn.ping().await?;
+        # let dt = conn.call_time()?;
+        # conn.stop_call_time_measurements()?;
+        # assert!(dt > 0);
+        # Ok(()) })
+        # }
+        ```
+    */
     pub fn call_time(&self) -> Result<u64> {
-        self.get_session_attr(OCI_ATTR_CALL_TIME)
+        self.get_attr(OCI_ATTR_CALL_TIME)
     }
 
     /// Terminates call time measurements.
     pub fn stop_call_time_measurements(&self) -> Result<()> {
-        self.set_session_attr(OCI_ATTR_COLLECT_CALL_TIME, 0u8)
+        self.set_attr(OCI_ATTR_COLLECT_CALL_TIME, 0u32)
     }
 
     /**
@@ -167,7 +228,7 @@ impl Connection<'_> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -189,7 +250,7 @@ impl Connection<'_> {
         ```
     */
     pub fn set_module(&self, name: &str) -> Result<()> {
-        self.set_session_attr(OCI_ATTR_MODULE, name)
+        self.set_attr(OCI_ATTR_MODULE, name)
     }
 
     /**
@@ -226,7 +287,7 @@ impl Connection<'_> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -248,7 +309,7 @@ impl Connection<'_> {
         ```
     */
     pub fn set_action(&self, action: &str) -> Result<()> {
-        self.set_session_attr(OCI_ATTR_ACTION, action)
+        self.set_attr(OCI_ATTR_ACTION, action)
     }
 
     /**
@@ -284,7 +345,7 @@ impl Connection<'_> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -305,7 +366,7 @@ impl Connection<'_> {
         ```
     */
     pub fn set_client_identifier(&self, id: &str) -> Result<()> {
-        self.set_session_attr(OCI_ATTR_CLIENT_IDENTIFIER, id)
+        self.set_attr(OCI_ATTR_CLIENT_IDENTIFIER, id)
     }
 
     /**
@@ -341,7 +402,7 @@ impl Connection<'_> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -362,7 +423,7 @@ impl Connection<'_> {
         ```
     */
     pub fn set_client_info(&self, info: &str) -> Result<()> {
-        self.set_session_attr(OCI_ATTR_CLIENT_INFO, info)
+        self.set_attr(OCI_ATTR_CLIENT_INFO, info)
     }
 
     /**
@@ -389,8 +450,8 @@ impl Connection<'_> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> { 
-        # sibyl::test::on_single_thread(async {
+        # fn main() -> Result<()> {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -402,11 +463,11 @@ impl Connection<'_> {
         # conn.set_current_schema(orig_name)?;
         # assert_eq!(conn.current_schema()?, orig_name);
         # Ok(()) })
-        # }        
+        # }
         ```
     */
     pub fn current_schema(&self) -> Result<&str> {
-        self.get_session_attr(OCI_ATTR_CURRENT_SCHEMA)
+        self.get_attr(OCI_ATTR_CURRENT_SCHEMA)
     }
 
     /**
@@ -420,7 +481,7 @@ impl Connection<'_> {
 
         🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
         to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
-    
+
         ```
         # use sibyl::Result;
         # #[cfg(feature="blocking")]
@@ -450,7 +511,7 @@ impl Connection<'_> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -475,7 +536,7 @@ impl Connection<'_> {
         ```
     */
     pub fn set_current_schema(&self, schema_name: &str) -> Result<()> {
-        self.set_session_attr(OCI_ATTR_CURRENT_SCHEMA, schema_name)
+        self.set_attr(OCI_ATTR_CURRENT_SCHEMA, schema_name)
     }
 
     /**
@@ -487,6 +548,11 @@ impl Connection<'_> {
         in each prepared statement.
     */
     pub fn set_lob_prefetch_size(&self, size: u32) -> Result<()> {
-        self.set_session_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE, size)
+        self.set_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE, size)
+    }
+
+    /// Returns the default prefetch buffer size for each LOB locator.
+    pub fn lob_prefetch_size(&self) -> Result<u32> {
+        self.get_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE)
     }
 }

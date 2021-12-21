@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn session_pool() -> Result<()> {
-        test::on_multi_threads(async {
+        sibyl::multi_thread_block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -226,54 +226,6 @@ mod tests {
                 let pool = pool.clone();
                 let handle = sibyl::spawn(async move {
                     let conn = pool.get_session().await.expect("database session");
-                    let stmt = conn.prepare("
-                        SELECT first_name, last_name, hire_date
-                          FROM (
-                                SELECT first_name, last_name, hire_date
-                                     , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
-                                  FROM hr.employees
-                               )
-                         WHERE hire_date_rank = 1
-                    ").await.expect("prepared select");
-                    fetch_latest_hire(stmt).await.expect("selected employee name")
-                });
-                workers.push(handle);
-            }
-            for handle in workers {
-                let name = handle.await.expect("select result");
-                assert_eq!(name, "Amit Banda was hired on April 21, 2008");
-            }
-    
-            Ok(())
-        })
-    }
-
-    #[test]
-    fn connection_pool() -> Result<()> {
-        test::on_multi_threads(async {
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-    
-            let dbname = env::var("DBNAME").expect("database name");
-            let dbuser = env::var("DBUSER").expect("schema name");
-            let dbpass = env::var("DBPASS").expect("password");
-    
-            let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-            let pool = Arc::new(pool);
-            let user = Arc::new(dbuser);
-            let pass = Arc::new(dbpass);
-                    
-            let mut workers = Vec::with_capacity(100);
-            for _i in 0..workers.capacity() {
-                let pool = pool.clone();
-                let user = user.clone();
-                let pass = pass.clone();
-                let handle = sibyl::spawn(async move {
-                    let conn = pool.get_session(&user, &pass).await.expect("database session");
                     let stmt = conn.prepare("
                         SELECT first_name, last_name, hire_date
                           FROM (

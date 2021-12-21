@@ -1,6 +1,6 @@
 //! Binding of parameter placeholders
 
-use super::{SqlInArg, SqlOutArg, Position};
+use super::{StmtInArg, StmtOutArg, Position};
 use crate::{Result, Error, oci::{self, *}};
 use std::{ptr, collections::{HashMap, HashSet}};
 use libc::c_void;
@@ -17,26 +17,29 @@ pub(crate) struct Params {
 }
 
 impl Params {
-    pub(super) fn new(stmt: *mut OCIStmt, err: *mut OCIError) -> Result<Option<Self>> {
-        let num_binds = attr::get::<u32>(OCI_ATTR_BIND_COUNT, OCI_HTYPE_STMT, stmt as *const c_void, err)? as usize;
+    pub(super) fn new(stmt: &OCIStmt, err: &OCIError) -> Result<Option<Self>> {
+        let num_binds : u32 = attr::get(OCI_ATTR_BIND_COUNT, OCI_HTYPE_STMT, stmt, err)?;
+        let num_binds = num_binds as usize;
         if num_binds == 0 {
             Ok(None)
         } else {
-            let mut bind_names      = vec![ptr::null_mut::<u8>(); num_binds];
-            let mut bind_name_lens  = vec![0u8; num_binds];
-            let mut ind_names       = vec![ptr::null_mut::<u8>(); num_binds];
-            let mut ind_name_lens   = vec![0u8; num_binds];
-            let mut dups            = vec![0u8; num_binds];
+
+            let mut bind_names      = vec![     ptr::null_mut::<u8>(); num_binds];
+            let mut bind_name_lens  = vec![                       0u8; num_binds];
+            let mut ind_names       = vec![     ptr::null_mut::<u8>(); num_binds];
+            let mut ind_name_lens   = vec![                       0u8; num_binds];
+            let mut dups            = vec![                       0u8; num_binds];
             let mut oci_binds       = vec![ptr::null_mut::<OCIBind>(); num_binds];
-            let mut found: i32      = 0;            
+            let mut found: i32      = 0;
+
             oci::stmt_get_bind_info(
                 stmt, err,
                 num_binds as u32, 1, &mut found,
                 bind_names.as_mut_ptr(), bind_name_lens.as_mut_ptr(),
                 ind_names.as_mut_ptr(),  ind_name_lens.as_mut_ptr(),
-                dups.as_mut_ptr(),
-                oci_binds.as_mut_ptr()
+                dups.as_mut_ptr(),       oci_binds.as_mut_ptr()
             )?;
+
             let mut param_idxs = HashMap::with_capacity(num_binds);
             let mut args_binds = Vec::with_capacity(num_binds);
             let mut indicators = Vec::with_capacity(num_binds);
@@ -64,30 +67,27 @@ impl Params {
         } else if let Some(&ix) = self.param_idxs.get(name[1..].to_uppercase().as_str()) {
             Ok(ix)
         } else {
-            Err(Error::new(&format!("Statement does not define {} parameter placeholder", name)))
+            Err(Error::new(&format!("Statement does not define parameter placeholder {}", name)))
         }
     }
 
     /// Binds the argument to a parameter placeholder at the specified position in the SQL statement
-    fn bind(&mut self, stmt: *mut OCIStmt, err: *mut OCIError, idx: usize, sql_type: u16, data: *mut c_void, buff_size: usize) -> Result<()> {
+    fn bind(&mut self, stmt: &OCIStmt, err: &OCIError, idx: usize, sql_type: u16, data: *mut c_void, buff_size: usize) -> Result<()> {
         let pos = idx + 1;
         unsafe {
             oci::bind_by_pos(
-                stmt, self.args_binds[idx].as_ptr(), err,
+                stmt, self.args_binds[idx].as_mut_ptr(), err,
                 pos as u32,
                 data, buff_size as i64, sql_type,
                 self.indicators.as_mut_ptr().add(idx),  // Pointer to an indicator variable or array
                 self.data_sizes.as_mut_ptr().add(idx),  // Pointer to an array of actual lengths of array elements
-                ptr::null_mut::<u16>(), // Pointer to an array of column-level return codes
-                0,                      // Maximum array length
-                ptr::null_mut::<u32>(), // Pointer to the actual number of elements in the array
                 OCI_DEFAULT
             )
         }
     }
 
     /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
-    pub(crate) fn bind_args(&mut self, stmt: *mut OCIStmt, err: *mut OCIError, in_args: &[&dyn SqlInArg], out_args: &mut [&mut dyn SqlOutArg]) -> Result<Option<Vec<usize>>> {
+    pub(crate) fn bind_args(&mut self, stmt: &OCIStmt, err: &OCIError, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<Option<Vec<usize>>> {
         let mut args_idxs : HashSet<_> = self.param_idxs.values().cloned().collect();
 
         let mut idx = 0;
@@ -154,5 +154,4 @@ impl Params {
     pub(super) fn out_data_len(&self, idx: usize) -> usize {
         self.data_sizes[idx] as usize
     }
-
 }

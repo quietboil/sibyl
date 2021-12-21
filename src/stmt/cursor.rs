@@ -8,15 +8,15 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-use super::{ResultSetColumns, Statement, Stmt, args::ToSqlOut, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::Row, ResultSetConnection};
-use crate::{Result, env::Env, oci::*, types::Ctx, Connection, ptr::ScopedMutPtr};
+use super::{Statement, args::ToSqlOut, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::Row};
+use crate::{Result, oci::*, types::Ctx};
 use libc::c_void;
 use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 impl ToSqlOut for Handle<OCIStmt> {
     fn sql_type(&self) -> u16 { SQLT_RSET }
-    fn sql_mut_data_ptr(&mut self) -> ScopedMutPtr<c_void> { ScopedMutPtr::new(self.as_ptr() as _) }
+    fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(self.as_ptr() as _) }
     fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIStmt>() }
 }
 
@@ -25,13 +25,22 @@ pub(crate) enum RefCursor {
     Ptr( Ptr<OCIStmt> )
 }
 
-impl RefCursor {
-    fn get_ptr(&self) -> *mut OCIStmt {
+impl AsRef<OCIStmt> for RefCursor {
+    fn as_ref(&self) -> &OCIStmt {
         match self {
-            RefCursor::Handle( handle ) => handle.get(),
-            RefCursor::Ptr( ptr )       => ptr.get(),
+            RefCursor::Handle( handle ) => handle.as_ref(),
+            RefCursor::Ptr( ptr )       => ptr.as_ref(),
         }
     }
+}
+
+impl RefCursor {
+    // fn get_ptr(&self) -> Ptr<OCIStmt> {
+    //     match self {
+    //         RefCursor::Handle( handle ) => handle.get_ptr(),
+    //         RefCursor::Ptr( ptr )       => *ptr,
+    //     }
+    // }
 
     fn as_mut_ptr(&mut self) -> *mut *mut OCIStmt {
         match self {
@@ -41,118 +50,100 @@ impl RefCursor {
     }
 }
 
-enum CursorParent<'a> {
+enum CursorSource<'a> {
     Statement(&'a Statement<'a>),
     Row(&'a Row<'a>)
 }
 
-impl CursorParent<'_> {
-    fn conn(&self) -> &Connection {
+impl AsRef<OCIEnv> for CursorSource<'_> {
+    fn as_ref(&self) -> &OCIEnv {
         match self {
-            &Self::Statement(stmt) => stmt.conn,
-            &Self::Row(row) => row.conn(),
+            &Self::Statement(stmt) => stmt.as_ref(),
+            &Self::Row(row)        => row.as_ref(),
         }
     }
 }
 
-impl Env for CursorParent<'_> {
-    fn env_ptr(&self) -> *mut OCIEnv {
+impl AsRef<OCIError> for CursorSource<'_> {
+    fn as_ref(&self) -> &OCIError {
         match self {
-            &Self::Statement(stmt) => stmt.env_ptr(),
-            &Self::Row(row) => row.get_ctx().env_ptr(),
+            &Self::Statement(stmt) => stmt.as_ref(),
+            &Self::Row(row)        => row.as_ref(),
         }
-    }
-
-    fn err_ptr(&self) -> *mut OCIError {
-        match self {
-            &Self::Statement(stmt) => stmt.err_ptr(),
-            &Self::Row(row) => row.err_ptr(),
-        }
-    }
-
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        Ptr::new(self.env_ptr())
-    }
-
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        Ptr::new(self.err_ptr())
     }
 }
 
-impl Ctx for CursorParent<'_> {
-    fn ctx_ptr(&self) -> *mut c_void {
+impl AsRef<OCISvcCtx> for CursorSource<'_> {
+    fn as_ref(&self) -> &OCISvcCtx {
         match self {
-            &Self::Statement(stmt) => stmt.ctx_ptr(),
-            &Self::Row(row) => row.get_ctx().ctx_ptr(),
+            &Self::Statement(stmt) => stmt.as_ref(),
+            &Self::Row(row)        => row.as_ref(),
+        }
+    }
+}
+
+impl Ctx for CursorSource<'_> {
+    fn try_as_session(&self) -> Option<&OCISession> {
+        match self {
+            &Self::Statement(stmt) => stmt.try_as_session(),
+            &Self::Row(row)        => row.try_as_session(),
         }
     }
 }
 
 /// Cursors - implicit results and REF CURSOR - from an executed PL/SQL statement
 pub struct Cursor<'a> {
-    parent: CursorParent<'a>,
+    source: CursorSource<'a>,
     cursor: RefCursor,
     cols:   OnceCell<RwLock<Columns>>,
     max_long: u32,
 }
 
-impl Env for Cursor<'_> {
-    fn env_ptr(&self) -> *mut OCIEnv {
-        self.parent.env_ptr()
+impl AsRef<OCIEnv> for Cursor<'_> {
+    fn as_ref(&self) -> &OCIEnv {
+        self.source.as_ref()
     }
+}
 
-    fn err_ptr(&self) -> *mut OCIError {
-        self.parent.err_ptr()
+impl AsRef<OCIError> for Cursor<'_> {
+    fn as_ref(&self) -> &OCIError {
+        self.source.as_ref()
     }
+}
 
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        self.parent.get_env_ptr()
+impl AsRef<OCISvcCtx> for Cursor<'_> {
+    fn as_ref(&self) -> &OCISvcCtx {
+        self.source.as_ref()
     }
+}
 
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        self.parent.get_err_ptr()
+impl AsRef<OCIStmt> for Cursor<'_> {
+    fn as_ref(&self) -> &OCIStmt {
+        self.cursor.as_ref()
     }
 }
 
 impl Ctx for Cursor<'_> {
-    fn ctx_ptr(&self) -> *mut c_void {
-        self.parent.ctx_ptr()
-    }
-}
-
-impl Stmt for Cursor<'_> {
-    fn stmt_ptr(&self) -> *mut OCIStmt {
-        self.cursor.get_ptr()
-    }
-
-    fn get_stmt_ptr(&self) -> Ptr<OCIStmt> {
-        Ptr::new(self.stmt_ptr())
-    }
-}
-
-impl ResultSetColumns for Cursor<'_> {
-    fn read_columns(&self) -> RwLockReadGuard<Columns> {
-        self.cols.get().expect("protected columns").read()
-    }
-
-    fn write_columns(&self) -> RwLockWriteGuard<Columns> {
-        self.cols.get().expect("protected columns").write()
-    }
-}
-
-impl ResultSetConnection for Cursor<'_> {
-    fn conn(&self) -> &Connection {
-        self.parent.conn()
+    fn try_as_session(&self) -> Option<&OCISession> {
+        self.source.try_as_session()
     }
 }
 
 impl ToSqlOut for Cursor<'_> {
     fn sql_type(&self) -> u16 { SQLT_RSET }
-    fn sql_mut_data_ptr(&mut self) -> ScopedMutPtr<c_void> { ScopedMutPtr::new(self.cursor.as_mut_ptr() as _) }
+    fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(self.cursor.as_mut_ptr() as _) }
     fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIStmt>() }
 }
 
 impl<'a> Cursor<'a> {
+    pub(crate) fn read_columns(&self) -> RwLockReadGuard<Columns> {
+        self.cols.get().expect("locked columns").read()
+    }
+
+    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<Columns> {
+        self.cols.get().expect("locked columns").write()
+    }
+
     /**
         Creates a Cursor that can be used as an OUT argument to receive a returning REF CURSOR.
 
@@ -259,7 +250,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -339,10 +330,10 @@ impl<'a> Cursor<'a> {
         See also [`Statement::next_result`] for another method to return REF CURSORs.
     */
     pub fn new(stmt: &'a Statement) -> Result<Self> {
-        let handle = Handle::<OCIStmt>::new(stmt.env_ptr())?;
+        let handle = Handle::<OCIStmt>::new(stmt)?;
         Ok(
             Self {
-                parent:   CursorParent::Statement(stmt),
+                source:   CursorSource::Statement(stmt),
                 cursor:   RefCursor::Handle( handle ),
                 cols:     OnceCell::new(),
                 max_long: DEFAULT_LONG_BUFFER_SIZE
@@ -350,18 +341,20 @@ impl<'a> Cursor<'a> {
         )
     }
 
+    // next_result
     pub(crate) fn implicit(istmt: Ptr<OCIStmt>, stmt: &'a Statement) -> Self {
         Self {
-            parent:   CursorParent::Statement(stmt),
+            source:   CursorSource::Statement(stmt),
             cursor:   RefCursor::Ptr( istmt ),
             cols:     OnceCell::new(),
             max_long: DEFAULT_LONG_BUFFER_SIZE
         }
     }
 
+    // column in a row
     pub(crate) fn explicit(handle: Handle<OCIStmt>, row: &'a Row<'a>) -> Self {
         Self {
-            parent:   CursorParent::Row(row),
+            source:   CursorSource::Row(row),
             cursor:   RefCursor::Handle( handle ),
             cols:     OnceCell::new(),
             max_long: DEFAULT_LONG_BUFFER_SIZE
@@ -369,11 +362,13 @@ impl<'a> Cursor<'a> {
     }
 
     fn get_attr<V: attr::AttrGet>(&self, attr_type: u32) -> Result<V> {
-        attr::get::<V>(attr_type, OCI_HTYPE_STMT, self.stmt_ptr() as *const c_void, self.err_ptr())
+        let stmt: &OCIStmt = self.as_ref();
+        attr::get(attr_type, OCI_HTYPE_STMT, stmt, self.as_ref())
     }
 
     fn set_attr<V: attr::AttrSet>(&self, attr_type: u32, attr_val: V) -> Result<()> {
-        attr::set::<V>(attr_type, attr_val, OCI_HTYPE_STMT, self.stmt_ptr() as *mut c_void, self.err_ptr())
+        let stmt: &OCIStmt = self.as_ref();
+        attr::set(attr_type, attr_val, OCI_HTYPE_STMT, stmt, self.as_ref())
     }
 
     /**
@@ -413,7 +408,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -438,8 +433,8 @@ impl<'a> Cursor<'a> {
         ```
     */
     pub fn column_count(&self) -> Result<usize> {
-        let num_columns = self.get_attr::<u32>(OCI_ATTR_PARAM_COUNT)? as usize;
-        Ok( num_columns )
+        let num_columns = self.get_attr::<u32>(OCI_ATTR_PARAM_COUNT)?;
+        Ok( num_columns as usize )
     }
 
     /**
@@ -489,7 +484,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -522,7 +517,12 @@ impl<'a> Cursor<'a> {
         ```
     */
     pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
-        self.cols.get().and_then(|cols| cols.read().column_info(self, pos))
+        self.cols.get()
+            .and_then(|cols|
+                cols.read().column_param(pos)
+            ).map(|param|
+                ColumnInfo::new(param, self.as_ref())
+            )
     }
 
     /**
@@ -580,7 +580,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -615,8 +615,8 @@ impl<'a> Cursor<'a> {
         ```
     */
     pub fn row_count(&self) -> Result<usize> {
-        let num_rows = self.get_attr::<u64>(OCI_ATTR_UB8_ROW_COUNT)? as usize;
-        Ok( num_rows )
+        let num_rows = self.get_attr::<u64>(OCI_ATTR_UB8_ROW_COUNT)?;
+        Ok( num_rows as usize )
     }
 
     /**
@@ -657,7 +657,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -763,7 +763,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");

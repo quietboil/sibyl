@@ -58,7 +58,6 @@ mode example (see above) with `await`s added.
 
 :warning: For the moment, Sibyl can use only Tokio as an async runtime.
 
-
 ```rust
 use sibyl as oracle;
 
@@ -125,7 +124,7 @@ cargo build --examples --features=blocking
 sibyl = { version = "0.5", features = "blocking" }
 ```
 
-:warning: Version `0.5` is not released yet. At the moment it is the latest in GitHub.
+:warning: Version `0.5` is not released yet. At the moment it is the latest on GitHub.
 
 
 ## Usage
@@ -328,8 +327,8 @@ There are 2 types of intervals:
 ```rust
 use sibyl::{ TimestampTZ, IntervalDS };
 
-let launch  = TimestampTZ::with_datetime(1969, 7, 16, 13, 32,  0, 0, "UTC", &oracle)?;
-let landing = TimestampTZ::with_datetime(1969, 7, 24, 16, 50, 35, 0, "UTC", &oracle)?;
+let launch  = TimestampTZ::with_date_and_time(1969, 7, 16, 13, 32,  0, 0, "UTC", &oracle)?;
+let landing = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 0, "UTC", &oracle)?;
 let duration : IntervalDS = landing.subtract(&launch)?;
 
 assert_eq!("+8 03:18:35.000", duration.to_string(1,3)?);
@@ -417,6 +416,12 @@ Some of sibyl's tests connect to the database and expect certain objects to exis
 - Tests that connect to the database use environment variables - DBNAME, DBUSER and DBPASS - to identify the database, user and password respectively. These variables should be set before executing `cargo test`.
 
 ## Limitations
+
+### Nonblocking mode and LOBs
+
+Due to erratic bahavior of some OCI LOB functions in `nonblocking` mode, support for LOBs (in nonblocking mode) was pulled from Sybil. At the moment the only option, if one needs to work with LOBs, is to build Sybil for `blocking` mode execution.
+
+### Other OCI features
 
 At this time sibyl provides only the most commonly needed means to interface with the Oracle database. Some of the missing features are:
 - Array interface for multi-row operations

@@ -1,11 +1,11 @@
 //! SQL or PL/SQL statement
 
-pub mod args;
-pub mod bind;
-pub mod fromsql;
-pub mod cols;
-pub mod cursor;
-pub mod rows;
+mod args;
+mod bind;
+mod cols;
+mod cursor;
+mod rows;
+mod data;
 
 #[cfg(feature="blocking")]
 #[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
@@ -15,23 +15,41 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-use std::sync::Arc;
+pub use args::{StmtInArg, StmtOutArg, ToSql, ToSqlOut};
+pub use cursor::Cursor;
+pub use rows::{Row, Rows};
+pub use cols::ColumnType;
 
 use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use libc::c_void;
-pub use rows::{Rows, Row};
-pub use cursor::Cursor;
-pub use args::{ToSql, ToSqlOut, SqlInArg, SqlOutArg};
-use bind::Params;
-use cols::{Columns, Position, ColumnInfo};
-use crate::{Result, conn::Session, env::Env, oci::*, types::Ctx, Connection};
 
+use crate::{Result, conn::SvcCtx, oci::*, Connection, types::Ctx};
+
+use std::sync::Arc;
+
+use self::{bind::Params, cols::{Columns, ColumnInfo}};
+
+/// Allows column or output variable identification by either
+/// its numeric position or its name.
+pub trait Position {
+    fn index(&self) -> Option<usize>;
+    fn name(&self)  -> Option<&str>;
+}
+
+impl Position for usize {
+    fn index(&self) -> Option<usize> { Some(*self) }
+    fn name(&self)  -> Option<&str>  { None }
+}
+
+impl Position for &str {
+    fn index(&self) -> Option<usize> { None }
+    fn name(&self)  -> Option<&str>  { Some(*self) }
+}
 
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
     conn:     &'a Connection<'a>,
-    session:  Arc<Session>,
+    svc:      Arc<SvcCtx>,
     stmt:     Ptr<OCIStmt>,
     params:   Option<RwLock<Params>>,
     cols:     OnceCell<RwLock<Columns>>,
@@ -39,85 +57,51 @@ pub struct Statement<'a> {
     max_long: u32,
 }
 
-impl Env for Statement<'_> {
-    fn env_ptr(&self) -> *mut OCIEnv {
-        self.conn.env_ptr()
+impl AsRef<OCIEnv> for Statement<'_> {
+    fn as_ref(&self) -> &OCIEnv {
+        self.conn.as_ref()
     }
+}
 
-    fn err_ptr(&self) -> *mut OCIError {
-        self.err.get()
+impl AsRef<OCIError> for Statement<'_> {
+    fn as_ref(&self) -> &OCIError {
+        self.conn.as_ref()
     }
+}
 
-    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
-        Ptr::new(self.conn.env_ptr())
+impl AsRef<OCISvcCtx> for Statement<'_> {
+    fn as_ref(&self) -> &OCISvcCtx {
+        self.conn.as_ref()
     }
+}
 
-    fn get_err_ptr(&self) -> Ptr<OCIError> {
-        Ptr::new(self.err.get())
+impl AsRef<OCIStmt> for Statement<'_> {
+    fn as_ref(&self) -> &OCIStmt {
+        self.stmt.as_ref()
     }
 }
 
 impl Ctx for Statement<'_> {
-    fn ctx_ptr(&self) -> *mut c_void {
-        self.conn.ctx_ptr()
-    }
-}
-
-pub trait Stmt: Env {
-    fn stmt_ptr(&self) -> *mut OCIStmt;
-    fn get_stmt_ptr(&self) -> Ptr<OCIStmt>;
-}
-
-impl Stmt for Statement<'_> {
-    fn stmt_ptr(&self) -> *mut OCIStmt {
-        self.stmt.get()
-    }
-
-    fn get_stmt_ptr(&self) -> Ptr<OCIStmt> {
-        Ptr::new(self.stmt_ptr())
-    }
-}
-
-trait ResultSetColumns {
-    fn read_columns(&self) -> RwLockReadGuard<Columns>;
-    fn write_columns(&self) -> RwLockWriteGuard<Columns>;
-}
-
-impl ResultSetColumns for Statement<'_> {
-    fn read_columns(&self) -> RwLockReadGuard<Columns> {
-        self.cols.get().expect("protected columns").read()
-    }
-
-    fn write_columns(&self) -> RwLockWriteGuard<Columns> {
-        self.cols.get().expect("protected columns").write()
-    }
-}
-
-trait ResultSetConnection {
-    fn conn(&self) -> &Connection;
-}
-
-impl ResultSetConnection for Statement<'_> {
-    fn conn(&self) -> &Connection {
-        self.conn
+    fn try_as_session(&self) -> Option<&OCISession> {
+        self.conn.try_as_session()
     }
 }
 
 impl<'a> Statement<'a> {
-
-    fn get_attr<V: attr::AttrGet>(&self, attr_type: u32) -> Result<V> {
-        attr::get::<V>(attr_type, OCI_HTYPE_STMT, self.stmt_ptr() as *const c_void, self.err_ptr())
+    fn get_attr<T: attr::AttrGet>(&self, attr_type: u32) -> Result<T> {
+        attr::get(attr_type, OCI_HTYPE_STMT, self.stmt.as_ref(), self.as_ref())
     }
 
-    fn set_attr<V: attr::AttrSet>(&self, attr_type: u32, attr_val: V) -> Result<()> {
-        attr::set::<V>(attr_type, attr_val, OCI_HTYPE_STMT, self.stmt_ptr() as *mut c_void, self.err_ptr())
+    fn set_attr<T: attr::AttrSet>(&self, attr_type: u32, attr_val: T) -> Result<()> {
+        attr::set(attr_type, attr_val, OCI_HTYPE_STMT, self.stmt.as_ref(), self.as_ref())
     }
 
-    /**
-        Checks whether the value returned for the output parameter is NULL.
-    */
-    pub fn is_null(&self, pos: impl Position) -> Result<bool> {
-        self.params.as_ref().map(|params| params.read().is_null(pos)).unwrap_or(Ok(true))
+    pub(crate) fn read_columns(&self) -> RwLockReadGuard<Columns> {
+        self.cols.get().expect("locked columns").read()
+    }
+
+    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<Columns> {
+        self.cols.get().expect("locked columns").write()
     }
 
     /**
@@ -147,7 +131,7 @@ impl<'a> Statement<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -234,7 +218,7 @@ impl<'a> Statement<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -319,7 +303,7 @@ impl<'a> Statement<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -340,73 +324,6 @@ impl<'a> Statement<'a> {
     pub fn column_count(&self) -> Result<usize> {
         let num_columns = self.get_attr::<u32>(OCI_ATTR_PARAM_COUNT)? as usize;
         Ok( num_columns )
-    }
-
-    /**
-        Returns `pos` column meta data handler. `pos` is 0-based. Returns None if
-        `pos` is greater than the number of columns in the query or if the prepared
-        statement is not a SELECT and has no columns.
-
-        # Example
-
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
-
-        ```
-        use sibyl::ColumnType;
-
-        # use sibyl::Result;
-        # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            SELECT employee_id, last_name, first_name
-              FROM hr.employees
-             WHERE manager_id = :id
-        ")?;
-        let rows = stmt.query(&[ &103 ])?;
-        let col = stmt.column(0).expect("employee_id column info");
-        assert_eq!(col.name()?, "EMPLOYEE_ID");
-        assert_eq!(col.data_type()?, ColumnType::Number);
-        assert_eq!(col.precision()?, 6);
-        assert_eq!(col.scale()?, 0);
-        assert!(!col.is_null()?);
-        assert!(col.is_visible()?);
-        assert!(!col.is_identity()?);
-        # Ok(())
-        # }
-        # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # let stmt = conn.prepare("
-        #     SELECT employee_id, last_name, first_name
-        #       FROM hr.employees
-        #      WHERE manager_id = :id
-        # ").await?;
-        # let rows = stmt.query(&[ &103 ]).await?;
-        # let col = stmt.column(0).expect("employee_id column info");
-        # assert_eq!(col.name()?, "EMPLOYEE_ID");
-        # assert_eq!(col.data_type()?, ColumnType::Number);
-        # assert_eq!(col.precision()?, 6);
-        # assert_eq!(col.scale()?, 0);
-        # assert!(!col.is_null()?);
-        # assert!(col.is_visible()?);
-        # assert!(!col.is_identity()?);
-        # Ok(()) })
-        # }
-        ```
-    */
-    pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
-        self.cols.get().and_then(|cols| cols.read().column_info(self, pos))
     }
 
     /**
@@ -454,7 +371,7 @@ impl<'a> Statement<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -492,4 +409,84 @@ impl<'a> Statement<'a> {
     //     let num_rows = self.get_attr::<u32>(OCI_ATTR_ROWS_FETCHED)? as usize;
     //     Ok( num_rows )
     // }
+
+    /**
+        Checks whether the value returned for the output parameter is NULL.
+    */
+    pub fn is_null(&self, pos: impl Position) -> Result<bool> {
+        self.params.as_ref().map(|params| params.read().is_null(pos)).unwrap_or(Ok(true))
+    }
+
+    /**
+        Returns `pos` column meta data handler. `pos` is 0-based. Returns None if
+        `pos` is greater than the number of columns in the query or if the prepared
+        statement is not a SELECT and has no columns.
+
+        # Example
+
+        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
+        ```
+        use sibyl::ColumnType;
+
+        # use sibyl::Result;
+        # #[cfg(feature="blocking")]
+        # fn main() -> Result<()> {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = conn.prepare("
+            SELECT employee_id, last_name, first_name
+              FROM hr.employees
+             WHERE manager_id = :id
+        ")?;
+        let rows = stmt.query(&[ &103 ])?;
+        let col = stmt.column(0).expect("employee_id column info");
+        assert_eq!(col.name()?, "EMPLOYEE_ID");
+        assert_eq!(col.data_type()?, ColumnType::Number);
+        assert_eq!(col.precision()?, 6);
+        assert_eq!(col.scale()?, 0);
+        assert!(!col.is_null()?);
+        assert!(col.is_visible()?);
+        assert!(!col.is_identity()?);
+        # Ok(())
+        # }
+        # #[cfg(feature="nonblocking")]
+        # fn main() -> Result<()> {
+        # sibyl::current_thread_block_on(async {
+        # let oracle = sibyl::env()?;
+        # let dbname = std::env::var("DBNAME").expect("database name");
+        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbpass = std::env::var("DBPASS").expect("password");
+        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        # let stmt = conn.prepare("
+        #     SELECT employee_id, last_name, first_name
+        #       FROM hr.employees
+        #      WHERE manager_id = :id
+        # ").await?;
+        # let rows = stmt.query(&[ &103 ]).await?;
+        # let col = stmt.column(0).expect("employee_id column info");
+        # assert_eq!(col.name()?, "EMPLOYEE_ID");
+        # assert_eq!(col.data_type()?, ColumnType::Number);
+        # assert_eq!(col.precision()?, 6);
+        # assert_eq!(col.scale()?, 0);
+        # assert!(!col.is_null()?);
+        # assert!(col.is_visible()?);
+        # assert!(!col.is_identity()?);
+        # Ok(()) })
+        # }
+        ```
+    */
+    pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
+        self.cols.get()
+            .and_then(|cols|
+                cols.read().column_param(pos)
+            ).map(|param|
+                ColumnInfo::new(param, self.as_ref())
+            )
+    }
 }
+

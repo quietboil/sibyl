@@ -12,40 +12,42 @@ compile_error!("either 'blocking' or 'nonblocking' feature must be explicitly sp
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod task;
 
-mod ptr;
 mod oci;
 mod err;
 mod env;
-mod types;
-mod lob;
-mod pool;
 mod conn;
+mod pool;
+mod types;
 mod stmt;
 
-#[cfg(feature="nonblocking")]
-#[doc(hidden)]
-pub mod test;
+#[cfg(feature="blocking")]
+mod lob;
 
 #[cfg(feature="nonblocking")]
-pub use task::{spawn, spawn_blocking, JoinError};
+pub use task::{spawn, spawn_blocking, JoinError, current_thread_block_on, multi_thread_block_on};
 
 pub use err::Error;
 pub use env::Environment;
-pub use pool::{ConnectionPool, SessionPool, SessionPoolGetMode};
 pub use conn::Connection;
-pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ToSqlOut, SqlInArg, SqlOutArg, cols::ColumnType};
-pub use types::{Date, Number, Raw, Varchar};
+pub use pool::{SessionPool, SessionPoolGetMode};
+pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ToSqlOut, StmtInArg, StmtOutArg, ColumnType};
+pub use types::{Date, Raw, Number, Varchar, RowID};
 pub use oci::{Cache, CharSetForm};
 
 pub type Result<T>        = std::result::Result<T, Error>;
-pub type RowID            = oci::Descriptor<oci::OCIRowid>;
 pub type Timestamp<'a>    = types::timestamp::Timestamp<'a, oci::OCITimestamp>;
 pub type TimestampTZ<'a>  = types::timestamp::Timestamp<'a, oci::OCITimestampTZ>;
 pub type TimestampLTZ<'a> = types::timestamp::Timestamp<'a, oci::OCITimestampLTZ>;
 pub type IntervalYM<'a>   = types::interval::Interval<'a, oci::OCIIntervalYearToMonth>;
 pub type IntervalDS<'a>   = types::interval::Interval<'a, oci::OCIIntervalDayToSecond>;
+
+#[cfg(feature="blocking")]
+pub use pool::ConnectionPool;
+#[cfg(feature="blocking")]
 pub type CLOB<'a>         = lob::LOB<'a,oci::OCICLobLocator>;
+#[cfg(feature="blocking")]
 pub type BLOB<'a>         = lob::LOB<'a,oci::OCIBLobLocator>;
+#[cfg(feature="blocking")]
 pub type BFile<'a>        = lob::LOB<'a,oci::OCIBFileLocator>;
 
 /**

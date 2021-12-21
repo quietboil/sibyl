@@ -1,7 +1,13 @@
 //! Session and Connection Pools
 
-mod connection;
 mod session;
 
-pub use connection::ConnectionPool;
 pub use session::{SessionPool, SessionPoolGetMode};
+
+#[cfg(feature="blocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
+mod connection;
+
+#[cfg(feature="blocking")]
+#[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
+pub use connection::ConnectionPool;

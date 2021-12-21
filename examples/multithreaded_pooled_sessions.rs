@@ -5,6 +5,10 @@ use std::{env, sync::Arc};
     This example is a variant of `readme` that executes its work in multiple
     threads (or async tasks). It creates a session pool which threads (or
     tasks) then use to "borrow" sessions to execute queries.
+
+    Note that `multi_thread_block_on` used in nonblocking version of this example
+    abstracts `block_on` for various executors and is intended to execute async tests
+    and examples.
 */
 fn main() -> Result<()> {
     example()
@@ -70,21 +74,21 @@ fn example() -> Result<()> {
 
 #[cfg(feature="nonblocking")]
 fn example() -> Result<()> {
-    tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async {
+    sibyl::multi_thread_block_on(async {
         use once_cell::sync::OnceCell;
 
         static ORACLE : OnceCell<Environment> = OnceCell::new();
         let oracle = ORACLE.get_or_try_init(|| {
             env()
         })?;
-    
+
         let dbname = env::var("DBNAME").expect("database name");
         let dbuser = env::var("DBUSER").expect("schema name");
         let dbpass = env::var("DBPASS").expect("password");
-    
+
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         let pool = Arc::new(pool);
-    
+
         let mut workers = Vec::with_capacity(100);
         for _i in 0..workers.capacity() {
             let pool = pool.clone();
@@ -106,7 +110,7 @@ fn example() -> Result<()> {
                     let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
                     let hire_date : Date = row.get(2)?.unwrap();
                     let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
-    
+
                     Ok::<_,Error>(Some((name, hire_date)))
                 } else {
                     Ok(None)
@@ -124,7 +128,7 @@ fn example() -> Result<()> {
             n += 1;
         }
         println!("There are {} open sessions in the pool.", pool.open_count()?);
-        
+
         Ok(())
     })
 }

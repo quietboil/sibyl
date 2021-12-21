@@ -12,7 +12,7 @@ impl<'a> Cursor<'a> {
         ```
         use sibyl::Cursor;
 
-        # sibyl::test::on_single_thread(async {
+        # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("schema name");
@@ -59,10 +59,10 @@ impl<'a> Cursor<'a> {
     */
     pub async fn rows(&'a self) -> Result<Rows<'a>> {
         // We do not really need this async, but it makes the API look better :-)
-        // Cursor::rows is called in the same fashion as Statement::rows - via .await
+        // Cursor::rows will be .await-ed in the same fashion as Statement::rows
         async {
             if self.cols.get().is_none() {
-                let cols = Columns::new(self, self.max_long)?;
+                let cols = Columns::new(Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), self.max_long)?;
                 self.cols.get_or_init(|| RwLock::new(cols));
             }
             Ok( Rows::from_cursor(OCI_SUCCESS, self) )

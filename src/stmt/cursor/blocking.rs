@@ -2,9 +2,24 @@
 
 use parking_lot::RwLock;
 
-use crate::{Cursor, Result, Rows, oci::*, stmt::cols::Columns};
+use crate::{Cursor, Result, Rows, oci::*, stmt::cols::Columns, Connection};
+
+use super::CursorSource;
+
+impl CursorSource<'_> {
+    pub(crate) fn conn(&self) -> &Connection {
+        match self {
+            &Self::Statement(stmt) => stmt.conn(),
+            &Self::Row(row)        => row.conn(),
+        }
+    }
+}
 
 impl<'a> Cursor<'a> {
+    pub(crate) fn conn(&self) -> &Connection {
+        self.source.conn()
+    }
+
     /**
         Returns rows selected by this cursor
 
@@ -58,7 +73,7 @@ impl<'a> Cursor<'a> {
     */
     pub fn rows(&self) -> Result<Rows> {
         if self.cols.get().is_none() {
-            let cols = Columns::new(self, self.max_long)?;
+            let cols = Columns::new(Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), self.max_long)?;
             self.cols.get_or_init(|| RwLock::new(cols));
         };
         Ok( Rows::from_cursor(OCI_SUCCESS, self) )
