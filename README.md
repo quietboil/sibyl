@@ -49,7 +49,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
 }
 ```
 
-### Nonnlocking Mode
+### Nonblocking Mode
 
 :memo: Note that the example below uses and depends on [Tokio](https://crates.io/crates/tokio)
 
@@ -319,7 +319,7 @@ assert_eq!(
 
 :memo: If you are getting `ORA-01805` when timestamp with time zone is used, then most likely your local client and
 the server it is connected to are using different versions of the time zone file. This [stackoverflow answer][4]
-answer should help you in setting up your local client with the correct time zone file.
+should help you in setting up your local client with the correct time zone file.
 
 ### Interval
 
@@ -349,7 +349,7 @@ let stmt = conn.prepare("
        FOR UPDATE
 ")?;
 let rows = stmt.query(&[ &107 ])?;
-let cur_row = rows.next()?.unwrap();
+let row = rows.next()?.unwrap();
 let rowid = row.rowid()?;
 
 let manager_id: u32 = row.get(0)?.unwrap();
