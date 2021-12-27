@@ -16,10 +16,6 @@ impl Drop for Statement<'_> {
 }
 
 impl<'a> Statement<'a> {
-    pub(crate) fn conn(&self) -> &Connection {
-        self.conn
-    }
-
     /// Creates a new statement
     pub(crate) fn new(sql: &str, conn: &'a Connection) -> Result<Self> {
         let err = Handle::<OCIError>::new(conn)?;

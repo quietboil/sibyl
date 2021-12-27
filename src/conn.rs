@@ -158,7 +158,7 @@ impl Connection<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         conn.start_call_time_measurements()?;
@@ -173,7 +173,7 @@ impl Connection<'_> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         # conn.start_call_time_measurements()?;
@@ -210,7 +210,7 @@ impl Connection<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         conn.set_module("sibyl");
@@ -231,7 +231,7 @@ impl Connection<'_> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -269,7 +269,7 @@ impl Connection<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         conn.set_action("Session Test");
@@ -290,7 +290,7 @@ impl Connection<'_> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let oracle = sibyl::env()?;
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -327,7 +327,7 @@ impl Connection<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         conn.set_client_identifier("Test Wielder");
@@ -348,7 +348,7 @@ impl Connection<'_> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         # conn.set_client_identifier("Test Wielder");
@@ -384,7 +384,7 @@ impl Connection<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         conn.set_client_info("Nothing to see here, move along folks");
@@ -405,7 +405,7 @@ impl Connection<'_> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         # conn.set_client_info("Nothing to see here, move along folks");
@@ -437,7 +437,7 @@ impl Connection<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let orig_name = conn.current_schema()?;
@@ -454,7 +454,7 @@ impl Connection<'_> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         # let orig_name = conn.current_schema()?;
@@ -488,7 +488,7 @@ impl Connection<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let orig_name = conn.current_schema()?;
@@ -514,7 +514,7 @@ impl Connection<'_> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         # let orig_name = conn.current_schema()?;

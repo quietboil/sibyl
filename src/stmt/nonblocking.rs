@@ -71,7 +71,7 @@ impl<'a> Statement<'a> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("
@@ -110,7 +110,7 @@ impl<'a> Statement<'a> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("
@@ -160,7 +160,7 @@ impl<'a> Statement<'a> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("
@@ -239,7 +239,7 @@ impl<'a> Statement<'a> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("
@@ -354,7 +354,7 @@ mod tests {
             let oracle = crate::env()?;
 
             let dbname = env::var("DBNAME").expect("database name");
-            let dbuser = env::var("DBUSER").expect("schema name");
+            let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;

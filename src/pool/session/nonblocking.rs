@@ -96,7 +96,7 @@ mod tests {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;

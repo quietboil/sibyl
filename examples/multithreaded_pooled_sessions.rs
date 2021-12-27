@@ -25,7 +25,7 @@ fn example() -> Result<()> {
     })?;
 
     let dbname = env::var("DBNAME").expect("database name");
-    let dbuser = env::var("DBUSER").expect("schema name");
+    let dbuser = env::var("DBUSER").expect("user name");
     let dbpass = env::var("DBPASS").expect("password");
 
     let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
@@ -83,7 +83,7 @@ fn example() -> Result<()> {
         })?;
 
         let dbname = env::var("DBNAME").expect("database name");
-        let dbuser = env::var("DBUSER").expect("schema name");
+        let dbuser = env::var("DBUSER").expect("user name");
         let dbpass = env::var("DBPASS").expect("password");
 
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;

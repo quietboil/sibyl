@@ -6,7 +6,7 @@ mod blocking {
     #[test]
     fn character_datatypes() -> Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -22,10 +22,7 @@ mod blocking {
                     )
                 ';
             EXCEPTION
-              WHEN name_already_used THEN
-                EXECUTE IMMEDIATE '
-                    TRUNCATE TABLE test_character_data
-                ';
+              WHEN name_already_used THEN NULL;
             END;
         ")?;
         stmt.execute(&[])?;
@@ -125,7 +122,7 @@ mod blocking {
         use std::cmp::Ordering::Equal;
 
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -145,10 +142,7 @@ mod blocking {
                     )
                 ';
             EXCEPTION
-              WHEN name_already_used THEN
-                EXECUTE IMMEDIATE '
-                    TRUNCATE TABLE test_datetime_data
-                ';
+              WHEN name_already_used THEN NULL;
             END;
         ")?;
         stmt.execute(&[])?;
@@ -262,7 +256,7 @@ mod blocking {
     #[test]
     fn large_object_datatypes() -> Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -280,10 +274,7 @@ mod blocking {
                     )
                 ';
             EXCEPTION
-              WHEN name_already_used THEN
-                EXECUTE IMMEDIATE '
-                    TRUNCATE TABLE test_large_object_data
-                ';
+              WHEN name_already_used THEN NULL;
             END;
         ")?;
         stmt.execute(&[])?;
@@ -353,15 +344,15 @@ mod blocking {
         let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
         let rows = stmt.query(&[ &(":ID", &id) ])?;
         let row  = rows.next()?.expect("a row from the result set");
-        let lob : CLOB = row.get(0)?.expect("BLOB locator");
+        let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(!lob.is_nclob()?);
 
         let text = "Two roads diverged in a yellow wood, And sorry I could not travel both And be one traveler, long I stood And looked down one as far as I could To where it bent in the undergrowth; Then took the other, as just as fair, And having perhaps the better claim, Because it was grassy and wanted wear; Though as for that the passing there Had worn them really about the same, And both that morning equally lay In leaves no step had trodden black. Oh, I kept the first for another day! Yet knowing how way leads on to way, I doubted if I should ever come back. I shall be telling this with a sigh Somewhere ages and ages hence: Two roads diverged in a wood, and I— I took the one less traveled by, And that has made all the difference.";
 
         lob.open()?;
         let count = lob.append(text)?;
-        assert_eq!(count, 728); // bytes
-        assert_eq!(lob.len()?, 726); // characters
+        assert_eq!(count, 726);
+        assert_eq!(lob.len()?, 726);
         lob.close()?;
 
         let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
@@ -369,6 +360,7 @@ mod blocking {
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(!lob.is_nclob()?);
+
         let mut lob_text = String::new();
         lob.read(0, 726, &mut lob_text)?;
         assert_eq!(lob_text, text);
@@ -382,8 +374,8 @@ mod blocking {
 
         lob.open()?;
         let count = lob.append(text)?;
-        assert_eq!(count, 728); // bytes
-        assert_eq!(lob.len()?, 726); // characters
+        assert_eq!(count, 726);
+        assert_eq!(lob.len()?, 726);
         lob.close()?;
 
         let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID")?;
@@ -391,6 +383,7 @@ mod blocking {
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(lob.is_nclob()?);
+
         let mut lob_text = String::new();
         lob.read(0, 726, &mut lob_text)?;
         assert_eq!(lob_text, text);
@@ -401,7 +394,7 @@ mod blocking {
     #[test]
     fn long_and_raw_datatypes() -> Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -417,10 +410,7 @@ mod blocking {
                     )
                 ';
             EXCEPTION
-              WHEN name_already_used THEN
-                EXECUTE IMMEDIATE '
-                    TRUNCATE TABLE test_long_and_raw_data
-                ';
+              WHEN name_already_used THEN NULL;
             END;
         ")?;
         stmt.execute(&[])?;
@@ -462,7 +452,7 @@ mod blocking {
     #[test]
     fn long_raw_datatype() -> Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -477,10 +467,7 @@ mod blocking {
                     )
                 ';
             EXCEPTION
-              WHEN name_already_used THEN
-                EXECUTE IMMEDIATE '
-                    TRUNCATE TABLE test_long_raw_data
-                ';
+              WHEN name_already_used THEN NULL;
             END;
         ")?;
         stmt.execute(&[])?;
@@ -516,7 +503,7 @@ mod blocking {
         use std::cmp::Ordering::Equal;
 
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -533,10 +520,7 @@ mod blocking {
                     )
                 ';
             EXCEPTION
-              WHEN name_already_used THEN
-                EXECUTE IMMEDIATE '
-                    TRUNCATE TABLE test_numeric_data
-                ';
+              WHEN name_already_used THEN NULL;
             END;
         ")?;
         stmt.execute(&[])?;
@@ -583,7 +567,7 @@ mod blocking {
     #[test]
     fn rowid_datatype() -> Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -622,7 +606,7 @@ mod blocking {
         use std::cmp::Ordering::Equal;
 
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -717,7 +701,7 @@ mod blocking {
         use std::cmp::Ordering::Equal;
 
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -815,7 +799,7 @@ mod blocking {
     #[test]
     fn ref_cursor_column() -> Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -876,7 +860,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -893,10 +877,7 @@ mod nonblocking {
                         )
                     ';
                 EXCEPTION
-                  WHEN name_already_used THEN
-                    EXECUTE IMMEDIATE '
-                        TRUNCATE TABLE test_character_data
-                    ';
+                  WHEN name_already_used THEN NULL;
                 END;
             ").await?;
             stmt.execute(&[]).await?;
@@ -1001,7 +982,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -1022,10 +1003,7 @@ mod nonblocking {
                         )
                     ';
                 EXCEPTION
-                WHEN name_already_used THEN
-                    EXECUTE IMMEDIATE '
-                        TRUNCATE TABLE test_datetime_data
-                    ';
+                WHEN name_already_used THEN NULL;
                 END;
             ").await?;
             stmt.execute(&[]).await?;
@@ -1071,6 +1049,7 @@ mod nonblocking {
             ).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
+
             assert_eq!(dt_out.compare(&dt)?, Equal);
             assert_eq!(ts_out.compare(&ts)?, Equal);
             assert_eq!(tsz_out.compare(&tsz)?, Equal);
@@ -1115,7 +1094,6 @@ mod nonblocking {
             assert_eq!(iym_out.compare(&iym2)?, Equal);
             assert_eq!(ids_out.compare(&ids2)?, Equal);
 
-
             let stmt = conn.prepare("SELECT dt, ts, tsz, tsl, iym, ids FROM test_datetime_data WHERE id = :ID").await?;
             let rows = stmt.query(&[ &(":ID", id) ]).await?;
             let row  = rows.next().await?.unwrap();
@@ -1134,7 +1112,7 @@ mod nonblocking {
 
             assert!(rows.next().await?.is_none());
 
-             Ok(())
+            Ok(())
         })
     }
 
@@ -1149,7 +1127,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -1166,10 +1144,7 @@ mod nonblocking {
                         )
                     ';
                 EXCEPTION
-                WHEN name_already_used THEN
-                    EXECUTE IMMEDIATE '
-                        TRUNCATE TABLE test_long_and_raw_data
-                    ';
+                WHEN name_already_used THEN NULL;
                 END;
             ").await?;
             stmt.execute(&[]).await?;
@@ -1221,7 +1196,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -1237,10 +1212,7 @@ mod nonblocking {
                         )
                     ';
                 EXCEPTION
-                WHEN name_already_used THEN
-                    EXECUTE IMMEDIATE '
-                        TRUNCATE TABLE test_long_raw_data
-                    ';
+                WHEN name_already_used THEN NULL;
                 END;
             ").await?;
             stmt.execute(&[]).await?;
@@ -1284,7 +1256,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -1302,10 +1274,7 @@ mod nonblocking {
                         )
                     ';
                 EXCEPTION
-                WHEN name_already_used THEN
-                    EXECUTE IMMEDIATE '
-                        TRUNCATE TABLE test_numeric_data
-                    ';
+                WHEN name_already_used THEN NULL;
                 END;
             ").await?;
             stmt.execute(&[]).await?;
@@ -1361,7 +1330,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -1413,7 +1382,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -1516,7 +1485,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -1623,7 +1592,7 @@ mod nonblocking {
             })?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -1663,6 +1632,117 @@ mod nonblocking {
 
             assert!(dept_rows.next().await?.is_none());
             assert!(rows.next().await?.is_none());
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn large_object_datatypes() -> Result<()> {
+        sibyl::current_thread_block_on(async {
+            use once_cell::sync::OnceCell;
+
+            static ORACLE : OnceCell<Environment> = OnceCell::new();
+            let oracle = ORACLE.get_or_try_init(|| {
+                sibyl::env()
+            })?;
+
+            let dbname = std::env::var("DBNAME").expect("database name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
+            let dbpass = std::env::var("DBPASS").expect("password");
+
+            let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let stmt = conn.prepare("
+                DECLARE
+                    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
+                BEGIN
+                    EXECUTE IMMEDIATE '
+                        CREATE TABLE test_large_object_data (
+                            id      NUMBER GENERATED ALWAYS AS IDENTITY,
+                            bin     BLOB,
+                            text    CLOB,
+                            ntxt    NCLOB,
+                            fbin    BFILE
+                        )
+                    ';
+                EXCEPTION
+                WHEN name_already_used THEN NULL;
+                END;
+            ").await?;
+            stmt.execute(&[]).await?;
+
+            let stmt = conn.prepare("
+                INSERT INTO test_large_object_data (bin, text, ntxt, fbin)
+                VALUES (Empty_Blob(), Empty_Clob(), Empty_Clob(), BFileName(:DIR,:NAME))
+                RETURNING id INTO :ID
+            ").await?;
+            let mut id = 0;
+            let count = stmt.execute_into(
+                &[
+                    &(":DIR", "MEDIA_DIR"),
+                    &(":NAME", "hello_world.txt")
+                ], &mut [
+                    &mut (":ID", &mut id)
+                ]
+            ).await?;
+            assert_eq!(count, 1);
+            assert!(id > 0);
+
+            // Content of `hello_world.txt`:
+            // let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
+
+            // Can only read BFILEs
+            // let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID")?;
+            // let rows = stmt.query(&[ &(":ID", &id) ])?;
+            // let row  = rows.next()?.expect("a row from the result set");
+            // let lob : BFile = row.get("FBIN")?.expect("BFILE locator");
+
+            // assert!(lob.file_exists()?);
+            // let (dir, name) = lob.file_name()?; // if we forgot :-)
+            // assert_eq!(dir, "MEDIA_DIR");
+            // assert_eq!(name, "hello_world.txt");
+
+            // assert!(!lob.is_file_open()?);
+            // lob.open_file()?;
+            // let mut lob_data = Vec::new();
+            // lob.read(0, 28, &mut lob_data)?;
+            // lob.close_file()?;
+            // assert_eq!(lob_data, data);
+
+            // // Note: To modify a LOB column or attribute (write, copy, trim, and so forth), you must lock the row containing the LOB.
+            // // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
+
+            // let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
+            // let rows = stmt.query(&[ &(":ID", &id) ])?;
+            // let row  = rows.next()?.expect("a row from the result set");
+            // let lob : BLOB = row.get(0)?.expect("BLOB locator");
+
+            // lob.open()?;
+            // let count = lob.append(&data)?;
+            // assert_eq!(count, 28);
+            // lob.close()?;
+
+            // // Read it (in another transaction)
+
+            // let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
+            // let rows = stmt.query(&[ &(":ID", &id) ])?;
+            // let row  = rows.next()?.expect("a row from the result set");
+            // let lob : BLOB = row.get(0)?.expect("BLOB locator");
+            // let mut lob_data = Vec::new();
+            // lob.read(0, 28, &mut lob_data)?;
+            // assert_eq!(lob_data, data);
+
+
+            let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
+            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
+            let row  = rows.next().await?.expect("a row from the result set");
+            let lob : CLOB = row.get(0)?.expect("CLOB locator");
+            assert!(!lob.is_nclob()?);
+
+            let _text = "Two roads diverged in a yellow wood, And sorry I could not travel both And be one traveler, long I stood And looked down one as far as I could To where it bent in the undergrowth; Then took the other, as just as fair, And having perhaps the better claim, Because it was grassy and wanted wear; Though as for that the passing there Had worn them really about the same, And both that morning equally lay In leaves no step had trodden black. Oh, I kept the first for another day! Yet knowing how way leads on to way, I doubted if I should ever come back. I shall be telling this with a sigh Somewhere ages and ages hence: Two roads diverged in a wood, and I— I took the one less traveled by, And that has made all the difference.";
+
+            
+
 
             Ok(())
         })

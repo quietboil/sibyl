@@ -100,7 +100,7 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
 
 ## Notes on Building
 
-Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can supply that information via environment variable `OCI_LIB_DIR` in Windows or `LIBRARY_PATH` in Linux. In Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build sibyl's example as:
+Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can supply that information via environment variable `OCI_LIB_DIR` in Windows or `LIBRARY_PATH` in Linux. In Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build Sibyl's example as:
 ```bash
 LIBRARY_PATH=/usr/lib/oracle/19.13/client64/lib cargo build --examples --features=blocking
 ```
@@ -125,7 +125,6 @@ sibyl = { version = "0.5", features = "blocking" }
 ```
 
 :warning: Version `0.5` is not released yet. At the moment it is the latest on GitHub.
-
 
 ## Usage
 
@@ -188,7 +187,7 @@ let stmt = conn.prepare("
 ```
 
 A prepared statement can be executed either with the `query` or `execute` or `execute_into` methods:
-- `query` is used for `SELECT` statements. In fact, sibyl will complain if you try to `query` any other statement.
+- `query` is used for `SELECT` statements. In fact, Sibyl will complain if you try to `query` any other statement.
 - `execute` is used for all other, non-SELECT, DML and DDL that do not have OUT parameters.
 - `execute_into` is used with DML that have OUT parameters.
 
@@ -254,7 +253,7 @@ There are a few notable points of interest in the last example:
 - Column value is returned as an `Option`. However, if a column is declared as `NOT NULL`, like `EMPLOYEE_ID` and `LAST_NAME`, the result will always be `Some` and therefore can be safely unwrapped.
 - `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they are borrowed directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
 
-**Note** that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:
+:memo: Note that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:
 
 ```rust
 while let Some( row ) = rows.next()? {
@@ -317,6 +316,10 @@ assert_eq!(
     "1969-07-20 20:18:04.160 UTC"
 );
 ```
+
+:memo: If you are getting `ORA-01805` when timestamp with time zone is used, then most likely your local client and
+the server it is connected to are using different versions of the time zone file. This [stackoverflow answer][4]
+answer should help you in setting up your local client with the correct time zone file.
 
 ### Interval
 
@@ -406,24 +409,133 @@ if let Some( cursor ) = stmt.next_result()? {
 }
 ```
 
+### CLOBs, BLOBs, BFILEs
+
+Let's assume a table was created:
+
+```sql
+CREATE TABLE lob_example (
+    id  NUMBER GENERATED ALWAYS AS IDENTITY,
+    bin BLOB
+);
+```
+
+We can then create and write data into that LOB as:
+
+```rust
+// ... create OCI environment, connect to the database, etc.
+
+let file = BFile::new(&conn)?;
+file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
+let file_len = file.len().await?;
+
+file.open_file().await?;
+let mut data = Vec::new();
+let num_read = file.read(0, file_len, &mut data).await?;
+file.close_file().await?;
+// ... or do not close now as it will be closed
+// automatically when `file` goes out of scope
+
+// Insert new BLOB and lock its row
+let stmt = conn.prepare("
+    DECLARE
+        row_id ROWID;
+    BEGIN
+        INSERT INTO lob_example (bin) VALUES (Empty_Blob()) RETURNING rowid INTO row_id;
+        SELECT bin INTO :NEW_BLOB FROM lob_example WHERE rowid = row_id FOR UPDATE;
+    END;
+").await?;
+let mut lob = BLOB::new(&conn)?;
+stmt.execute_into(&[], &mut [ &mut lob ]).await?;
+
+lob.open().await?;
+let num_bytes_written = lob.write(0, &data).await?;
+lob.close().await?;
+
+conn.commit().await?;
+```
+
+And then later it could be read as:
+
+```rust
+let id: usize = 1234; // it was retrieved from somewhere...
+let stmt = conn.prepare("SELECT bin FROM lob_examples WHERE id = :ID").await?;
+let rows = stmt.query(&[ &id ]).await?;
+if let Some(row) = rows.next().await? {
+    if let Some(lob) = row.get(0)? {
+        let data = read_blob(lob)?;
+        // ...
+    }
+}
+```
+
+Where `read_blob` could be this:
+
+```rust
+async fn read_blob(lob: BLOB<'_>) -> Result<Vec<u8>> {
+    let mut data = Vec::new();
+    let lob_len = lob.len().await?;
+    let offset = 0;
+    lob.read(offset, lob_len, &mut data).await?;
+    Ok(data)
+}
+```
+
+
 ## Testing
 
-Some of sibyl's tests connect to the database and expect certain objects to exist in it and certain privileges granted:
+Some of Sibyl's tests connect to the database and expect certain objects to exist in it and certain privileges granted:
 - At least the HR demo schema should be [installed][2].
 - While there is no need to install other demo schemas at least `MEDIA_DIR` should be created (see `$ORACLE_HOME/demo/schema/mk_dir.sql`) and point to the directory with demo files that can be found in `product_media` in the [db-sample-schemas.zip][3].
 - Some of the LOB tests need text files with the the expected content. Those can be found in `etc/media` and copied into `MEDIA_DIR`.
 - A test user should be created. That user needs acccess to the HR schema and to the `MEDIA_DIR` directory. See `etc/create_sandbox.sql` for an example of how it can be accomplished.
 - Tests that connect to the database use environment variables - DBNAME, DBUSER and DBPASS - to identify the database, user and password respectively. These variables should be set before executing `cargo test`.
 
+
+## Supported Clients
+
+The minimal supported client is 12.2 as Sibyl uses APIs that are not available in earlier clients. While suporting those is definitely feasible, it was not a priority.
+
+Sibyl tests are routinely executed on x64 Linux with Instant Clients 12.2, 18.5, 19.13 and 21.4 that connect to the 19.3 database.
+
+### Known Issues with Some Clients
+
+:memo: `SessionPool::session_max_use_count` and `SessionPool::set_session_max_use_count` will fail on 12.2 client as with `ORA-24315: illegal attribute type`.
+
+:warning: Client 21.4 (at least with 19.3 database) is strangely picky about names of parameter placeholders for LOB columns. For example, if a table was created with the following LOB column:
+
+```sql
+CREATE TABLE table_with_lob (
+    id   NUMBER GENERATED ALWAYS AS IDENTITY,
+    txt  CLOB
+);
+```
+
+and if an SQL parameter name is the same as the LOB column name (as in this example):
+
+```rust
+let stmt = conn.prepare("
+    INSERT INTO table_with_lob (txt) VALUES (:TXT) RETURNING id INTO :ID
+")?;
+```
+
+Then 21.4 client will fail executing this SQL with `ORA-03120: two-task conversion routine: integer overflow`. Renaming the parameter placeholder resolves this:
+
+```rust
+let stmt = conn.prepare("
+    INSERT INTO table_with_lob (txt) VALUES (:NEW_TXT) RETURNING id INTO :ID
+")?;
+```
+
+21.4 also does not "like" some specific parameter names like `:NAME` which makes it fails with the same `ORA-03120`.
+
+:memo: Note that 12.2 through 19.13 clients (as far as Sibyl's tests showed) do not exhibit this issue.
+
+:warning: 21.4 client (at least when it is connected to the 19.3 database) cannot read **CLOBs** piece-wize - something bad happens in `OCILobRead2` as it reads the last fragment and the process gets killed. 21.4 client has no issues executing piece-wise reads from BFILEs and BLOBs.
+
 ## Limitations
 
-### Nonblocking mode and LOBs
-
-Due to erratic bahavior of some OCI LOB functions in `nonblocking` mode, support for LOBs (in nonblocking mode) was pulled from Sybil. At the moment the only option, if one needs to work with LOBs, is to build Sybil for `blocking` mode execution.
-
-### Other OCI features
-
-At this time sibyl provides only the most commonly needed means to interface with the Oracle database. Some of the missing features are:
+At this time Sibyl provides only the most commonly needed means to interface with the Oracle database. Some of the missing features are:
 - Array interface for multi-row operations
 - User defined data types
 - PL/SQL collections and tables
@@ -437,8 +549,9 @@ At this time sibyl provides only the most commonly needed means to interface wit
 - Shards
 - Direct path load
 
-Some of these features will be added in the upcoming releases. Some will likely be kept on a backburner until the need arises or they are explicitly requested. And some might never be implemented. The latter category includes those that are incompatible with nonblocking execution.
+Some of these features might be added in the upcoming releases if the need arises or if they are explicitly requested. Some, however, will never be implemented. The latter category includes those that are incompatible with nonblocking execution.
 
 [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html
 [2]: https://docs.oracle.com/en/database/oracle/oracle-database/19/comsc/installing-sample-schemas.html#GUID-1E645D09-F91F-4BA6-A286-57C5EC66321D
 [3]: https://github.com/oracle/db-sample-schemas/releases/latest
+[4]: https://stackoverflow.com/questions/69381749/where-is-the-oracle-instant-client-timezone-file-located

@@ -15,7 +15,7 @@ impl<'a> Cursor<'a> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         let stmt = conn.prepare("

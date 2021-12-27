@@ -17,7 +17,7 @@ mod tests {
             let oracle = oracle.clone();
             let handle = thread::spawn(move || -> String {
                 let dbname = env::var("DBNAME").expect("database name");
-                let dbuser = env::var("DBUSER").expect("schema name");
+                let dbuser = env::var("DBUSER").expect("user name");
                 let dbpass = env::var("DBPASS").expect("password");
 
                 let conn = oracle.connect(&dbname, &dbuser, &dbpass).expect("database connection");
@@ -70,7 +70,7 @@ mod tests {
         })?;
 
         let dbname = env::var("DBNAME").expect("database name");
-        let dbuser = env::var("DBUSER").expect("schema name");
+        let dbuser = env::var("DBUSER").expect("user name");
         let dbpass = env::var("DBPASS").expect("password");
 
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -115,7 +115,7 @@ mod tests {
         })?;
 
         let dbname = env::var("DBNAME").expect("database name");
-        let dbuser = env::var("DBUSER").expect("schema name");
+        let dbuser = env::var("DBUSER").expect("user name");
         let dbpass = env::var("DBPASS").expect("password");
 
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 2, 10)?;
@@ -162,7 +162,7 @@ mod tests {
         })?;
 
         let dbname = env::var("DBNAME").expect("database name");
-        let dbuser = env::var("DBUSER").expect("schema name");
+        let dbuser = env::var("DBUSER").expect("user name");
         let dbpass = env::var("DBPASS").expect("password");
 
         let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 0, 2, 10)?;
@@ -215,7 +215,7 @@ mod tests {
             })?;
     
             let dbname = env::var("DBNAME").expect("database name");
-            let dbuser = env::var("DBUSER").expect("schema name");
+            let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
     
             let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;

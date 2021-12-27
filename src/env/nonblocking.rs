@@ -20,7 +20,7 @@ impl Environment {
         let oracle = sibyl::env()?;
 
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
 
         let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
@@ -54,7 +54,7 @@ impl Environment {
         let oracle = sibyl::env()?;
 
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
 
         // Create a session pool where each session will connect to the database
@@ -92,7 +92,7 @@ mod tests {
             let oracle = crate::env()?;
 
             let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("schema name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
             let dbpass = std::env::var("DBPASS").expect("password");
 
             // Create a session pool where each session will connect to the database

@@ -75,12 +75,35 @@ impl ToSqlOut for String {
     fn sql_set_len(&mut self, new_len: usize) { unsafe { self.as_mut_vec().set_len(new_len) } }
 }
 
+impl ToSqlOut for &mut String {
+    fn sql_type(&self) -> u16 { SQLT_CHR }
+    fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(unsafe { self.as_mut_vec().as_mut_ptr() } as _) }
+    fn sql_data_len(&self) -> usize { self.len() }
+    fn sql_capacity(&self) -> usize { self.capacity() }
+    fn sql_set_len(&mut self, new_len: usize) { unsafe { self.as_mut_vec().set_len(new_len) } }
+}
+
 impl ToSqlOut for Vec<u8> {
+    fn sql_type(&self) -> u16 { SQLT_LBI }
+    fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(self.as_mut_ptr() as _) }
+    fn sql_data_len(&self) -> usize { self.len() }
+    fn sql_capacity(&self) -> usize { self.capacity() }
+    fn sql_set_len(&mut self, new_len: usize) { unsafe { self.set_len(new_len) } }
+}
+
+impl ToSqlOut for &mut Vec<u8> {
     fn sql_type(&self) -> u16 { SQLT_LBI }
     fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new((*self).as_mut_ptr() as _) }
     fn sql_data_len(&self) -> usize { self.len() }
     fn sql_capacity(&self) -> usize { self.capacity() }
     fn sql_set_len(&mut self, new_len: usize) { unsafe { self.set_len(new_len) } }
+}
+
+impl ToSqlOut for &mut [u8] {
+    fn sql_type(&self) -> u16 { SQLT_LBI }
+    fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new((*self).as_mut_ptr() as _) }
+    fn sql_data_len(&self) -> usize { 0 }
+    fn sql_capacity(&self) -> usize { self.len() }
 }
 
 /// A trait for types that can be used as named or positional SQL IN arguments

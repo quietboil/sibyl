@@ -48,6 +48,12 @@ impl RowID  {
     }
 }
 
+impl ToSql for RowID {
+    fn sql_type(&self) -> u16 { SQLT_RDD }
+    fn sql_data_ptr(&self) -> Ptr<c_void> { Ptr::new(self.0.as_ptr() as _) }
+    fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIRowid>() }
+}
+
 impl ToSql for &RowID {
     fn sql_type(&self) -> u16 { SQLT_RDD }
     fn sql_data_ptr(&self) -> Ptr<c_void> { Ptr::new(self.0.as_ptr() as _) }

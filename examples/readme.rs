@@ -19,7 +19,7 @@ fn main() -> oracle::Result<()> {
     let oracle = oracle::env()?;
 
     let dbname = std::env::var("DBNAME").expect("database name");
-    let dbuser = std::env::var("DBUSER").expect("schema name");
+    let dbuser = std::env::var("DBUSER").expect("user name");
     let dbpass = std::env::var("DBPASS").expect("password");
 
     let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -69,7 +69,7 @@ fn main() -> oracle::Result<()> {
         let oracle = oracle::env()?;
 
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
     
         let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;

@@ -2,24 +2,9 @@
 
 use parking_lot::RwLock;
 
-use crate::{Cursor, Result, Rows, oci::*, stmt::cols::Columns, Connection};
-
-use super::CursorSource;
-
-impl CursorSource<'_> {
-    pub(crate) fn conn(&self) -> &Connection {
-        match self {
-            &Self::Statement(stmt) => stmt.conn(),
-            &Self::Row(row)        => row.conn(),
-        }
-    }
-}
+use crate::{Cursor, Result, Rows, oci::*, stmt::cols::Columns};
 
 impl<'a> Cursor<'a> {
-    pub(crate) fn conn(&self) -> &Connection {
-        self.source.conn()
-    }
-
     /**
         Returns rows selected by this cursor
 

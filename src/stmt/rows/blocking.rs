@@ -2,18 +2,7 @@
 
 use std::sync::atomic::Ordering;
 
-use crate::{Result, Error, Rows, Row, oci::*, Connection};
-
-use super::DataSource;
-
-impl DataSource<'_> {
-    pub(crate) fn conn(&self) -> &Connection {
-        match self {
-            &Self::Statement(stmt) => stmt.conn(),
-            &Self::Cursor(cursor)  => cursor.conn(),
-        }
-    }
-}
+use crate::{Result, Error, Rows, Row, oci::*};
 
 impl<'a> Rows<'a> {
     /**
@@ -67,11 +56,5 @@ impl<'a> Rows<'a> {
                 _ => Err( Error::oci(self.rset.as_ref(), res) )
             }
         }
-    }
-}
-
-impl<'a> Row<'a> {
-    pub(crate) fn conn(&self) -> &Connection {
-        self.rset.conn()
     }
 }

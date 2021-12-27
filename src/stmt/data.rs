@@ -7,9 +7,8 @@ use crate::{
         date, interval, number, raw, timestamp, varchar,
         Date, Varchar, rowid
     },
+    lob::{ self, LOB },
 };
-#[cfg(feature="blocking")]
-use crate::lob::{ self, LOB };
 
 /// A trait for types which instances can be created from the returned Oracle values.
 pub trait FromSql<'a> : Sized {
@@ -216,7 +215,6 @@ impl<'a> FromSql<'a> for Cursor<'a> {
     }
 }
 
-#[cfg(feature="blocking")]
 macro_rules! impl_from_lob {
     ($var:path => $t:ident ) => {
         impl<'a> FromSql<'a> for LOB<'a,$t> {
@@ -238,11 +236,8 @@ macro_rules! impl_from_lob {
     };
 }
 
-#[cfg(feature="blocking")]
 impl_from_lob!{ ColumnBuffer::CLOB  => OCICLobLocator  }
-#[cfg(feature="blocking")]
 impl_from_lob!{ ColumnBuffer::BLOB  => OCIBLobLocator  }
-#[cfg(feature="blocking")]
 impl_from_lob!{ ColumnBuffer::BFile => OCIBFileLocator }
 
 impl<'a> FromSql<'a> for RowID {
@@ -276,7 +271,7 @@ mod tests {
     #[test]
     fn from_lob() -> Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -294,24 +289,24 @@ mod tests {
                     )
                 ';
             EXCEPTION
-              WHEN name_already_used THEN
-                EXECUTE IMMEDIATE '
-                    TRUNCATE TABLE test_large_object_data
-                ';
+              WHEN name_already_used THEN NULL;
             END;
         ")?;
         stmt.execute(&[])?;
 
         let stmt = conn.prepare("
             INSERT INTO test_large_object_data (fbin) VALUES (BFileName('MEDIA_DIR',:NAME))
+            RETURNING id INTO :ID
         ")?;
-        let count = stmt.execute(&[ &(":NAME", "hello_world.txt") ])?;
+        let mut hw_id = 0usize;
+        let count = stmt.execute_into(&[ &(":NAME", "hello_world.txt") ], &mut [ &mut ( ":ID", &mut hw_id ) ])?;
         assert_eq!(count, 1);
-        let count = stmt.execute(&[ &(":NAME", "hello_supplemental.txt") ])?;
+        let mut hs_id = 0usize;
+        let count = stmt.execute_into(&[ &(":NAME", "hello_supplemental.txt") ], &mut [ &mut ( ":ID", &mut hs_id ) ])?;
         assert_eq!(count, 1);
 
-        let stmt = conn.prepare("SELECT fbin FROM test_large_object_data ORDER BY id")?;
-        let rows = stmt.query(&[])?;
+        let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id IN (:ID1, :ID2) ORDER BY id")?;
+        let rows = stmt.query(&[ &hw_id, &hs_id ])?;
 
         if let Some(row) = rows.next()? {
             let lob : BFile = row.get(0)?.expect("first row BFILE locator");
@@ -348,7 +343,7 @@ mod tests {
     #[test]
     fn from_rowid() -> Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("schema name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;

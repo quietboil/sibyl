@@ -32,6 +32,9 @@ pub(crate) const OCI_INVALID_HANDLE         : i32 = -2;
 pub(crate) const OCI_STILL_EXECUTING        : i32 = -3123;
 pub(crate) const OCI_CONTINUE               : i32 = -24200;
 
+// Oracle error codes
+pub(crate) const NO_DATA_FOUND              : i32 = 1403;
+
 // Attribute Constants
 pub(crate) const OCI_ATTR_ROW_COUNT         : u32 = 9;
 pub(crate) const OCI_ATTR_PREFETCH_ROWS     : u32 = 11;
@@ -1035,6 +1038,21 @@ extern "C" {
         errhp:      *const OCIError,
         loc:        *const OCILobLocator,
         mode:       u8,
+    ) -> i32;
+
+    // https://docs.oracle.com/cd/B19306_01/appdev.102/b14250/oci16msc002.htm#sthref3010
+    fn OCILobRead(
+        svchp:      *const OCISvcCtx,
+        errhp:      *const OCIError,
+        loc:        *const OCILobLocator,
+        amtp:       *mut u32,
+        offset:     u32,
+        buf:        *mut u8,
+        buf_len:    u32,
+        ctx:        *mut c_void,
+        read_cb:    *const c_void,
+        csid:       u16,
+        csfrm:      u8,
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-6AC6E6DA-236B-4BF9-942F-9FCC4178FEDA
@@ -3655,3 +3673,9 @@ pub(crate) fn number_trunc(
         OCINumberTrunc(err, number, num_dig, result)
     )
 }
+
+// The End.
+// `oci.rs` is used as an input in some CLOB tests (thus far it is the largest file).
+// The following random supplemental symbols are added to make it not pure ASCII and
+// ensure that byte vs char counts are not the same):
+// 🤸🥀🥂🥃🥅🥇🥕🥝🥞🥡🥤🥥🥨🧤🧦🧨🧪🧬🧭🧮🧯🧰🧲🧵

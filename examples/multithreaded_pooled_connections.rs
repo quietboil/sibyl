@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     })?;
 
     let dbname = env::var("DBNAME").expect("database name");
-    let dbuser = env::var("DBUSER").expect("schema name");
+    let dbuser = env::var("DBUSER").expect("user name");
     let dbpass = env::var("DBPASS").expect("password");
 
     let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 1, 1, 10)?;
@@ -31,7 +31,7 @@ fn main() -> Result<()> {
     for _i in 0..workers.capacity() {
         let pool = pool.clone();
         let handle = thread::spawn(move || -> Result<Option<(String,String)>> {
-            let dbuser = env::var("DBUSER").expect("schema name");
+            let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
 
             let conn = pool.get_session(&dbuser, &dbpass)?;

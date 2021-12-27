@@ -11,7 +11,7 @@ mod nonblocking;
 use std::sync::atomic::AtomicI32;
 
 use super::{cols::Columns, data::FromSql, Position};
-use crate::{Cursor, Error, Result, RowID, Statement, oci::{*, attr}, types::Ctx};
+use crate::{Cursor, Error, Result, RowID, Statement, oci::{*, attr}, types::Ctx, Connection};
 use parking_lot::{RwLockReadGuard, RwLockWriteGuard};
 
 pub(crate) enum DataSource<'a> {
@@ -78,6 +78,13 @@ impl DataSource<'_> {
             &Self::Cursor(cursor)  => cursor.write_columns(),
         }
     }
+
+    pub(crate) fn conn(&self) -> &Connection {
+        match self {
+            &Self::Statement(stmt) => stmt.conn(),
+            &Self::Cursor(cursor)  => cursor.conn(),
+        }
+    }
 }
 
 /// Result set of a query
@@ -136,6 +143,10 @@ impl<'a> Row<'a> {
         Self { rset: &rows.rset }
     }
 
+    pub(crate) fn conn(&self) -> &Connection {
+        self.rset.conn()
+    }
+
     // `get` helper to ensure that the read lock is released when we have the index
     fn col_index_if_not_null(&self, pos: impl Position) -> Option<(usize, bool)> {
         let cols = self.rset.read_columns();
@@ -157,7 +168,7 @@ impl<'a> Row<'a> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
@@ -177,7 +188,7 @@ impl<'a> Row<'a> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         # let stmt = conn.prepare("
@@ -220,7 +231,7 @@ impl<'a> Row<'a> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
@@ -247,7 +258,7 @@ impl<'a> Row<'a> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         # let stmt = conn.prepare("
@@ -299,7 +310,7 @@ impl<'a> Row<'a> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
         let stmt = conn.prepare("
@@ -333,7 +344,7 @@ impl<'a> Row<'a> {
         # sibyl::current_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
         # let stmt = conn.prepare("

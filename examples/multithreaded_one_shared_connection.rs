@@ -29,7 +29,7 @@ fn example() -> Result<()> {
     })?;
 
     let dbname = env::var("DBNAME").expect("database name");
-    let dbuser = env::var("DBUSER").expect("schema name");
+    let dbuser = env::var("DBUSER").expect("user name");
     let dbpass = env::var("DBPASS").expect("password");
 
     let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
@@ -85,7 +85,7 @@ fn example() -> Result<()> {
         })?;
 
         let dbname = env::var("DBNAME").expect("database name");
-        let dbuser = env::var("DBUSER").expect("schema name");
+        let dbuser = env::var("DBUSER").expect("user name");
         let dbpass = env::var("DBPASS").expect("password");
 
         let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;

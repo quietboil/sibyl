@@ -69,7 +69,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 2, 2, 10)?;
 
@@ -81,7 +81,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 2, 2, 10).await?;
         # assert_eq!(pool.busy_count()?, 0);
@@ -108,7 +108,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 2, 2, 10)?;
 
@@ -121,7 +121,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 2, 2, 10).await?;
         # let num_sessions = pool.open_count()?;
@@ -152,7 +152,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -165,7 +165,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # let get_mode = pool.get_mode()?;
@@ -206,7 +206,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -220,7 +220,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # pool.set_get_mode(SessionPoolGetMode::ForcedGet)?;
@@ -253,7 +253,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -269,7 +269,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # let get_session_max_wait_time = pool.wait_timeout()?;
@@ -301,7 +301,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -315,7 +315,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # pool.set_wait_timeout(1000)?;
@@ -343,7 +343,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -356,7 +356,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # let session_max_idle_time = pool.idle_timeout()?;
@@ -392,7 +392,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 10)?;
 
@@ -406,7 +406,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 10).await?;
         # pool.set_idle_timeout(600)?;
@@ -436,7 +436,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -449,7 +449,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # let max_lifetime = pool.session_max_lifetime()?;
@@ -482,7 +482,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -496,7 +496,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # pool.set_session_max_lifetime(10 * 3600)?;
@@ -526,7 +526,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
         
@@ -539,7 +539,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # let max_use_count = pool.session_max_use_count()?;
@@ -570,7 +570,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -584,7 +584,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # pool.set_session_max_use_count(10_000)?;
@@ -614,7 +614,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 10)?;
 
@@ -627,7 +627,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 10).await?;
         # let cache_size = pool.statement_cache_size()?;
@@ -660,7 +660,7 @@ impl SessionPool<'_> {
         # fn main() -> Result<()> {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
@@ -674,7 +674,7 @@ impl SessionPool<'_> {
         # sibyl::multi_thread_block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("schema name");
+        # let dbuser = std::env::var("DBUSER").expect("user name");
         # let dbpass = std::env::var("DBPASS").expect("password");
         # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
         # pool.set_statement_cache_size(100)?;
