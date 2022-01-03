@@ -470,7 +470,7 @@ And then later it could be read as:
 
 ```rust
 let id: usize = 1234; // it was retrieved from somewhere...
-let stmt = conn.prepare("SELECT bin FROM lob_examples WHERE id = :ID").await?;
+let stmt = conn.prepare("SELECT bin FROM lob_example WHERE id = :ID").await?;
 let rows = stmt.query(&id).await?;
 if let Some(row) = rows.next().await? {
     if let Some(lob) = row.get(0)? {
@@ -511,7 +511,7 @@ Sibyl tests are routinely executed on x64 Linux with Instant Clients 12.2, 18.5,
 
 ### Known Issues with Some Clients
 
-:memo: `SessionPool::session_max_use_count` and `SessionPool::set_session_max_use_count` will fail on 12.2 client as with `ORA-24315: illegal attribute type`.
+:memo: `SessionPool::session_max_use_count` and `SessionPool::set_session_max_use_count` will fail on 12.2 client with `ORA-24315: illegal attribute type`.
 
 :warning: Client 21.4 (at least with 19.3 database) is strangely picky about names of parameter placeholders for LOB columns. For example, if a table was created with the following LOB column:
 
@@ -538,11 +538,11 @@ let stmt = conn.prepare("
 ")?;
 ```
 
-21.4 also does not "like" some specific parameter names like `:NAME` which makes it fails with the same `ORA-03120`.
+21.4 also does not "like" some specific parameter names like `:NAME` which makes it fail with the same `ORA-03120`.
 
 :memo: Note that 12.2 through 19.13 clients (as far as Sibyl's tests showed) do not exhibit this issue.
 
-:warning: 21.4 client (at least when it is connected to the 19.3 database) cannot read **CLOBs** piece-wize - something bad happens in `OCILobRead2` as it reads the last fragment and the process gets killed. 21.4 client has no issues executing piece-wise reads from BFILEs and BLOBs.
+:warning: 21.4 client (at least when it is connected to the 19.3 database) cannot read **CLOBs** piece-wize - something bad happens in `OCILobRead2` as it reads the last piece and the process gets killed. 21.4 client has no issues executing piece-wise reads from BFILEs and BLOBs.
 
 ## Limitations
 
