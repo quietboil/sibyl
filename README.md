@@ -31,7 +31,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
          WHERE hire_date_rank = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
-    let rows = stmt.query(&[ &date ])?;
+    let rows = stmt.query(&date)?;
     if let Some( row ) = rows.next()? {
         let first_name : Option<&str> = row.get("FIRST_NAME")?;
         let last_name : &str = row.get("LAST_NAME")?.unwrap();
@@ -80,7 +80,7 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
          WHERE hire_date_rank = 1
     ").await?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
-    let rows = stmt.query(&[ &date ]).await?;
+    let rows = stmt.query(&date).await?;
     if let Some( row ) = rows.next().await? {
         let first_name : Option<&str> = row.get("FIRST_NAME")?;
         let last_name : &str = row.get("LAST_NAME")?.unwrap();
@@ -191,23 +191,33 @@ A prepared statement can be executed either with the `query` or `execute` or `ex
 - `execute` is used for all other, non-SELECT, DML and DDL that do not have OUT parameters.
 - `execute_into` is used with DML that have OUT parameters.
 
-`query` and `execute` take a slice of IN arguments, which can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call `query` using a positional argument as:
+`query` and `execute` take a tuple of IN arguments, which can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call `query` using a positional argument as:
 
 ```rust
-let rows = stmt.query(&[ &103 ])?;
+let rows = stmt.query(103)?;
 ```
 
-or binding `:id` by name as:
+or when binding argument to `:id` by name as:
 
 ```rust
-let rows = stmt.query(&[
-    &( ":ID", 103 )
-])?;
+let rows = stmt.query((":ID", 103))?;
 ```
 
-In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement changes during development might force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicares. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one "duplicate" name in a statement.
+In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicares. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one "duplicate" name in a statement.
 
-`execute_into` allows execution of statements with OUT parameters. For example:
+:memo: Note one caveat - until [min_specialization][5] is stabilized Sibyl has no way to distinguish whether a 2-item tuple is used to pass a named argument or 2 positional arguments. At the moment you'll have to use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is treated as "nothing", so effectively only first 2 arguments are used. For example:
+
+```rust
+let stmt = conn.prepare("
+    SELECT department_id, manager_id
+      FROM hr.departments
+     WHERE department_name = :DEPARTMENT_NAME
+       AND location_id = :LOCATION_ID
+")?;
+let rows = stmt.query(("Security", 1700, ()))?;
+```
+
+`execute_into` allows execution of statements with OUT (or INOUT) parameters. For example:
 
 ```rust
 let stmt = conn.prepare("
@@ -218,13 +228,14 @@ let stmt = conn.prepare("
       INTO :department_id
 ")?;
 let mut department_id: u32 = 0;
-let num_inserted = stmt.execute(&[
-    &( ":DEPARTMENT_NAME", "Security" ),
-    &( ":MANAGER_ID",      ""         ),
-    &( ":LOCATION_ID",     1700       ),
-], &mut [
-    &mut ( ":DEPARTMENT_ID", &mut department_id )
-])?;
+let num_inserted = stmt.execute(
+    (
+        (":DEPARTMENT_NAME", "Security"),
+        (":MANAGER_ID",      ""        ),
+        (":LOCATION_ID",     1700      ),
+    ), 
+        (":DEPARTMENT_ID",   &mut department_id)
+)?;
 ```
 
 `execute` and `execute_into` return the number of rows affected by the statement. `query` returns what is colloquially called a "streaming iterator" which is typically iterated using `while`. For example (continuing the SELECT example from above):
@@ -237,7 +248,7 @@ let stmt = conn.prepare("
     WHERE manager_id = :id
     ORDER BY employee_id
 ")?;
-let rows = stmt.query(&[ &103 ])?;
+let rows = stmt.query(103)?;
 while let Some( row ) = rows.next()? {
     let employee_id : u32 = row.get(0)?.unwrap();
     let last_name : &str  = row.get(1)?.unwrap();
@@ -348,7 +359,7 @@ let stmt = conn.prepare("
      WHERE employee_id = :id
        FOR UPDATE
 ")?;
-let rows = stmt.query(&[ &107 ])?;
+let rows = stmt.query(107)?;
 let row = rows.next()?.unwrap();
 let rowid = row.rowid()?;
 
@@ -360,10 +371,10 @@ let stmt = conn.prepare("
        SET manager_id = :manager_id
      WHERE rowid = :row_id
 ")?;
-let num_updated = stmt.execute(&[
-    &( ":MANAGER_ID", 102 ),
-    &( ":ROW_ID",  &rowid )
-])?;
+let num_updated = stmt.execute((
+    ( ":MANAGER_ID", 102 ),
+    ( ":ROW_ID",  &rowid ),
+))?;
 assert_eq!(1, num_updated);
 ```
 
@@ -382,7 +393,7 @@ let stmt = conn.prepare("
     END;
 ")?;
 let mut cursor = Cursor::new(&stmt)?;
-stmt.execute_into(&[], &mut [ &mut cursor ])?;
+stmt.execute_into((), &mut cursor)?;
 let rows = cursor.rows()?;
 // ...
 ```
@@ -402,7 +413,7 @@ let stmt = conn.prepare("
         DBMS_SQL.RETURN_RESULT(emp);
     END;
 ")?;
-stmt.execute(&[])?;
+stmt.execute(())?;
 if let Some( cursor ) = stmt.next_result()? {
     let rows = cursor.rows()?;
     // ...
@@ -446,7 +457,7 @@ let stmt = conn.prepare("
     END;
 ").await?;
 let mut lob = BLOB::new(&conn)?;
-stmt.execute_into(&[], &mut [ &mut lob ]).await?;
+stmt.execute_into((), &mut lob).await?;
 
 lob.open().await?;
 let num_bytes_written = lob.write(0, &data).await?;
@@ -460,7 +471,7 @@ And then later it could be read as:
 ```rust
 let id: usize = 1234; // it was retrieved from somewhere...
 let stmt = conn.prepare("SELECT bin FROM lob_examples WHERE id = :ID").await?;
-let rows = stmt.query(&[ &id ]).await?;
+let rows = stmt.query(&id).await?;
 if let Some(row) = rows.next().await? {
     if let Some(lob) = row.get(0)? {
         let data = read_blob(lob)?;
@@ -555,3 +566,4 @@ Some of these features might be added in the upcoming releases if the need arise
 [2]: https://docs.oracle.com/en/database/oracle/oracle-database/19/comsc/installing-sample-schemas.html#GUID-1E645D09-F91F-4BA6-A286-57C5EC66321D
 [3]: https://github.com/oracle/db-sample-schemas/releases/latest
 [4]: https://stackoverflow.com/questions/69381749/where-is-the-oracle-instant-client-timezone-file-located
+[5]: https://doc.rust-lang.org/stable/unstable-book/language-features/min-specialization.html#min_specialization

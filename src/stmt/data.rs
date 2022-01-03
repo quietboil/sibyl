@@ -292,21 +292,21 @@ mod tests {
               WHEN name_already_used THEN NULL;
             END;
         ")?;
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         let stmt = conn.prepare("
             INSERT INTO test_large_object_data (fbin) VALUES (BFileName('MEDIA_DIR',:NAME))
             RETURNING id INTO :ID
         ")?;
         let mut hw_id = 0usize;
-        let count = stmt.execute_into(&[ &(":NAME", "hello_world.txt") ], &mut [ &mut ( ":ID", &mut hw_id ) ])?;
+        let count = stmt.execute_into((":NAME", "hello_world.txt"), (":ID", &mut hw_id))?;
         assert_eq!(count, 1);
         let mut hs_id = 0usize;
-        let count = stmt.execute_into(&[ &(":NAME", "hello_supplemental.txt") ], &mut [ &mut ( ":ID", &mut hs_id ) ])?;
+        let count = stmt.execute_into((":NAME", "hello_supplemental.txt"), (":ID", &mut hs_id))?;
         assert_eq!(count, 1);
 
         let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id IN (:ID1, :ID2) ORDER BY id")?;
-        let rows = stmt.query(&[ &hw_id, &hs_id ])?;
+        let rows = stmt.query(((":ID1", &hw_id), (":ID2", &hs_id)))?;
 
         if let Some(row) = rows.next()? {
             let lob : BFile = row.get(0)?.expect("first row BFILE locator");
@@ -352,7 +352,7 @@ mod tests {
               FROM hr.employees
              WHERE employee_id = :ID
         ")?;
-        let rows = stmt.query(&[ &(":ID", 107) ])?;
+        let rows = stmt.query((":ID", 107))?;
 
         if let Some(row) = rows.next()? {
             let strid : String = row.get(0)?.expect("ROWID as text");

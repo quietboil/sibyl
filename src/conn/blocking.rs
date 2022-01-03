@@ -6,6 +6,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 impl Drop for SvcCtx {
     fn drop(&mut self) {
+        oci_trans_rollback(&self.svc, &self.err);
         oci_session_release(&self.svc, &self.err);
     }
 }
@@ -87,7 +88,7 @@ impl<'a> Connection<'a> {
                    )
              WHERE hire_date_rank = 1
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.expect("first (and only) row");
         // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
         let id : u32 = row.get(0)?.unwrap();
@@ -118,10 +119,10 @@ impl<'a> Connection<'a> {
                SET salary = :new_salary
              WHERE employee_id = :emp_id
         ")?;
-        let num_updated_rows = stmt.execute(&[
-            &( ":EMP_ID",     107  ),
-            &( ":NEW_SALARY", 4200 ),
-        ])?;
+        let num_updated_rows = stmt.execute((
+            (":EMP_ID",     107 ),
+            (":NEW_SALARY", 4200),
+        ))?;
         assert_eq!(num_updated_rows, 1);
 
         conn.commit()?;
@@ -148,7 +149,7 @@ impl<'a> Connection<'a> {
                SET salary = ROUND(salary * 1.1)
              WHERE employee_id = :emp_id
         ")?;
-        let num_updated_rows = stmt.execute(&[ &107 ])?;
+        let num_updated_rows = stmt.execute(107)?;
         assert_eq!(num_updated_rows, 1);
 
         conn.rollback()?;

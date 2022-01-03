@@ -1,7 +1,7 @@
 //! Nonblocking SQL statement methods
 
-use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}, StmtInArg, StmtOutArg};
-use crate::{Result, oci::{self, *}, Connection, task, Error, Rows, Cursor};
+use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}};
+use crate::{Result, oci::{self, *}, Connection, task, Error, Rows, Cursor, ToSql, ToSqlOut};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
@@ -27,39 +27,19 @@ impl<'a> Statement<'a> {
     }
 
     /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
-    fn bind_args(&self, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<Option<Vec<usize>>> {
-        self.params.as_ref()
-            .map(|params| params.write().bind_args(&self.stmt, &self.err, in_args, out_args))
-            .unwrap_or_else(||
-                if in_args.len() == 0 && out_args.len() == 0 {
-                    Ok(None)
-                } else {
-                    Err(Error::new("Statement has no parameters"))
-                }
-            )
+    fn bind_args(&self, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<()> {
+        if let Some(params) = &self.params {
+            params.write().bind_args(&self.stmt, &self.err, in_args, out_args)
+        } else {
+            Ok(())
+        }
     }
 
     /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
-    async fn exec(&self, stmt_type: u16, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<i32>{
-        let out_idxs = self.bind_args(in_args, out_args)?;
-        let res = oci::futures::StmtExecute::new(self.as_ref(), &self.err, &self.stmt, stmt_type).await?;
-        match res {
-            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
-                if let Some(idxs) = out_idxs {
-                    if let Some(params) = self.params.as_ref() {
-                        let params = params.read();
-                        for (out_arg_ix, out_param_ix) in idxs.into_iter().enumerate() {
-                            out_args[out_arg_ix].to_sql_out().sql_set_len(params.out_data_len(out_param_ix));
-                        }
-                    }
-                }
-                Ok(res)
-            },
-            OCI_ERROR | OCI_INVALID_HANDLE => {
-                Err( Error::oci(self.as_ref(), res) )
-            }
-            _ => Ok(res)
-        }
+    async fn exec(&self, stmt_type: u16, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<i32>{
+        self.bind_args(in_args, out_args)?;
+
+        oci::futures::StmtExecute::new(self.as_ref(), &self.err, &self.stmt, stmt_type).await
     }
 
     /**
@@ -79,16 +59,16 @@ impl<'a> Statement<'a> {
                SET manager_id = :manager_id
              WHERE department_id = :department_id
         ").await?;
-        let num_updated_rows = stmt.execute(&[
-            &( ":DEPARTMENT_ID", 120 ),
-            &( ":MANAGER_ID",    101 ),
-        ]).await?;
+        let num_updated_rows = stmt.execute((
+            (":DEPARTMENT_ID", 120),
+            (":MANAGER_ID",    101),
+        )).await?;
         assert_eq!(num_updated_rows, 1);
         # conn.rollback().await?;
         # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
         ```
     */
-    pub async fn execute(&self, args: &[&dyn StmtInArg]) -> Result<usize> {
+    pub async fn execute(&self, args: impl ToSql) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
@@ -97,7 +77,7 @@ impl<'a> Statement<'a> {
         if is_returning != 0 {
             return Err( Error::new("Use `execute_into` with output arguments to execute a RETURNING statement") );
         }
-        self.exec(stmt_type, args, &mut []).await?;
+        self.exec(stmt_type, &args, &mut ()).await?;
         self.row_count()
     }
 
@@ -127,13 +107,13 @@ impl<'a> Statement<'a> {
         // OUT is used as an IN-OUT parameter, OUT precedes or in the middle of the IN parameter
         // list, parameter list is very long, etc. This example shows the call with the named
         // arguments as this might be a more typical use case for it.
-        let num_rows = stmt.execute_into(&[
-            &( ":DEPARTMENT_NAME", "Security" ),
-            &( ":MANAGER_ID",      ""         ),
-            &( ":LOCATION_ID",     1700       ),
-        ], &mut [
-            &mut ( ":DEPARTMENT_ID", &mut department_id )
-        ]).await?;
+        let num_rows = stmt.execute_into((
+            ( ":DEPARTMENT_NAME", "Security" ),
+            ( ":MANAGER_ID",      ""         ),
+            ( ":LOCATION_ID",     1700       ),
+        ),
+            ( ":DEPARTMENT_ID", &mut department_id )
+        ).await?;
         assert_eq!(num_rows, 1);
         assert!(!stmt.is_null(":DEPARTMENT_ID")?);
         assert!(department_id > 0);
@@ -141,12 +121,15 @@ impl<'a> Statement<'a> {
         # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
         ```
     */
-    pub async fn execute_into(&self, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<usize> {
+    pub async fn execute_into(&self, in_args: impl ToSql, mut out_args: impl ToSqlOut) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
         }
-        self.exec(stmt_type, in_args, out_args).await?;
+        self.exec(stmt_type, &in_args, &mut out_args).await?;
+        if let Some(params) = &self.params {
+            params.read().set_out_data_len(&mut out_args);
+        }
         self.row_count()
     }
 
@@ -170,7 +153,7 @@ impl<'a> Statement<'a> {
           ORDER BY employee_id
         ").await?;
         stmt.set_prefetch_rows(5)?;
-        let rows = stmt.query(&[ &103 ]).await?; // Alexander Hunold
+        let rows = stmt.query(103).await?; // Alexander Hunold
         let mut subs = HashMap::new();
         while let Some( row ) = rows.next().await? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
@@ -197,12 +180,12 @@ impl<'a> Statement<'a> {
         # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
         ```
     */
-    pub async fn query(&'a self, args: &[&dyn StmtInArg]) -> Result<Rows<'a>> {
+    pub async fn query(&'a self, args: impl ToSql) -> Result<Rows<'a>> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
             return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
         }
-        let res = self.exec(stmt_type, args, &mut []).await?;
+        let res = self.exec(stmt_type, &args, &mut ()).await?;
 
         if self.cols.get().is_none() {
             let cols = Columns::new(Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), self.max_long)?;
@@ -278,7 +261,7 @@ impl<'a> Statement<'a> {
         let expected_lowest_salary = Number::from_int(2100, &conn)?;
         let expected_median_salary = Number::from_int(6200, &conn)?;
 
-        stmt.execute(&[]).await?;
+        stmt.execute(()).await?;
 
         let lowest_payed_employee = stmt.next_result().await?.unwrap();
 
@@ -367,7 +350,7 @@ mod tests {
                        )
                  WHERE hire_date_rank = 1
             ").await?;
-            let rows = stmt.query(&[]).await?;
+            let rows = stmt.query(()).await?;
 
             let row = rows.next().await?.expect("first (and only) row");
             let id : usize = row.get(0)?.expect("non-null employee_id");

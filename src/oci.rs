@@ -2001,6 +2001,10 @@ pub(crate) fn oci_stmt_release(stmt: &OCIStmt, err: &OCIError) -> i32 {
     unsafe { OCIStmtRelease(stmt, err, std::ptr::null(), 0, OCI_DEFAULT) }
 }
 
+pub(crate) fn oci_trans_rollback(svchp: &OCISvcCtx, errhp: &OCIError) -> i32 {
+    unsafe { OCITransRollback(svchp, errhp, OCI_DEFAULT) }
+}
+
 
 // ================================================================================================
 

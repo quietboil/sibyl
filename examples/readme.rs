@@ -34,7 +34,7 @@ fn main() -> oracle::Result<()> {
          WHERE hire_date_rank = 1
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &conn)?;
-    let rows = stmt.query(&[ &date ])?;
+    let rows = stmt.query(&date)?;
     // The SELECT above will return either 1 or 0 rows, thus `if let` is sufficient.
     // When more than one row is expected, `while let` should be used to process rows
     if let Some( row ) = rows.next()? {
@@ -84,7 +84,7 @@ fn main() -> oracle::Result<()> {
              WHERE hire_date_rank = 1
         ").await?;
         let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
-        let rows = stmt.query(&[ &date ]).await?;
+        let rows = stmt.query(&date).await?;
         if let Some( row ) = rows.next().await? {
             let first_name : Option<&str> = row.get("FIRST_NAME")?;
             let last_name : &str = row.get("LAST_NAME")?.unwrap();

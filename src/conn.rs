@@ -220,7 +220,7 @@ impl Connection<'_> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.unwrap();
         let module : &str = row.get(0)?.unwrap();
         assert_eq!(module, "sibyl");
@@ -241,7 +241,7 @@ impl Connection<'_> {
         #       FROM v$session
         #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         # ").await?;
-        # let rows = stmt.query(&[]).await?;
+        # let rows = stmt.query(()).await?;
         # let row = rows.next().await?.unwrap();
         # let module : &str = row.get(0)?.unwrap();
         # assert_eq!(module, "sibyl");
@@ -279,7 +279,7 @@ impl Connection<'_> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.unwrap();
         let action : &str = row.get(0)?.unwrap();
         assert_eq!(action, "Session Test");
@@ -300,7 +300,7 @@ impl Connection<'_> {
         #       FROM v$session
         #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         # ").await?;
-        # let rows = stmt.query(&[]).await?;
+        # let rows = stmt.query(()).await?;
         # let row = rows.next().await?.unwrap();
         # let action : &str = row.get(0)?.unwrap();
         # assert_eq!(action, "Session Test");
@@ -337,7 +337,7 @@ impl Connection<'_> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.unwrap();
         let client_identifier : &str = row.get(0)?.unwrap();
         assert_eq!(client_identifier, "Test Wielder");
@@ -357,7 +357,7 @@ impl Connection<'_> {
         #       FROM v$session
         #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         # ").await?;
-        # let rows = stmt.query(&[]).await?;
+        # let rows = stmt.query(()).await?;
         # let row = rows.next().await?.unwrap();
         # let client_identifier : &str = row.get(0)?.unwrap();
         # assert_eq!(client_identifier, "Test Wielder");
@@ -394,7 +394,7 @@ impl Connection<'_> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.unwrap();
         let client_info : &str = row.get(0)?.unwrap();
         assert_eq!(client_info, "Nothing to see here, move along folks");
@@ -414,7 +414,7 @@ impl Connection<'_> {
         #       FROM v$session
         #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         # ").await?;
-        # let rows = stmt.query(&[]).await?;
+        # let rows = stmt.query(()).await?;
         # let row = rows.next().await?.unwrap();
         # let client_info : &str = row.get(0)?.unwrap();
         # assert_eq!(client_info, "Nothing to see here, move along folks");
@@ -500,7 +500,7 @@ impl Connection<'_> {
               FROM v$session
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.unwrap();
         let schema_name : &str = row.get(0)?.unwrap();
         assert_eq!(schema_name, "HR");
@@ -525,7 +525,7 @@ impl Connection<'_> {
         #       FROM v$session
         #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         # ").await?;
-        # let rows = stmt.query(&[]).await?;
+        # let rows = stmt.query(()).await?;
         # let row = rows.next().await?.unwrap();
         # let schema_name : &str = row.get(0)?.unwrap();
         # assert_eq!(schema_name, "HR");

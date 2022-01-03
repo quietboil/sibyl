@@ -115,10 +115,10 @@ impl<'a> Connection<'a> {
                SET salary = :new_salary
              WHERE employee_id = :emp_id
         ").await?;
-        let num_updated_rows = stmt.execute(&[
-            &( ":EMP_ID",     107  ),
-            &( ":NEW_SALARY", 4200 ),
-        ]).await?;
+        let num_updated_rows = stmt.execute((
+            (":EMP_ID",     107 ),
+            (":NEW_SALARY", 4200),
+        )).await?;
         assert_eq!(num_updated_rows, 1);
 
         conn.commit().await?;
@@ -147,7 +147,7 @@ impl<'a> Connection<'a> {
                SET salary = ROUND(salary * 1.1)
              WHERE employee_id = :emp_id
         ").await?;
-        let num_updated_rows = stmt.execute(&[ &107 ]).await?;
+        let num_updated_rows = stmt.execute(107).await?;
         assert_eq!(num_updated_rows, 1);
 
         conn.rollback().await?;
@@ -179,7 +179,7 @@ impl<'a> Connection<'a> {
                    )
              WHERE hire_date_rank = 1
         ").await?;
-        let rows = stmt.query(&[]).await?;
+        let rows = stmt.query(()).await?;
         let row = rows.next().await?.expect("first (and only) row");
         // EMPLOYEE_ID is NOT NULL, so it always can be unwrapped safely
         let id : u32 = row.get(0)?.unwrap();

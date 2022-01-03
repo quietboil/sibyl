@@ -1,3 +1,5 @@
+use libc::c_void;
+
 use super::*;
 use crate::*;
 use crate::oci::*;
@@ -90,7 +92,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         #         when name_already_used then null;
         #     end;
         # ")?;
-        # stmt.execute(&[])?;
+        # stmt.execute(())?;
         let stmt = conn.prepare("
             DECLARE
                 row_id ROWID;
@@ -100,7 +102,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
             END;
         ")?;
         let mut lob1 = CLOB::new(&conn)?;
-        stmt.execute_into(&[], &mut [ &mut lob1 ])?;
+        stmt.execute_into((), &mut lob1)?;
 
         let text = [
             "To see a World in a Grain of Sand\n",
@@ -146,7 +148,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         ")?;
         let mut saved_lob_id : usize = 0;
         let mut saved_lob = CLOB::new(&conn)?;
-        stmt.execute_into(&[ &lob2 ], &mut [ &mut saved_lob_id, &mut saved_lob ])?;
+        stmt.execute_into(&lob2, (&mut saved_lob_id, &mut saved_lob, ()))?;
 
         // And thus `saved_lob` locator points to a distinct LOB value ...
         assert!(!saved_lob.is_equal(&lob2)?);
@@ -219,18 +221,18 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         #         when name_already_used then null;
         #     end;
         # ")?;
-        # stmt.execute(&[])?;
+        # stmt.execute(())?;
         let stmt = conn.prepare("
             INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :row_id
         ")?;
         let mut rowid = RowID::new(&conn)?;
-        stmt.execute_into(&[], &mut [ &mut rowid ])?;
+        stmt.execute_into((), &mut rowid)?;
 
         // must lock LOB's row before writing into it
         let stmt = conn.prepare("
             SELECT text FROM test_lobs WHERE rowid = :row_id FOR UPDATE
         ")?;
-        let rows = stmt.query(&[ &rowid ])?;
+        let rows = stmt.query(&rowid)?;
         let row = rows.next()?.expect("a single row");
         let mut lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -539,7 +541,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         #         when name_already_used then null;
         #     end;
         # ")?;
-        # stmt.execute(&[])?;
+        # stmt.execute(())?;
         let stmt = conn.prepare("
             DECLARE
                 row_id ROWID;
@@ -549,7 +551,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
             END;
         ")?;
         let mut lob = CLOB::new(&conn)?;
-        stmt.execute_into(&[], &mut [ &mut lob ])?;
+        stmt.execute_into((), &mut lob)?;
 
         let file = BFile::new(&conn)?;
         file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -1155,18 +1157,18 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         #         when name_already_used then null;
         #     end;
         # ")?;
-        # stmt.execute(&[])?;
+        # stmt.execute(())?;
         let stmt = conn.prepare("
             insert into test_lobs (data) values (empty_blob()) returning rowid into :row_id
         ")?;
         let mut rowid = RowID::new(&conn)?;
-        stmt.execute_into(&[], &mut [ &mut rowid ])?;
+        stmt.execute_into((), &mut rowid)?;
 
         // must lock LOB's row before writing the LOB
         let stmt = conn.prepare("
             SELECT data FROM test_lobs WHERE rowid = :row_id FOR UPDATE
         ")?;
-        let rows = stmt.query(&[ &rowid ])?;
+        let rows = stmt.query(&rowid)?;
         let row = rows.next()?.expect("a single row");
         let mut lob : BLOB = row.get(0)?.expect("BLOB for writing");
 

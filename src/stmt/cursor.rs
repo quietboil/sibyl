@@ -8,16 +8,17 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-use super::{Statement, args::ToSqlOut, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::Row};
+use super::{Statement, args::ToSqlOut, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::Row, bind::Params};
 use crate::{Result, oci::*, types::Ctx, Connection};
-use libc::c_void;
 use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-impl ToSqlOut for Handle<OCIStmt> {
-    fn sql_type(&self) -> u16 { SQLT_RSET }
-    fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(self.as_ptr() as _) }
-    fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIStmt>() }
+impl ToSqlOut for &mut Handle<OCIStmt> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = std::mem::size_of::<*mut OCIStmt>();
+        params.bind_out(pos, SQLT_RSET, (*self).as_ptr() as _, len, len, stmt, err)?;
+        Ok(pos + 1)
+    }
 }
 
 pub(crate) enum RefCursor {
@@ -35,13 +36,6 @@ impl AsRef<OCIStmt> for RefCursor {
 }
 
 impl RefCursor {
-    // fn get_ptr(&self) -> Ptr<OCIStmt> {
-    //     match self {
-    //         RefCursor::Handle( handle ) => handle.get_ptr(),
-    //         RefCursor::Ptr( ptr )       => *ptr,
-    //     }
-    // }
-
     fn as_mut_ptr(&mut self) -> *mut *mut OCIStmt {
         match self {
             RefCursor::Handle( handle ) => handle.as_mut_ptr(),
@@ -138,10 +132,12 @@ impl Ctx for Cursor<'_> {
     }
 }
 
-impl ToSqlOut for Cursor<'_> {
-    fn sql_type(&self) -> u16 { SQLT_RSET }
-    fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(self.cursor.as_mut_ptr() as _) }
-    fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCIStmt>() }
+impl ToSqlOut for &mut Cursor<'_> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = std::mem::size_of::<*mut OCIStmt>();
+        params.bind_out(pos, SQLT_RSET, self.cursor.as_mut_ptr() as _, len, len, stmt, err)?;
+        Ok(pos + 1)
+    }
 }
 
 impl<'a> Cursor<'a> {
@@ -208,10 +204,10 @@ impl<'a> Cursor<'a> {
         let mut lowest_payed_employee   = Cursor::new(&stmt)?;
         let mut median_salary_employees = Cursor::new(&stmt)?;
 
-        stmt.execute_into(&[], &mut [
-            &mut ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
-            &mut ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
-        ])?;
+        stmt.execute_into((), (
+            ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
+            ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
+        ))?;
 
         let expected_lowest_salary = Number::from_int(2100, &conn)?;
         let expected_median_salary = Number::from_int(6200, &conn)?;
@@ -298,10 +294,10 @@ impl<'a> Cursor<'a> {
         # ").await?;
         # let mut lowest_payed_employee   = Cursor::new(&stmt)?;
         # let mut median_salary_employees = Cursor::new(&stmt)?;
-        # stmt.execute_into(&[], &mut [
-        #     &mut ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
-        #     &mut ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
-        # ]).await?;
+        # stmt.execute_into((), (
+        #     ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
+        #     ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
+        # )).await?;
         # let expected_lowest_salary = Number::from_int(2100, &conn)?;
         # let expected_median_salary = Number::from_int(6200, &conn)?;
         # let rows = lowest_payed_employee.rows().await?;
@@ -413,9 +409,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut subordinates = Cursor::new(&stmt)?;
-        stmt.execute_into(&[&(":ID", 103)], &mut [
-            &mut (":SUBORDINATES", &mut subordinates),
-        ])?;
+        stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates))?;
         assert_eq!(subordinates.column_count()?, 3);
         # Ok(())
         # }
@@ -437,9 +431,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute_into(&[&(":ID", 103)], &mut [
-        #     &mut (":SUBORDINATES", &mut subordinates),
-        # ]).await?;
+        # stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates)).await?;
         # assert_eq!(subordinates.column_count()?, 3);
         # Ok(()) })
         # }
@@ -481,9 +473,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut subordinates = Cursor::new(&stmt)?;
-        stmt.execute_into(&[&(":ID", 103)], &mut [
-            &mut (":SUBORDINATES", &mut subordinates),
-        ])?;
+        stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates))?;
         let mut _rows = subordinates.rows()?;
         let col = subordinates.column(0).expect("ID column info");
         assert_eq!(col.name()?, "EMPLOYEE_ID", "column name");
@@ -513,9 +503,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute_into(&[&(":ID", 103)], &mut [
-        #     &mut (":SUBORDINATES", &mut subordinates),
-        # ]).await?;
+        # stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates)).await?;
         # let mut _rows = subordinates.rows().await?;
         # let col = subordinates.column(0).expect("ID column info");
         # assert_eq!(col.name()?, "EMPLOYEE_ID", "column name");
@@ -575,9 +563,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut subordinates = Cursor::new(&stmt)?;
-        stmt.execute_into(&[&(":ID", 103)], &mut [
-            &mut (":SUBORDINATES", &mut subordinates),
-        ])?;
+        stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates))?;
         subordinates.set_prefetch_rows(5)?;
         let rows = subordinates.rows()?;
         let mut ids = Vec::new();
@@ -610,9 +596,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute_into(&[&(":ID", 103)], &mut [
-        #     &mut (":SUBORDINATES", &mut subordinates),
-        # ]).await?;
+        # stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates)).await?;
         # subordinates.set_prefetch_rows(5)?;
         # let mut rows = subordinates.rows().await?;
         # let mut ids = Vec::new();
@@ -662,9 +646,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut subordinates = Cursor::new(&stmt)?;
-        stmt.execute_into(&[&(":ID", 103)], &mut [
-            &mut (":SUBORDINATES", &mut subordinates),
-        ])?;
+        stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates))?;
         subordinates.set_prefetch_rows(10)?;
         # Ok(())
         # }
@@ -687,9 +669,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute_into(&[&(":ID", 103)], &mut [
-        #     &mut (":SUBORDINATES", &mut subordinates),
-        # ]).await?;
+        # stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates)).await?;
         # subordinates.set_prefetch_rows(10)?;
         # Ok(()) })
         # }
@@ -737,20 +717,14 @@ impl<'a> Cursor<'a> {
         #       WHEN name_already_used THEN NULL;
         #     END;
         # ")?;
-        # stmt.execute(&[])?;
+        # stmt.execute(())?;
         # let stmt = conn.prepare("
         #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
         #     RETURNING id INTO :ID
         # ")?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         # let mut id = 0;
-        # let count = stmt.execute_into(
-        #     &[
-        #         &(":TEXT", text)
-        #     ], &mut [
-        #         &mut (":ID", &mut id),
-        #     ]
-        # )?;
+        # let count = stmt.execute_into((":TEXT", &text), (":ID", &mut id))?;
         let stmt = conn.prepare("
             BEGIN
                 OPEN :long_texts FOR
@@ -761,9 +735,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut long_texts = Cursor::new(&stmt)?;
-        stmt.execute_into(&[&(":ID", &id)], &mut [
-            &mut (":LONG_TEXTS", &mut long_texts),
-        ])?;
+        stmt.execute_into((":ID", &id), (":LONG_TEXTS", &mut long_texts))?;
         long_texts.set_max_long_size(100_000);
         let rows = long_texts.rows()?;
         let row = rows.next()?.expect("first (and only) row");
@@ -794,20 +766,14 @@ impl<'a> Cursor<'a> {
         #       WHEN name_already_used THEN NULL;
         #     END;
         # ").await?;
-        # stmt.execute(&[]).await?;
+        # stmt.execute(()).await?;
         # let stmt = conn.prepare("
         #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
         #     RETURNING id INTO :ID
         # ").await?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         # let mut id = 0;
-        # let count = stmt.execute_into(
-        #     &[
-        #         &(":TEXT", text)
-        #     ], &mut [
-        #         &mut (":ID", &mut id),
-        #     ]
-        # ).await?;
+        # let count = stmt.execute_into((":TEXT", &text), (":ID", &mut id)).await?;
         # let stmt = conn.prepare("
         #     BEGIN
         #         OPEN :long_texts FOR
@@ -818,9 +784,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut long_texts = Cursor::new(&stmt)?;
-        # stmt.execute_into(&[&(":ID", &id)], &mut [
-        #     &mut (":LONG_TEXTS", &mut long_texts),
-        # ]).await?;
+        # stmt.execute_into((":ID", &id), (":LONG_TEXTS", &mut long_texts)).await?;
         # long_texts.set_max_long_size(100_000);
         # let rows = long_texts.rows().await?;
         # let row = rows.next().await?.expect("first (and only) row");

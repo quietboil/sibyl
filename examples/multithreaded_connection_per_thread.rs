@@ -40,7 +40,7 @@ fn example() -> Result<()> {
                        )
                  WHERE hire_date_rank = 1
             ")?;
-            let rows = stmt.query(&[])?;
+            let rows = stmt.query(())?;
             if let Some( row ) = rows.next()? {
                 let first_name : Option<&str> = row.get(0)?;
                 let last_name : &str = row.get(1)?.unwrap();
@@ -91,7 +91,7 @@ fn example() -> Result<()> {
                            )
                      WHERE hire_date_rank = 1
                 ").await?;
-                let rows = stmt.query(&[]).await?;
+                let rows = stmt.query(()).await?;
                 if let Some( row ) = rows.next().await? {
                     let first_name : Option<&str> = row.get(0)?;
                     let last_name : &str = row.get(1)?.unwrap();

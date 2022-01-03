@@ -42,7 +42,7 @@ mod tests {
     }
 
     fn fetch_latest_hire(stmt: Statement) -> Result<String> {
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         if let Some( row ) = rows.next()? {
             let first_name : Option<&str> = row.get(0)?;
             let last_name : &str = row.get(1)?.expect("last_name");
@@ -249,7 +249,7 @@ mod tests {
     }
 
     async fn fetch_latest_hire(stmt: Statement<'_>) -> Result<String> {
-        let rows = stmt.query(&[]).await?;
+        let rows = stmt.query(()).await?;
         if let Some( row ) = rows.next().await? {
             let first_name : Option<&str> = row.get(0)?;
             let last_name : &str = row.get(1)?.expect("last_name");

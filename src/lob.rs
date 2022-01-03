@@ -9,8 +9,8 @@ mod blocking;
 mod nonblocking;
 
 use std::sync::{Arc, atomic::AtomicU32};
-use crate::{Result, Connection, oci::{self, *}, stmt::{ToSql, ToSqlOut}, conn::SvcCtx};
-use libc::c_void;
+use std::mem::size_of;
+use crate::{Result, Connection, oci::{self, *}, stmt::{ToSql, ToSqlOut, Params}, conn::SvcCtx};
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
 pub trait InternalLob {}
@@ -57,10 +57,6 @@ impl<T> AsRef<OCISvcCtx> for LobInner<T> where T: DescriptorType<OCIType=OCILobL
 impl<T> LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
     fn new(locator: Descriptor<T>, svc: Arc<SvcCtx>) -> Self {
         Self { locator, svc }
-    }
-
-    fn as_ptr(&self) -> *const *mut OCILobLocator {
-        self.locator.as_ptr()
     }
 }
 
@@ -185,19 +181,19 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         #         when name_already_used then null;
         #     end;
         # ")?;
-        # stmt.execute(&[])?;
+        # stmt.execute(())?;
         let stmt = conn.prepare("
             INSERT INTO test_lobs (text) VALUES (empty_clob())
             RETURN id INTO :id
         ")?;
         let mut id : usize = 0;
-        stmt.execute_into(&[], &mut [ &mut id ])?;
+        stmt.execute_into((), &mut id)?;
 
         // must lock LOB's row before writing into the LOB
         let stmt = conn.prepare("
             SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE
         ")?;
-        let rows = stmt.query(&[ &id ])?;
+        let rows = stmt.query(&id)?;
         let row = rows.next()?.expect("one row");
         let lob : CLOB = row.get(0)?.expect("CLOB locator for writing");
 
@@ -216,11 +212,11 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         let stmt = conn.prepare("
             SELECT text FROM test_lobs WHERE id = :id
         ")?;
-        let rows = stmt.query(&[ &id ])?;
+        let rows = stmt.query(&id)?;
         let row = rows.next()?.expect("one row");
         let lob1 : CLOB = row.get(0)?.expect("CLOB locator for reading");
 
-        let rows = stmt.query(&[ &id ])?;
+        let rows = stmt.query(&id)?;
         let row = rows.next()?.expect("one row");
         let lob2 : CLOB = row.get(0)?.expect("CLOB locator for reading");
 
@@ -254,12 +250,12 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         #         when name_already_used then null;
         #     end;
         # ").await?;
-        # stmt.execute(&[]).await?;
+        # stmt.execute(()).await?;
         # let stmt = conn.prepare("INSERT INTO test_lobs (text) VALUES (empty_clob()) RETURN id INTO :id").await?;
         # let mut id : usize = 0;
-        # stmt.execute_into(&[], &mut [ &mut id ]).await?;
+        # stmt.execute_into((), &mut id).await?;
         # let stmt = conn.prepare("SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE").await?;
-        # let rows = stmt.query(&[ &id ]).await?;
+        # let rows = stmt.query(&id).await?;
         # let row = rows.next().await?.expect("one row");
         # let lob : CLOB = row.get(0)?.expect("CLOB locator for writing");
         # let text = "
@@ -273,10 +269,10 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         # lob.close().await?;
         # conn.commit().await?;
         # let stmt = conn.prepare("SELECT text FROM test_lobs WHERE id = :id").await?;
-        # let rows = stmt.query(&[ &id ]).await?;
+        # let rows = stmt.query(&id).await?;
         # let row = rows.next().await?.expect("one row");
         # let lob1 : CLOB = row.get(0)?.expect("CLOB locator for reading");
-        # let rows = stmt.query(&[ &id ]).await?;
+        # let rows = stmt.query(&id).await?;
         # let row = rows.next().await?.expect("one row");
         # let lob2 : CLOB = row.get(0)?.expect("CLOB locator for reading");
         # assert!(lob1.is_equal(&lob2)?, "CLOB1 == CLOB2");
@@ -365,13 +361,13 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         #         when name_already_used then null;
         #     end;
         # ")?;
-        # stmt.execute(&[])?;
+        # stmt.execute(())?;
         let stmt = conn.prepare("
             insert into test_lobs (text) values (:new_lob) returning id into :id
         ")?;
         let mut id : usize = 0;
         let lob = CLOB::empty(&conn)?;
-        stmt.execute_into(&[ &lob ], &mut [ &mut id ])?;
+        stmt.execute_into(&lob, &mut id)?;
         # assert!(id > 0);
         # Ok(())
         # }
@@ -399,13 +395,13 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         #         when name_already_used then null;
         #     end;
         # ").await?;
-        # stmt.execute(&[]).await?;
+        # stmt.execute(()).await?;
         # let stmt = conn.prepare("
         #     insert into test_lobs (text) values (:new_lob) returning id into :id
         # ").await?;
         # let mut id : usize = 0;
         # let lob = CLOB::empty(&conn)?;
-        # stmt.execute_into(&[ &lob ], &mut [ &mut id ]).await?;
+        # stmt.execute_into(&lob, &mut id).await?;
         # assert!(id > 0);
         # Ok(()) })
         # }
@@ -597,19 +593,15 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 macro_rules! impl_lob_to_sql {
     ($ts:ty => $sqlt:ident) => {
         impl ToSql for Descriptor<$ts> {
-            fn sql_type(&self) -> u16 { $sqlt }
-            fn sql_data_ptr(&self) -> Ptr<c_void> { Ptr::new(self.as_ptr() as _) }
-            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
-        }
-        impl ToSql for LOB<'_, $ts> {
-            fn sql_type(&self) -> u16 { $sqlt }
-            fn sql_data_ptr(&self) -> Ptr<c_void> { Ptr::new(self.inner.as_ptr() as _) }
-            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
+            fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                params.bind(pos, $sqlt, self.as_ptr() as _, size_of::<*mut OCILobLocator>(), stmt, err)?;
+                Ok(pos + 1)
+            }
         }
         impl ToSql for &LOB<'_, $ts> {
-            fn sql_type(&self) -> u16 { $sqlt }
-            fn sql_data_ptr(&self) -> Ptr<c_void> { Ptr::new(self.inner.as_ptr() as _) }
-            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
+            fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                self.inner.locator.bind_to(pos, params, stmt, err)
+            }
         }
     };
 }
@@ -621,14 +613,15 @@ impl_lob_to_sql!{ OCIBFileLocator => SQLT_BFILE }
 macro_rules! impl_lob_to_sql_output {
     ($ts:ty => $sqlt:ident) => {
         impl ToSqlOut for Descriptor<$ts> {
-            fn sql_type(&self) -> u16 { $sqlt }
-            fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(self.as_mut_ptr() as _) }
-            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
+            fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                params.bind_out(pos, $sqlt, self.as_mut_ptr() as _, size_of::<*mut OCILobLocator>(), size_of::<*mut OCILobLocator>(), stmt, err)?;
+                Ok(pos + 1)
+            }
         }
-        impl ToSqlOut for LOB<'_, $ts> {
-            fn sql_type(&self) -> u16 { $sqlt }
-            fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(self.inner.locator.as_mut_ptr() as _) }
-            fn sql_data_len(&self) -> usize { std::mem::size_of::<*mut OCILobLocator>() }
+        impl ToSqlOut for &mut LOB<'_, $ts> {
+            fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                self.inner.locator.bind_to(pos, params, stmt, err)
+            }
         }
     };
 }

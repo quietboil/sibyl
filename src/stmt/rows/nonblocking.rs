@@ -23,7 +23,7 @@ impl<'a> Rows<'a> {
              WHERE country_id = :id
           ORDER BY location_id
         ").await?;
-        let rows = stmt.query(&[&(":ID", "CA")]).await?;
+        let rows = stmt.query("CA").await?;
         let mut res = Vec::new();
         while let Some( row ) = rows.next().await? {
             // &str does not live long enough to be useful for

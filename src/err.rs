@@ -78,6 +78,10 @@ impl Error {
         Error::Interface( msg.to_owned() )
     }
 
+    pub(crate) fn msg(msg: String) -> Self {
+        Error::Interface( msg )
+    }
+
     pub(crate) fn env(env: &OCIEnv, rc: i32) -> Self {
         let (code, msg) = get_oracle_error(rc, env as *const OCIEnv as _, OCI_HTYPE_ENV);
         Error::Oracle(code, msg)

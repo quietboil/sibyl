@@ -30,7 +30,7 @@ impl Environment {
               FROM v$session_connect_info
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.unwrap();
         let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
         assert_eq!(client_driver, "sibyl");
@@ -77,7 +77,7 @@ impl Environment {
               FROM v$session_connect_info
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.unwrap();
         let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
         assert_eq!(client_driver, "sibyl");
@@ -123,7 +123,7 @@ impl Environment {
               FROM v$session_connect_info
              WHERE sid = SYS_CONTEXT('USERENV', 'SID')
         ")?;
-        let rows = stmt.query(&[])?;
+        let rows = stmt.query(())?;
         let row = rows.next()?.unwrap();
         let client_driver : &str = row.get(0)?.unwrap();
         assert_eq!(client_driver, "sibyl");

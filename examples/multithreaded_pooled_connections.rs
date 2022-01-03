@@ -10,8 +10,12 @@ use sibyl::*;
     abstracts `block_on` for various executors and is intended to execute async tests
     and examples.
 */
-#[cfg(feature="blocking")]
 fn main() -> Result<()> {
+    example()
+}
+
+#[cfg(feature="blocking")]
+fn example() -> Result<()> {
     use std::{env, thread, sync::Arc};
     use once_cell::sync::OnceCell;
 
@@ -44,7 +48,7 @@ fn main() -> Result<()> {
                        )
                  WHERE hire_date_rank = 1
             ")?;
-            let rows = stmt.query(&[])?;
+            let rows = stmt.query(())?;
             if let Some( row ) = rows.next()? {
                 let first_name : Option<&str> = row.get(0)?;
                 let last_name : &str = row.get(1)?.unwrap();
@@ -72,11 +76,13 @@ fn main() -> Result<()> {
 }
 
 /**
-    Connection pools (presently?) are not supported in nonblocking mode.
+    Connection pools are not supported in nonblocking mode.
+
     OCI returns "ORA-03126 network driver does not support non-blocking operations"
     when one tries to set OCI_ATTR_NONBLOCKING_MODE on a pooled connection.
 */
 #[cfg(feature="nonblocking")]
-fn main() -> Result<()> {
+fn example() -> Result<()> {
+    eprintln!("Connection pools are not supported in nonblocking mode");
     Ok(())
 }

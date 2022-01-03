@@ -1,10 +1,10 @@
 //! Blocking SQL statement methods
 
 use super::{
-    Statement, Cursor, Params, StmtInArg, StmtOutArg, Columns, Rows,
+    Statement, Cursor, Params, Columns, Rows,
     cols::DEFAULT_LONG_BUFFER_SIZE,
 };
-use crate::{Error, Result, oci::{self, *}, Connection};
+use crate::{Error, Result, oci::{self, *}, Connection, ToSql, ToSqlOut};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
@@ -30,38 +30,20 @@ impl<'a> Statement<'a> {
     }
 
     /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
-    fn bind_args(&self, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<Option<Vec<usize>>> {
-        self.params.as_ref()
-            .map(|params| params.write().bind_args(&self.stmt, &self.err, in_args, out_args))
-            .unwrap_or_else(|| 
-                if in_args.len() == 0 && out_args.len() == 0 {
-                    Ok(None)
-                } else {
-                    Err(Error::new("Statement has no parameters"))
-                }
-            )
+    fn bind_args(&self, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<()> {
+        if let Some(params) = &self.params {
+            params.write().bind_args(&self.stmt, &self.err, in_args, out_args)
+        } else {
+            Ok(())
+        }
     }
 
     /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
-    fn exec(&self, stmt_type: u16, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<i32>{
-        let out_idxs = self.bind_args(in_args, out_args)?;
+    fn exec(&self, stmt_type: u16, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<i32>{
+        self.bind_args(in_args, out_args)?;
 
         let iters: u32 = if stmt_type == OCI_STMT_SELECT { 0 } else { 1 };
-        let res = oci::stmt_execute(self.as_ref(), &self.stmt, &self.err, iters, 0, OCI_DEFAULT)?;
-        match res {
-            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => {
-                if let Some(idxs) = out_idxs {
-                    if let Some(params) = self.params.as_ref() {
-                        let params = params.read();
-                        for (out_arg_ix, out_param_ix) in idxs.into_iter().enumerate() {
-                            out_args[out_arg_ix].to_sql_out().sql_set_len(params.out_data_len(out_param_ix));
-                        }
-                    }
-                }
-                Ok(res)
-            },
-            _ => Ok(res)
-        }
+        oci::stmt_execute(self.as_ref(), &self.stmt, &self.err, iters, 0, OCI_DEFAULT)
     }
 
     /**
@@ -79,16 +61,16 @@ impl<'a> Statement<'a> {
                SET manager_id = :manager_id
              WHERE department_id = :department_id
         ")?;
-        let num_updated_rows = stmt.execute(&[
-            &( ":DEPARTMENT_ID", 120 ),
-            &( ":MANAGER_ID",    101 ),
-        ])?;
+        let num_updated_rows = stmt.execute((
+            (":DEPARTMENT_ID", 120),
+            (":MANAGER_ID",    101),
+        ))?;
         assert_eq!(num_updated_rows, 1);
         # conn.rollback()?;
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn execute(&self, args: &[&dyn StmtInArg]) -> Result<usize> {
+    pub fn execute(&self, args: impl ToSql) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
@@ -97,7 +79,7 @@ impl<'a> Statement<'a> {
         if is_returning != 0 {
             return Err( Error::new("Use `execute_into` with output arguments to execute a RETURNING statement") );
         }
-        self.exec(stmt_type, args, &mut [])?;
+        self.exec(stmt_type, &args, &mut())?;
         self.row_count()
     }
 
@@ -125,13 +107,13 @@ impl<'a> Statement<'a> {
         // OUT is used as an IN-OUT parameter, OUT precedes or in the middle of the IN parameter
         // list, parameter list is very long, etc. This example shows the call with the named
         // arguments as this might be a more typical use case for it.
-        let num_rows = stmt.execute_into(&[
-            &( ":DEPARTMENT_NAME", "Security" ),
-            &( ":MANAGER_ID",      ""         ),
-            &( ":LOCATION_ID",     1700       ),
-        ], &mut [
-            &mut ( ":DEPARTMENT_ID", &mut department_id )
-        ])?;
+        let num_rows = stmt.execute_into((
+            ( ":DEPARTMENT_NAME", "Security" ),
+            ( ":MANAGER_ID",      ""         ),
+            ( ":LOCATION_ID",     1700       ),
+        ),
+            ( ":DEPARTMENT_ID", &mut department_id )
+        )?;
         assert_eq!(num_rows, 1);
         assert!(!stmt.is_null(":DEPARTMENT_ID")?);
         assert!(department_id > 0);
@@ -139,12 +121,15 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn execute_into(&self, in_args: &[&dyn StmtInArg], out_args: &mut [&mut dyn StmtOutArg]) -> Result<usize> {
+    pub fn execute_into(&self, in_args: impl ToSql, mut out_args: impl ToSqlOut) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
         }
-        self.exec(stmt_type, in_args, out_args)?;
+        self.exec(stmt_type, &in_args, &mut out_args)?;
+        if let Some(params) = &self.params {
+            params.read().set_out_data_len(&mut out_args);
+        }
         self.row_count()
     }
 
@@ -166,7 +151,7 @@ impl<'a> Statement<'a> {
           ORDER BY employee_id
         ")?;
         stmt.set_prefetch_rows(5)?;
-        let rows = stmt.query(&[ &103 ])?; // Alexander Hunold
+        let rows = stmt.query(103)?; // Alexander Hunold
         let mut subs = HashMap::new();
         while let Some( row ) = rows.next()? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
@@ -193,17 +178,18 @@ impl<'a> Statement<'a> {
         # Ok::<(),Box<dyn std::error::Error>>(())
         ```
     */
-    pub fn query(&'a self, args: &[&dyn StmtInArg]) -> Result<Rows> {
+    pub fn query(&'a self, args: impl ToSql) -> Result<Rows> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
             return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
         }
-        let res = self.exec(stmt_type, args, &mut [])?;
+        let res = self.exec(stmt_type, &args, &mut ())?;
 
         if self.cols.get().is_none() {
             let cols = Columns::new(Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), self.max_long)?;
             self.cols.get_or_init(|| RwLock::new(cols));
-        };
+        }
+
         match res {
             OCI_SUCCESS | OCI_SUCCESS_WITH_INFO | OCI_NO_DATA => {
                 Ok( Rows::from_query(res, self) )
@@ -271,7 +257,7 @@ impl<'a> Statement<'a> {
         let expected_lowest_salary = Number::from_int(2100, &conn)?;
         let expected_median_salary = Number::from_int(6200, &conn)?;
 
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         let lowest_payed_employee = stmt.next_result()?.unwrap();
 
@@ -328,8 +314,8 @@ impl<'a> Statement<'a> {
     pub fn next_result(&'a self) -> Result<Option<Cursor>> {
         let mut stmt = Ptr::<OCIStmt>::null();
         let mut stmt_type = 0u32;
-        let res = unsafe { 
-            OCIStmtGetNextResult(self.stmt.as_ref(), self.err.as_ref(), stmt.as_mut_ptr(), &mut stmt_type, OCI_DEFAULT) 
+        let res = unsafe {
+            OCIStmtGetNextResult(self.stmt.as_ref(), self.err.as_ref(), stmt.as_mut_ptr(), &mut stmt_type, OCI_DEFAULT)
         };
         match res {
             OCI_NO_DATA => Ok( None ),
@@ -349,24 +335,26 @@ mod tests {
         let dbpass = std::env::var("DBPASS")?;
         let oracle = env()?;
         let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+
         let stmt = conn.prepare("
             INSERT INTO hr.departments
                    ( department_id, department_name, manager_id, location_id )
-            VALUES ( 9, :department_name, :manager_id, :location_id )
+            VALUES ( 11, :department_name, :manager_id, :location_id )
          RETURNING department_id
               INTO :department_id
         ")?;
-        let mut department_id : i32 = 0;
-        let num_rows = stmt.execute_into(&[
-            &( ":department_name", "Security" ),
-            &( ":manager_id",      ""         ),
-            &( ":location_id",     1700       ),
-        ], &mut [
-            &mut ( ":department_id", &mut department_id )
-        ])?;
+        let mut department_id : usize = 0;
+        let num_rows = stmt.execute_into((
+            ( ":DEPARTMENT_NAME", "Security" ),
+            ( ":MANAGER_ID",      ""         ),
+            ( ":LOCATION_ID",     1700       ),
+        ),
+            ( ":DEPARTMENT_ID", &mut department_id )
+        )?;
+
         assert_eq!(num_rows, 1);
-        assert!(!stmt.is_null(":department_id")?);
-        assert_eq!(department_id, 9);
+        assert!(!stmt.is_null(":DEPARTMENT_ID")?);
+        assert_eq!(department_id, 11);
         conn.rollback()?;
         Ok(())
     }

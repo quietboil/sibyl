@@ -35,7 +35,7 @@ impl<'a> Cursor<'a> {
                      WHERE last_name = :last_name
                    ) e
         ").await?;
-        let rows = stmt.query(&[ &"King" ]).await?;
+        let rows = stmt.query("King").await?;
 
         let row = rows.next().await?.unwrap();
         let last_name : &str = row.get(0)?.unwrap();

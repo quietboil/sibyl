@@ -15,7 +15,8 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-pub use args::{StmtInArg, StmtOutArg, ToSql, ToSqlOut};
+pub use args::{ToSql, ToSqlOut};
+pub use bind::Params;
 pub use cursor::Cursor;
 pub use rows::{Row, Rows};
 pub use cols::ColumnType;
@@ -27,7 +28,7 @@ use crate::{Result, conn::SvcCtx, oci::*, Connection, types::Ctx};
 
 use std::sync::Arc;
 
-use self::{bind::Params, cols::{Columns, ColumnInfo}};
+use cols::{Columns, ColumnInfo};
 
 /// Allows column or output variable identification by either
 /// its numeric position or its name.
@@ -191,27 +192,21 @@ impl<'a> Statement<'a> {
         #       WHEN name_already_used THEN NULL;
         #     END;
         # ")?;
-        # stmt.execute(&[])?;
+        # stmt.execute(())?;
         # let stmt = conn.prepare("
         #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
         #     RETURNING id INTO :ID
         # ")?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         # let mut id = 0;
-        # let count = stmt.execute_into(
-        #     &[
-        #         &(":TEXT", text)
-        #     ], &mut [
-        #         &mut (":ID", &mut id),
-        #     ]
-        # )?;
+        # let count = stmt.execute_into((":TEXT", &text), (":ID", &mut id))?;
         let mut stmt = conn.prepare("
             SELECT text
               FROM test_long_and_raw_data
              WHERE id = :id
         ")?;
         stmt.set_max_long_size(100_000);
-        let rows = stmt.query(&[ &id ])?;
+        let rows = stmt.query(&id)?;
         let row = rows.next()?.expect("first (and only) row");
         let txt : &str = row.get(0)?.expect("long text");
         # assert_eq!(txt, text);
@@ -240,27 +235,21 @@ impl<'a> Statement<'a> {
         #       WHEN name_already_used THEN NULL;
         #     END;
         # ").await?;
-        # stmt.execute(&[]).await?;
+        # stmt.execute(()).await?;
         # let stmt = conn.prepare("
         #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
         #     RETURNING id INTO :ID
         # ").await?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         # let mut id = 0;
-        # let count = stmt.execute_into(
-        #     &[
-        #         &(":TEXT", text)
-        #     ], &mut [
-        #         &mut (":ID", &mut id),
-        #     ]
-        # ).await?;
+        # let count = stmt.execute_into((":TEXT", &text), (":ID", &mut id)).await?;
         # let mut stmt = conn.prepare("
         #     SELECT text
         #       FROM test_long_and_raw_data
         #      WHERE id = :id
         # ").await?;
         # stmt.set_max_long_size(100_000);
-        # let rows = stmt.query(&[ &id ]).await?;
+        # let rows = stmt.query(&id).await?;
         # let row = rows.next().await?.expect("first (and only) row");
         # let txt : &str = row.get(0)?.expect("long text");
         # assert_eq!(txt, text);
@@ -294,7 +283,7 @@ impl<'a> Statement<'a> {
               FROM hr.employees
              WHERE manager_id = :id
         ")?;
-        let rows = stmt.query(&[ &103 ])?;
+        let rows = stmt.query(103)?;
         let num_cols = stmt.column_count()?;
         assert_eq!(num_cols, 3);
         # Ok(())
@@ -312,7 +301,7 @@ impl<'a> Statement<'a> {
         #       FROM hr.employees
         #      WHERE manager_id = :id
         # ").await?;
-        # let rows = stmt.query(&[ &103 ]).await?;
+        # let rows = stmt.query(103).await?;
         # let num_cols = stmt.column_count()?;
         # assert_eq!(num_cols, 3);
         # Ok(()) })
@@ -355,7 +344,7 @@ impl<'a> Statement<'a> {
           ORDER BY employee_id
         ")?;
         stmt.set_prefetch_rows(5)?;
-        let rows = stmt.query(&[ &103 ])?;
+        let rows = stmt.query(103)?;
         let mut ids = Vec::new();
         while let Some( row ) = rows.next()? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
@@ -382,7 +371,7 @@ impl<'a> Statement<'a> {
         #   ORDER BY employee_id
         # ").await?;
         # stmt.set_prefetch_rows(5)?;
-        # let rows = stmt.query(&[ &103 ]).await?;
+        # let rows = stmt.query(103).await?;
         # let mut ids = Vec::new();
         # while let Some( row ) = rows.next().await? {
         #     let id : u32 = row.get(0)?.unwrap();
@@ -441,7 +430,7 @@ impl<'a> Statement<'a> {
               FROM hr.employees
              WHERE manager_id = :id
         ")?;
-        let rows = stmt.query(&[ &103 ])?;
+        let rows = stmt.query(103)?;
         let col = stmt.column(0).expect("employee_id column info");
         assert_eq!(col.name()?, "EMPLOYEE_ID");
         assert_eq!(col.data_type()?, ColumnType::Number);
@@ -465,7 +454,7 @@ impl<'a> Statement<'a> {
         #       FROM hr.employees
         #      WHERE manager_id = :id
         # ").await?;
-        # let rows = stmt.query(&[ &103 ]).await?;
+        # let rows = stmt.query(103).await?;
         # let col = stmt.column(0).expect("employee_id column info");
         # assert_eq!(col.name()?, "EMPLOYEE_ID");
         # assert_eq!(col.data_type()?, ColumnType::Number);

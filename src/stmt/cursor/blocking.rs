@@ -34,7 +34,7 @@ impl<'a> Cursor<'a> {
                      WHERE last_name = :last_name
                    ) e
         ")?;
-        let rows = stmt.query(&[ &"King" ])?;
+        let rows = stmt.query("King")?;
 
         let row = rows.next()?.unwrap();
         let last_name : &str = row.get(0)?.unwrap();

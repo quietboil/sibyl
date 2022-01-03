@@ -110,18 +110,18 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         #         when name_already_used then null;
         #     end;
         # ").await?;
-        # stmt.execute(&[]).await?;
+        # stmt.execute(()).await?;
         let stmt = conn.prepare("
             insert into test_lobs (text) values (empty_clob()) returning id into :id
         ").await?;
         let mut id : usize = 0;
-        stmt.execute_into(&[], &mut [ &mut id ]).await?;
+        stmt.execute_into((), &mut id).await?;
 
         // must lock LOB's row before writing into it
         let stmt = conn.prepare("
             select text from test_lobs where id = :id for update
         ").await?;
-        let rows = stmt.query(&[ &id ]).await?;
+        let rows = stmt.query(&id).await?;
         let row = rows.next().await?.expect("a single row");
         let mut lob1 : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -169,7 +169,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         ").await?;
         let mut saved_lob_id : usize = 0;
         let mut saved_lob = CLOB::new(&conn)?;
-        stmt.execute_into(&[ &lob2 ], &mut [ &mut saved_lob_id, &mut saved_lob ]).await?;
+        stmt.execute_into(&lob2, (&mut saved_lob_id, &mut saved_lob, ())).await?;
 
         // And thus `saved_lob` locator points to a distinct LOB value ...
         assert!(!saved_lob.is_equal(&lob2)?);
@@ -243,7 +243,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         #         when name_already_used then null;
         #     end;
         # ").await?;
-        # stmt.execute(&[]).await?;
+        # stmt.execute(()).await?;
         let stmt = conn.prepare("
             DECLARE
                 row_id ROWID;
@@ -253,7 +253,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
             END;
         ").await?;
         let mut lob = CLOB::new(&conn)?;
-        stmt.execute_into(&[], &mut [ &mut lob ]).await?;
+        stmt.execute_into((), &mut lob).await?;
 
         let text = [
             "Love seeketh not itself to please,\n",
@@ -570,7 +570,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         #         when name_already_used then null;
         #     end;
         # ").await?;
-        # stmt.execute(&[]).await?;
+        # stmt.execute(()).await?;
         let stmt = conn.prepare("
             DECLARE
                 row_id ROWID;
@@ -580,7 +580,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
             END;
         ").await?;
         let mut lob = CLOB::new(&conn)?;
-        stmt.execute_into(&[], &mut [ &mut lob ]).await?;
+        stmt.execute_into((), &mut lob).await?;
 
         let file = BFile::new(&conn)?;
         file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -629,7 +629,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         text.clear();
         // The reading stops at the end of LOB value if we request more
         // characters than the LOB contains
-        let num_read = lob.read(0, 100s, &mut text).await?;
+        let num_read = lob.read(0, 100, &mut text).await?;
         assert_eq!(num_read, 8);
 
         assert_eq!(text, "🚲🛠📬🎓");
@@ -825,7 +825,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
         let text = "tête-à-tête";        
         assert_eq!(text.len(), 14); // byte count
         
-        let written = lob.write(4, text)?;
+        let written = lob.write(4, text).await?;
         // Note that auto inserted spaces at 0..4 are not included
         // in the number of characters written
         assert_eq!(written, 11);    // char count
@@ -1069,12 +1069,15 @@ impl<'a> LOB<'a,OCICLobLocator> {
         let mut buf = String::with_capacity(32768);
         let mut remainder = len;
         while remainder > 0 {
-            let mut piece_len = std::cmp::min(remainder, 32767);
-            let res = stmt.execute_into(&[&(":LOC", self), &(":POS", offset)], &mut [&mut (":AMT", &mut piece_len), &mut (":DATA", &mut buf)]).await;
+            let mut amount = std::cmp::min(remainder, 32767);
+            let res = stmt.execute_into(((":LOC", self), (":POS", offset)), ((":AMT", &mut amount), (":DATA", &mut buf))).await;
             match res {
+                Ok(num_rows) if num_rows == 0 => {
+                    break;
+                }
                 Ok(_) => {
-                    offset += piece_len;
-                    remainder -= piece_len;
+                    offset += amount;
+                    remainder -= amount;
                     out.push_str(&buf);
                     buf.clear();
                 },
@@ -1164,12 +1167,12 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         #         when name_already_used then null;
         #     end;
         # ").await?;
-        # stmt.execute(&[]).await?;
+        # stmt.execute(()).await?;
         let stmt = conn.prepare("
             insert into test_lobs (data) values (empty_blob()) returning data into :data
         ").await?;
         let mut lob = BLOB::new(&conn)?;
-        stmt.execute_into(&[], &mut [ &mut lob ]).await?;
+        stmt.execute_into((), &mut lob).await?;
         lob.open().await?;
         let chunk_size = lob.chunk_size().await?;
         let data = vec![42u8;chunk_size];
@@ -1353,7 +1356,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
             let mut piece_len = std::cmp::min(remainder, 32767);
             let mut piece = unsafe { std::slice::from_raw_parts_mut(piece_ptr, piece_len) };
 
-            let res = stmt.execute_into(&[&(":LOC", self), &(":POS", offset)], &mut [&mut (":AMT", &mut piece_len), &mut (":DATA", &mut piece)]).await;
+            let res = stmt.execute_into(((":LOC", self), (":POS", offset)), ((":AMT", &mut piece_len), (":DATA", &mut piece))).await;
             match res {
                 Ok(_) => {
                     offset += piece_len;

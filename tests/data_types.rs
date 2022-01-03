@@ -1,4 +1,3 @@
-
 #[cfg(feature="blocking")]
 mod blocking {
     use sibyl::*;
@@ -25,7 +24,7 @@ mod blocking {
               WHEN name_already_used THEN NULL;
             END;
         ")?;
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         let mut ids = Vec::with_capacity(3);
         let stmt = conn.prepare("
@@ -36,13 +35,12 @@ mod blocking {
         let mut text_out = String::with_capacity(97);
         let mut ntxt_out = String::with_capacity(99);
         let count = stmt.execute_into(
-            &[
-                &(":TEXT", "Two roads diverged in a yellow wood,")
-            ], &mut [
-                &mut (":ID", &mut id),
-                &mut (":TEXT_OUT", &mut text_out),
-                &mut (":NTXT_OUT", &mut ntxt_out)
-            ]
+            (":TEXT", "Two roads diverged in a yellow wood,"),
+            (
+                (":ID",       &mut id),
+                (":TEXT_OUT", &mut text_out),
+                (":NTXT_OUT", &mut ntxt_out)
+            )
         )?;
         assert_eq!(count, 1);
         assert_eq!(text_out, "Two roads diverged in a yellow wood,");
@@ -52,13 +50,12 @@ mod blocking {
 
          let text = String::from("And sorry I could not travel both");
         let count = stmt.execute_into(
-            &[
-                &(":TEXT", text.as_str())
-            ], &mut[
-                &mut (":ID", &mut id),
-                &mut (":TEXT_OUT", &mut text_out),
-                &mut (":NTXT_OUT", &mut ntxt_out)
-            ]
+            (":TEXT", text.as_str()),
+            (
+                (":ID",       &mut id),
+                (":TEXT_OUT", &mut text_out),
+                (":NTXT_OUT", &mut ntxt_out)
+            )
         )?;
         assert_eq!(count, 1);
         assert_eq!(text_out, "And sorry I could not travel both");
@@ -72,13 +69,12 @@ mod blocking {
         assert!(ntxt_out.capacity()? >= 99, "Ntxt out capacity");
         let text = Varchar::from("And be one traveler, long I stood", &conn)?;
         let count = stmt.execute_into(
-            &[
-                &(":TEXT", text.as_str())
-            ], &mut [
-                &mut (":ID", &mut id),
-                &mut (":TEXT_OUT", &mut text_out),
-                &mut (":NTXT_OUT", &mut ntxt_out)
-            ]
+            (":TEXT", text.as_str()),
+            (
+                (":ID",       &mut id),
+                (":TEXT_OUT", &mut text_out),
+                (":NTXT_OUT", &mut ntxt_out)
+            )
         )?;
         assert_eq!(count, 1);
         assert_eq!(text_out.as_str(), "And be one traveler, long I stood");
@@ -88,7 +84,7 @@ mod blocking {
 
         let stmt = conn.prepare("SELECT text, ntext FROM test_character_data WHERE id = :ID")?;
 
-        let rows = stmt.query(&[ &(":ID", ids[0]) ])?;
+        let rows = stmt.query(ids[0])?;
         let row  = rows.next()?.unwrap();
         let text : &str = row.get("TEXT")?.unwrap();
         assert_eq!(text, "Two roads diverged in a yellow wood,");
@@ -96,7 +92,7 @@ mod blocking {
         assert_eq!(text, "> Two roads diverged in a yellow wood,");
         assert!(rows.next()?.is_none());
 
-        let rows = stmt.query(&[ &(":ID", ids[1]) ])?;
+        let rows = stmt.query(ids[1])?;
         if let Some(row)  = rows.next()? {
             let text : String = row.get(0)?.unwrap();
             assert_eq!(text.as_str(), "And sorry I could not travel both");
@@ -105,7 +101,7 @@ mod blocking {
         }
         assert!(rows.next()?.is_none());
 
-        let rows = stmt.query(&[ &(":ID", ids[2]) ])?;
+        let rows = stmt.query(ids[2])?;
         if let Some(row) = rows.next()? {
             let text : Varchar = row.get("TEXT")?.unwrap();
             assert_eq!(text.as_str(), "And be one traveler, long I stood");
@@ -145,7 +141,7 @@ mod blocking {
               WHEN name_already_used THEN NULL;
             END;
         ")?;
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         let stmt = conn.prepare("
             INSERT INTO test_datetime_data (dt, ts, tsz, tsl, iym, ids) VALUES (:DT, :TS, :TSZ, :TSL, :IYM, :IDS)
@@ -167,24 +163,22 @@ mod blocking {
         let mut iym_out = IntervalYM::new(&conn)?;
         let mut ids_out = IntervalDS::new(&conn)?;
 
-        let count = stmt.execute_into(
-            &[
-                &(":DT",  &dt),
-                &(":TS",  &ts),
-                &(":TSZ", &tsz),
-                &(":TSL", &tsl),
-                &(":IYM", &iym),
-                &(":IDS", &ids)
-            ], &mut [
-                &mut (":ID",   &mut id),
-                &mut (":ODT",  &mut dt_out),
-                &mut (":OTS",  &mut ts_out),
-                &mut (":OTSZ", &mut tsz_out),
-                &mut (":OTSL", &mut tsl_out),
-                &mut (":OIYM", &mut iym_out),
-                &mut (":OIDS", &mut ids_out)
-            ]
-        )?;
+        let count = stmt.execute_into((
+            (":DT",  &dt),
+            (":TS",  &ts),
+            (":TSZ", &tsz),
+            (":TSL", &tsl),
+            (":IYM", &iym),
+            (":IDS", &ids)
+        ), (
+            (":ID",   &mut id),
+            (":ODT",  &mut dt_out),
+            (":OTS",  &mut ts_out),
+            (":OTSZ", &mut tsz_out),
+            (":OTSL", &mut tsl_out),
+            (":OIYM", &mut iym_out),
+            (":OIDS", &mut ids_out)
+        ))?;
         assert_eq!(count, 1);
         assert!(id > 0);
         assert_eq!(dt_out.compare(&dt)?, Equal);
@@ -194,25 +188,22 @@ mod blocking {
         assert_eq!(iym_out.compare(&iym)?, Equal);
         assert_eq!(ids_out.compare(&ids)?, Equal);
 
-        let count = stmt.execute_into(
-            &[
-                &(":DT",  dt),
-                &(":TS",  ts),
-                &(":TSZ", tsz),
-                &(":TSL", tsl),
-                &(":IYM", iym),
-                &(":IDS", ids)
-            ],
-            &mut [
-                &mut (":ID",   &mut id),
-                &mut (":ODT",  &mut dt_out),
-                &mut (":OTS",  &mut ts_out),
-                &mut (":OTSZ", &mut tsz_out),
-                &mut (":OTSL", &mut tsl_out),
-                &mut (":OIYM", &mut iym_out),
-                &mut (":OIDS", &mut ids_out)
-            ]
-        )?;
+        let count = stmt.execute_into((
+            (":DT",  dt),
+            (":TS",  ts),
+            (":TSZ", tsz),
+            (":TSL", tsl),
+            (":IYM", iym),
+            (":IDS", ids)
+        ), (
+            (":ID",   &mut id),
+            (":ODT",  &mut dt_out),
+            (":OTS",  &mut ts_out),
+            (":OTSZ", &mut tsz_out),
+            (":OTSL", &mut tsl_out),
+            (":OIYM", &mut iym_out),
+            (":OIDS", &mut ids_out)
+        ))?;
         assert_eq!(count, 1);
         assert!(id > 0);
 
@@ -233,7 +224,7 @@ mod blocking {
 
 
         let stmt = conn.prepare("SELECT dt, ts, tsz, tsl, iym, ids FROM test_datetime_data WHERE id = :ID")?;
-        let rows = stmt.query(&[ &(":ID", id) ])?;
+        let rows = stmt.query(id)?;
         let row  = rows.next()?.unwrap();
         let val : Date = row.get("DT")?.unwrap();
         assert_eq!(val.compare(&dt2)?, Equal);
@@ -277,7 +268,7 @@ mod blocking {
               WHEN name_already_used THEN NULL;
             END;
         ")?;
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         let stmt = conn.prepare("
             INSERT INTO test_large_object_data (bin, text, ntxt, fbin)
@@ -285,14 +276,7 @@ mod blocking {
             RETURNING id INTO :ID
         ")?;
         let mut id = 0;
-        let count = stmt.execute_into(
-            &[
-                &(":DIR", "MEDIA_DIR"),
-                &(":NAME", "hello_world.txt")
-            ], &mut [
-                &mut (":ID", &mut id)
-            ]
-        )?;
+        let count = stmt.execute_into(("MEDIA_DIR", "hello_world.txt", ()), &mut id)?;
         assert_eq!(count, 1);
         assert!(id > 0);
 
@@ -301,7 +285,7 @@ mod blocking {
 
         // Can only read BFILEs
         let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID")?;
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : BFile = row.get("FBIN")?.expect("BFILE locator");
 
@@ -321,7 +305,7 @@ mod blocking {
         // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
 
         let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : BLOB = row.get(0)?.expect("BLOB locator");
 
@@ -333,7 +317,7 @@ mod blocking {
         // Read it (in another transaction)
 
         let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : BLOB = row.get(0)?.expect("BLOB locator");
         let mut lob_data = Vec::new();
@@ -342,7 +326,7 @@ mod blocking {
 
 
         let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(!lob.is_nclob()?);
@@ -356,7 +340,7 @@ mod blocking {
         lob.close()?;
 
         let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(!lob.is_nclob()?);
@@ -367,7 +351,7 @@ mod blocking {
 
 
         let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(lob.is_nclob()?);
@@ -379,7 +363,7 @@ mod blocking {
         lob.close()?;
 
         let stmt = conn.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID")?;
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.expect("a row from the result set");
         let lob : CLOB = row.get(0)?.expect("CLOB locator");
         assert!(lob.is_nclob()?);
@@ -413,7 +397,7 @@ mod blocking {
               WHEN name_already_used THEN NULL;
             END;
         ")?;
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         // Cannot return LONG
         let stmt = conn.prepare("
@@ -424,22 +408,14 @@ mod blocking {
         let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         let mut id = 0;
         let mut data_out = Vec::with_capacity(30);
-        let count = stmt.execute_into(
-            &[
-                &(":BIN", &data[..]),
-                &(":TEXT", text)
-            ], &mut [
-                &mut (":ID", &mut id),
-                &mut (":OBIN", &mut data_out)
-            ]
-        )?;
+        let count = stmt.execute_into((&data[..], text, ()), (&mut id, &mut data_out, ()))?;
         assert_eq!(count, 1);
         assert!(id > 0);
         assert_eq!(data_out.as_slice(), &data[..]);
 
         let stmt = conn.prepare("SELECT bin, text FROM test_long_and_raw_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.unwrap();
         let bin : &[u8] = row.get("BIN")?.unwrap();
         let txt : &str = row.get("TEXT")?.unwrap();
@@ -470,7 +446,7 @@ mod blocking {
               WHEN name_already_used THEN NULL;
             END;
         ")?;
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         let stmt = conn.prepare("
             INSERT INTO test_long_raw_data (bin) VALUES (:BIN)
@@ -478,19 +454,13 @@ mod blocking {
         ")?;
         let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
         let mut id = 0;
-        let count = stmt.execute_into(
-            &[
-                &(":BIN", &data[..])
-            ], &mut [
-                &mut (":ID", &mut id)
-            ]
-        )?;
+        let count = stmt.execute_into(&data[..], &mut id)?;
         assert_eq!(count, 1);
         assert!(id > 0);
 
         let stmt = conn.prepare("SELECT bin FROM test_long_raw_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) BIN output is limited to 32768
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.unwrap();
         let bin : &[u8] = row.get(0)?.unwrap();
         assert_eq!(bin, &data[..]);
@@ -523,7 +493,7 @@ mod blocking {
               WHEN name_already_used THEN NULL;
             END;
         ")?;
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         let stmt = conn.prepare("
             INSERT INTO test_numeric_data (num, flt, dbl) VALUES (:NUM, :NUM, :NUM)
@@ -535,14 +505,13 @@ mod blocking {
         let mut flt = 0f32;
         let mut dbl = 0f64;
         let count = stmt.execute_into(
-            &[
-                &(":NUM", &src_num)
-            ], &mut [
-                &mut (":ID", &mut id),
-                &mut (":ONUM", &mut num),
-                &mut (":OFLT", &mut flt),
-                &mut (":ODBL", &mut dbl)
-            ]
+            (":NUM", &src_num),
+            (
+                (":ID", &mut id),
+                (":ONUM", &mut num),
+                (":OFLT", &mut flt),
+                (":ODBL", &mut dbl),
+            )
         )?;
         assert_eq!(count, 1);
         assert!(id > 0);
@@ -551,7 +520,7 @@ mod blocking {
         assert!(3.1415926 < flt && flt < 3.1415929);
 
         let stmt = conn.prepare("SELECT num, flt, dbl FROM test_numeric_data WHERE id = :ID")?;
-        let rows = stmt.query(&[ &(":ID", &id) ])?;
+        let rows = stmt.query(&id)?;
         let row  = rows.next()?.unwrap();
         let num : Number = row.get("NUM")?.expect("test_numeric_data.num");
         let flt : f32 = row.get("FLT")?.expect("test_numeric_data.flt");
@@ -577,7 +546,7 @@ mod blocking {
              WHERE employee_id = :ID
                FOR UPDATE
         ")?;
-        let rows = stmt.query(&[ &(":ID", 107) ])?;
+        let rows = stmt.query(107)?;
         let row = rows.next()?.expect("selected row");
         let implicit_rowid = row.rowid()?;
         let str_rowid : String = row.get(0)?.expect("ROWID as text");
@@ -592,10 +561,7 @@ mod blocking {
                SET manager_id = :MID
              WHERE rowid = :RID
         ")?;
-        let num_updated = stmt.execute(&[
-            &( ":MID", 103 ),
-            &( ":RID", &implicit_rowid ),
-        ])?;
+        let num_updated = stmt.execute(((":MID", 103), (":RID", &implicit_rowid)))?;
         assert_eq!(num_updated, 1);
         conn.rollback()?;
         Ok(())
@@ -641,10 +607,10 @@ mod blocking {
         let mut lowest_payed_employee   = Cursor::new(&stmt)?;
         let mut median_salary_employees = Cursor::new(&stmt)?;
 
-        stmt.execute_into(&[], &mut [
-            &mut ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
-            &mut ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
-        ])?;
+        stmt.execute_into((), (
+            (":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee  ),
+            (":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees),
+        ))?;
 
         let expected_lowest_salary = Number::from_int(2100, &conn)?;
         let expected_median_salary = Number::from_int(6200, &conn)?;
@@ -741,7 +707,7 @@ mod blocking {
         let expected_lowest_salary = Number::from_int(2100, &conn)?;
         let expected_median_salary = Number::from_int(6200, &conn)?;
 
-        stmt.execute(&[])?;
+        stmt.execute(())?;
 
         let lowest_payed_employee = stmt.next_result()?.unwrap();
 
@@ -821,7 +787,7 @@ mod blocking {
                      WHERE last_name = :last_name
                    ) e
         ")?;
-        let rows = stmt.query(&[ &"King" ])?;
+        let rows = stmt.query("King")?;
 
         let row = rows.next()?.unwrap();
         let last_name : &str = row.get(0)?.unwrap();
@@ -880,7 +846,7 @@ mod nonblocking {
                   WHEN name_already_used THEN NULL;
                 END;
             ").await?;
-            stmt.execute(&[]).await?;
+            stmt.execute(()).await?;
 
             let stmt = conn.prepare("
                 INSERT INTO test_character_data (text, ntext) VALUES (:TEXT, '> ' || :TEXT)
@@ -893,13 +859,12 @@ mod nonblocking {
             let mut text_out = String::with_capacity(97);
             let mut ntxt_out = String::with_capacity(99);
             let count = stmt.execute_into(
-                &[
-                    &(":TEXT", "Two roads diverged in a yellow wood,")
-                ], &mut [
-                    &mut (":ID", &mut id),
-                    &mut (":TEXT_OUT", &mut text_out),
-                    &mut (":NTXT_OUT", &mut ntxt_out)
-                ]
+                (":TEXT", "Two roads diverged in a yellow wood,"),
+                (
+                    (":ID", &mut id),
+                    (":TEXT_OUT", &mut text_out),
+                    (":NTXT_OUT", &mut ntxt_out)
+                )
             ).await?;
             assert_eq!(count, 1);
             assert_eq!(text_out, "Two roads diverged in a yellow wood,");
@@ -909,13 +874,12 @@ mod nonblocking {
 
             let text = String::from("And sorry I could not travel both");
             let count = stmt.execute_into(
-                &[
-                    &(":TEXT", text.as_str())
-                ], &mut[
-                    &mut (":ID", &mut id),
-                    &mut (":TEXT_OUT", &mut text_out),
-                    &mut (":NTXT_OUT", &mut ntxt_out)
-                ]
+                (":TEXT", text.as_str()),
+                (
+                    (":ID", &mut id),
+                    (":TEXT_OUT", &mut text_out),
+                    (":NTXT_OUT", &mut ntxt_out)
+                )
             ).await?;
             assert_eq!(count, 1);
             assert_eq!(text_out, "And sorry I could not travel both");
@@ -927,13 +891,12 @@ mod nonblocking {
             let mut text_out = Varchar::with_capacity(97, &conn)?;
             let mut ntxt_out = Varchar::with_capacity(99, &conn)?;
             let count = stmt.execute_into(
-                &[
-                    &(":TEXT", text.as_str())
-                ], &mut [
-                    &mut (":ID", &mut id),
-                    &mut (":TEXT_OUT", &mut text_out),
-                    &mut (":NTXT_OUT", &mut ntxt_out)
-                ]
+                (":TEXT", text.as_str()),
+                (
+                    (":ID", &mut id),
+                    (":TEXT_OUT", &mut text_out),
+                    (":NTXT_OUT", &mut ntxt_out)
+                )
             ).await?;
             assert_eq!(count, 1);
             assert_eq!(text_out.as_str(), "And be one traveler, long I stood");
@@ -942,7 +905,7 @@ mod nonblocking {
 
             let stmt = conn.prepare("SELECT text, ntext FROM test_character_data WHERE id = :ID").await?;
 
-            let rows = stmt.query(&[ &(":ID", ids[0]) ]).await?;
+            let rows = stmt.query(ids[0]).await?;
             let row  = rows.next().await?.unwrap();
             let text : &str = row.get("TEXT")?.unwrap();
             assert_eq!(text, "Two roads diverged in a yellow wood,");
@@ -950,7 +913,7 @@ mod nonblocking {
             assert_eq!(text, "> Two roads diverged in a yellow wood,");
             assert!(rows.next().await?.is_none());
 
-            let rows = stmt.query(&[ &(":ID", ids[1]) ]).await?;
+            let rows = stmt.query(ids[1]).await?;
             let row  = rows.next().await?.unwrap();
             let text : String = row.get(0)?.unwrap();
             assert_eq!(text.as_str(), "And sorry I could not travel both");
@@ -958,7 +921,7 @@ mod nonblocking {
             assert_eq!(text.as_str(), "> And sorry I could not travel both");
             assert!(rows.next().await?.is_none());
 
-            let rows = stmt.query(&[ &(":ID", ids[2]) ]).await?;
+            let rows = stmt.query(ids[2]).await?;
             let row  = rows.next().await?.unwrap();
             let text : Varchar = row.get("TEXT")?.unwrap();
             assert_eq!(text.as_str(), "And be one traveler, long I stood");
@@ -1006,7 +969,7 @@ mod nonblocking {
                 WHEN name_already_used THEN NULL;
                 END;
             ").await?;
-            stmt.execute(&[]).await?;
+            stmt.execute(()).await?;
 
             let stmt = conn.prepare("
                 INSERT INTO test_datetime_data (dt, ts, tsz, tsl, iym, ids) VALUES (:DT, :TS, :TSZ, :TSL, :IYM, :IDS)
@@ -1029,24 +992,22 @@ mod nonblocking {
             let mut iym_out = IntervalYM::new(&conn)?;
             let mut ids_out = IntervalDS::new(&conn)?;
 
-            let count = stmt.execute_into(
-                &[
-                    &(":DT",  &dt),
-                    &(":TS",  &ts),
-                    &(":TSZ", &tsz),
-                    &(":TSL", &tsl),
-                    &(":IYM", &iym),
-                    &(":IDS", &ids)
-                ], &mut [
-                    &mut (":ID",   &mut id),
-                    &mut (":ODT",  &mut dt_out),
-                    &mut (":OTS",  &mut ts_out),
-                    &mut (":OTSZ", &mut tsz_out),
-                    &mut (":OTSL", &mut tsl_out),
-                    &mut (":OIYM", &mut iym_out),
-                    &mut (":OIDS", &mut ids_out)
-                ]
-            ).await?;
+            let count = stmt.execute_into((
+                (":DT",  &dt),
+                (":TS",  &ts),
+                (":TSZ", &tsz),
+                (":TSL", &tsl),
+                (":IYM", &iym),
+                (":IDS", &ids)
+            ), (
+                (":ID",   &mut id),
+                (":ODT",  &mut dt_out),
+                (":OTS",  &mut ts_out),
+                (":OTSZ", &mut tsz_out),
+                (":OTSL", &mut tsl_out),
+                (":OIYM", &mut iym_out),
+                (":OIDS", &mut ids_out)
+            )).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
 
@@ -1057,25 +1018,22 @@ mod nonblocking {
             assert_eq!(iym_out.compare(&iym)?, Equal);
             assert_eq!(ids_out.compare(&ids)?, Equal);
 
-            let count = stmt.execute_into(
-                &[
-                    &(":DT",  dt),
-                    &(":TS",  ts),
-                    &(":TSZ", tsz),
-                    &(":TSL", tsl),
-                    &(":IYM", iym),
-                    &(":IDS", ids)
-                ],
-                &mut [
-                    &mut (":ID",   &mut id),
-                    &mut (":ODT",  &mut dt_out),
-                    &mut (":OTS",  &mut ts_out),
-                    &mut (":OTSZ", &mut tsz_out),
-                    &mut (":OTSL", &mut tsl_out),
-                    &mut (":OIYM", &mut iym_out),
-                    &mut (":OIDS", &mut ids_out)
-                ]
-            ).await?;
+            let count = stmt.execute_into((
+                (":DT",  dt),
+                (":TS",  ts),
+                (":TSZ", tsz),
+                (":TSL", tsl),
+                (":IYM", iym),
+                (":IDS", ids)
+            ), (
+                (":ID",   &mut id),
+                (":ODT",  &mut dt_out),
+                (":OTS",  &mut ts_out),
+                (":OTSZ", &mut tsz_out),
+                (":OTSL", &mut tsl_out),
+                (":OIYM", &mut iym_out),
+                (":OIDS", &mut ids_out)
+            )).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
 
@@ -1095,7 +1053,7 @@ mod nonblocking {
             assert_eq!(ids_out.compare(&ids2)?, Equal);
 
             let stmt = conn.prepare("SELECT dt, ts, tsz, tsl, iym, ids FROM test_datetime_data WHERE id = :ID").await?;
-            let rows = stmt.query(&[ &(":ID", id) ]).await?;
+            let rows = stmt.query(id).await?;
             let row  = rows.next().await?.unwrap();
             let val : Date = row.get("DT")?.unwrap();
             assert_eq!(val.compare(&dt2)?, Equal);
@@ -1147,7 +1105,7 @@ mod nonblocking {
                 WHEN name_already_used THEN NULL;
                 END;
             ").await?;
-            stmt.execute(&[]).await?;
+            stmt.execute(()).await?;
 
             // Cannot return LONG
             let stmt = conn.prepare("
@@ -1160,13 +1118,8 @@ mod nonblocking {
             let mut id = 0;
             let mut data_out = Vec::with_capacity(30);
             let count = stmt.execute_into(
-                &[
-                    &(":BIN", &data[..]),
-                    &(":TEXT", text)
-                ], &mut [
-                    &mut (":ID", &mut id),
-                    &mut (":OBIN", &mut data_out)
-                ]
+                ((":BIN", &data[..]), (":TEXT", text)),
+                ((":ID", &mut id), (":OBIN", &mut data_out))
             ).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
@@ -1174,7 +1127,7 @@ mod nonblocking {
 
             let stmt = conn.prepare("SELECT bin, text FROM test_long_and_raw_data WHERE id = :ID").await?;
             // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
+            let rows = stmt.query(&id).await?;
             let row  = rows.next().await?.unwrap();
             let bin : &[u8] = row.get("BIN")?.unwrap();
             let txt : &str = row.get("TEXT")?.unwrap();
@@ -1215,7 +1168,7 @@ mod nonblocking {
                 WHEN name_already_used THEN NULL;
                 END;
             ").await?;
-            stmt.execute(&[]).await?;
+            stmt.execute(()).await?;
 
             let stmt = conn.prepare("
                 INSERT INTO test_long_raw_data (bin) VALUES (:BIN)
@@ -1223,19 +1176,13 @@ mod nonblocking {
             ").await?;
             let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
             let mut id = 0;
-            let count = stmt.execute_into(
-                &[
-                    &(":BIN", &data[..])
-                ], &mut [
-                    &mut (":ID", &mut id)
-                ]
-            ).await?;
+            let count = stmt.execute_into((":BIN", &data[..]), (":ID", &mut id)).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
 
             let stmt = conn.prepare("SELECT bin FROM test_long_raw_data WHERE id = :ID").await?;
             // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) BIN output is limited to 32768
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
+            let rows = stmt.query(&id).await?;
             let row  = rows.next().await?.unwrap();
             let bin : &[u8] = row.get(0)?.unwrap();
             assert_eq!(bin, &data[..]);
@@ -1277,7 +1224,7 @@ mod nonblocking {
                 WHEN name_already_used THEN NULL;
                 END;
             ").await?;
-            stmt.execute(&[]).await?;
+            stmt.execute(()).await?;
 
             let stmt = conn.prepare("
                 INSERT INTO test_numeric_data (num, flt, dbl) VALUES (:NUM, :NUM, :NUM)
@@ -1289,14 +1236,13 @@ mod nonblocking {
             let mut flt = 0f32;
             let mut dbl = 0f64;
             let count = stmt.execute_into(
-                &[
-                    &(":NUM", &src_num)
-                ], &mut [
-                    &mut (":ID", &mut id),
-                    &mut (":ONUM", &mut num),
-                    &mut (":OFLT", &mut flt),
-                    &mut (":ODBL", &mut dbl)
-                ]
+                (":NUM", &src_num),
+                (
+                    (":ID", &mut id),
+                    (":ONUM", &mut num),
+                    (":OFLT", &mut flt),
+                    (":ODBL", &mut dbl),
+                )
             ).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
@@ -1305,7 +1251,7 @@ mod nonblocking {
             assert!(3.1415926 < flt && flt < 3.1415929);
 
             let stmt = conn.prepare("SELECT num, flt, dbl FROM test_numeric_data WHERE id = :ID").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
+            let rows = stmt.query(&id).await?;
             let row  = rows.next().await?.unwrap();
             let num : Number = row.get("NUM")?.expect("test_numeric_data.num");
             let flt : f32 = row.get("FLT")?.expect("test_numeric_data.flt");
@@ -1341,7 +1287,7 @@ mod nonblocking {
                  WHERE employee_id = :ID
                    FOR UPDATE
             ").await?;
-            let rows = stmt.query(&[ &(":ID", 107) ]).await?;
+            let rows = stmt.query(107).await?;
             let row = rows.next().await?.expect("selected row");
 
             let implicit_rowid = row.rowid()?;
@@ -1359,10 +1305,10 @@ mod nonblocking {
                 SET manager_id = :MID
                 WHERE rowid = :RID
             ").await?;
-            let num_updated = stmt.execute(&[
-                &( ":MID", 103 ),
-                &( ":RID", &implicit_rowid ),
-            ]).await?;
+            let num_updated = stmt.execute((
+                (":MID", 103 ),
+                (":RID", &implicit_rowid),
+            )).await?;
             assert_eq!(num_updated, 1);
             conn.rollback().await?;
 
@@ -1417,10 +1363,10 @@ mod nonblocking {
             let mut lowest_payed_employee   = Cursor::new(&stmt)?;
             let mut median_salary_employees = Cursor::new(&stmt)?;
 
-            stmt.execute_into(&[], &mut [
-                &mut ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
-                &mut ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
-            ]).await?;
+            stmt.execute_into((), (
+                ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
+                ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
+            )).await?;
 
             let expected_lowest_salary = Number::from_int(2100, &conn)?;
             let expected_median_salary = Number::from_int(6200, &conn)?;
@@ -1525,7 +1471,7 @@ mod nonblocking {
             let expected_lowest_salary = Number::from_int(2100, &conn)?;
             let expected_median_salary = Number::from_int(6200, &conn)?;
 
-            stmt.execute(&[]).await?;
+            stmt.execute(()).await?;
 
             let lowest_payed_employee = stmt.next_result().await?.unwrap();
 
@@ -1613,7 +1559,7 @@ mod nonblocking {
                         WHERE last_name = :last_name
                     ) e
             ").await?;
-            let rows = stmt.query(&[ &"King" ]).await?;
+            let rows = stmt.query("King").await?;
 
             let row = rows.next().await?.unwrap();
             let last_name : &str = row.get(0)?.unwrap();
@@ -1669,7 +1615,7 @@ mod nonblocking {
                 WHEN name_already_used THEN NULL;
                 END;
             ").await?;
-            stmt.execute(&[]).await?;
+            stmt.execute(()).await?;
 
             let stmt = conn.prepare("
                 INSERT INTO test_large_object_data (bin, text, ntxt, fbin)
@@ -1677,71 +1623,64 @@ mod nonblocking {
                 RETURNING id INTO :ID
             ").await?;
             let mut id = 0;
-            let count = stmt.execute_into(
-                &[
-                    &(":DIR", "MEDIA_DIR"),
-                    &(":NAME", "hello_world.txt")
-                ], &mut [
-                    &mut (":ID", &mut id)
-                ]
-            ).await?;
+            let count = stmt.execute_into(((":DIR", "MEDIA_DIR"), (":NAME", "hello_world.txt")), (":ID", &mut id)).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
 
             // Content of `hello_world.txt`:
-            // let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
+            let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
 
             // Can only read BFILEs
-            // let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID")?;
-            // let rows = stmt.query(&[ &(":ID", &id) ])?;
-            // let row  = rows.next()?.expect("a row from the result set");
-            // let lob : BFile = row.get("FBIN")?.expect("BFILE locator");
+            let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID").await?;
+            let rows = stmt.query(&id).await?;
+            let row  = rows.next().await?.expect("a row from the result set");
+            let lob : BFile = row.get("FBIN")?.expect("BFILE locator");
 
-            // assert!(lob.file_exists()?);
-            // let (dir, name) = lob.file_name()?; // if we forgot :-)
-            // assert_eq!(dir, "MEDIA_DIR");
-            // assert_eq!(name, "hello_world.txt");
+            assert!(lob.file_exists().await?);
+            let (dir, name) = lob.file_name()?; // if we forgot :-)
+            assert_eq!(dir, "MEDIA_DIR");
+            assert_eq!(name, "hello_world.txt");
 
-            // assert!(!lob.is_file_open()?);
-            // lob.open_file()?;
-            // let mut lob_data = Vec::new();
-            // lob.read(0, 28, &mut lob_data)?;
-            // lob.close_file()?;
-            // assert_eq!(lob_data, data);
+            assert!(!lob.is_file_open().await?);
+            lob.open_file().await?;
+            let mut lob_data = Vec::new();
+            lob.read(0, 28, &mut lob_data).await?;
+            lob.close_file().await?;
+            assert_eq!(lob_data, data);
 
-            // // Note: To modify a LOB column or attribute (write, copy, trim, and so forth), you must lock the row containing the LOB.
-            // // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
+            // Note: To modify a LOB column or attribute (write, copy, trim, and so forth), you must lock the row containing the LOB.
+            // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
 
-            // let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-            // let rows = stmt.query(&[ &(":ID", &id) ])?;
-            // let row  = rows.next()?.expect("a row from the result set");
-            // let lob : BLOB = row.get(0)?.expect("BLOB locator");
+            let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
+            let rows = stmt.query(&id).await?;
+            let row  = rows.next().await?.expect("a row from the result set");
+            let lob : BLOB = row.get(0)?.expect("BLOB locator");
 
-            // lob.open()?;
-            // let count = lob.append(&data)?;
-            // assert_eq!(count, 28);
-            // lob.close()?;
+            lob.open().await?;
+            let count = lob.append(&data).await?;
+            assert_eq!(count, 28);
+            lob.close().await?;
 
-            // // Read it (in another transaction)
+            // Read it (in another transaction)
 
-            // let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
-            // let rows = stmt.query(&[ &(":ID", &id) ])?;
-            // let row  = rows.next()?.expect("a row from the result set");
-            // let lob : BLOB = row.get(0)?.expect("BLOB locator");
-            // let mut lob_data = Vec::new();
-            // lob.read(0, 28, &mut lob_data)?;
-            // assert_eq!(lob_data, data);
+            let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
+            let rows = stmt.query(&id).await?;
+            let row  = rows.next().await?.expect("a row from the result set");
+            let lob : BLOB = row.get(0)?.expect("BLOB locator");
+            let mut lob_data = Vec::new();
+            lob.read(0, 28, &mut lob_data).await?;
+            assert_eq!(lob_data, data);
 
 
             let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(&[ &(":ID", &id) ]).await?;
+            let rows = stmt.query(&id).await?;
             let row  = rows.next().await?.expect("a row from the result set");
             let lob : CLOB = row.get(0)?.expect("CLOB locator");
             assert!(!lob.is_nclob()?);
 
             let _text = "Two roads diverged in a yellow wood, And sorry I could not travel both And be one traveler, long I stood And looked down one as far as I could To where it bent in the undergrowth; Then took the other, as just as fair, And having perhaps the better claim, Because it was grassy and wanted wear; Though as for that the passing there Had worn them really about the same, And both that morning equally lay In leaves no step had trodden black. Oh, I kept the first for another day! Yet knowing how way leads on to way, I doubted if I should ever come back. I shall be telling this with a sigh Somewhere ages and ages hence: Two roads diverged in a wood, and I— I took the one less traveled by, And that has made all the difference.";
 
-            
+
 
 
             Ok(())

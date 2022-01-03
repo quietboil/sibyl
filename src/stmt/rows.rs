@@ -176,7 +176,7 @@ impl<'a> Row<'a> {
               FROM hr.employees
              WHERE manager_id = :id
         ")?;
-        let rows = stmt.query(&[ &120 ])?;
+        let rows = stmt.query(120)?;
         let row = rows.next()?.unwrap();
 
         let commission_exists = !row.is_null(0);
@@ -196,7 +196,7 @@ impl<'a> Row<'a> {
         #       FROM hr.employees
         #      WHERE manager_id = :id
         # ").await?;
-        # let rows = stmt.query(&[ &120 ]).await?;
+        # let rows = stmt.query(120).await?;
         # let row = rows.next().await?.unwrap();
         # let commission_exists = !row.is_null(0);
         # assert!(!commission_exists);
@@ -239,7 +239,7 @@ impl<'a> Row<'a> {
               FROM hr.employees
              WHERE employee_id = :id
         ")?;
-        let rows = stmt.query(&[ &107 ])?;
+        let rows = stmt.query(107)?;
         let row = rows.next()?.expect("first (and only) row");
 
         // Either a 0-based column position...
@@ -266,7 +266,7 @@ impl<'a> Row<'a> {
         #       FROM hr.employees
         #      WHERE employee_id = :id
         # ").await?;
-        # let rows = stmt.query(&[ &107 ]).await?;
+        # let rows = stmt.query(107).await?;
         # let row = rows.next().await?.expect("first (and only) row");
         # let manager_id: Option<u32> = row.get(0)?;
         # assert!(manager_id.is_some());
@@ -319,7 +319,7 @@ impl<'a> Row<'a> {
              WHERE employee_id = :id
                FOR UPDATE
         ")?;
-        let rows = stmt.query(&[ &107 ])?;
+        let rows = stmt.query(107)?;
         let row = rows.next()?.expect("first (and only) row");
         let manager_id: u32 = row.get(0)?.unwrap();
         assert_eq!(manager_id, 103);
@@ -331,10 +331,10 @@ impl<'a> Row<'a> {
                SET manager_id = :mgr_id
              WHERE rowid = :row_id
         ")?;
-        let num_updated = stmt.execute(&[
-            &( ":MGR_ID", 103 ),
-            &( ":ROW_ID", &rowid )
-        ])?;
+        let num_updated = stmt.execute((
+            (":MGR_ID", 103),
+            (":ROW_ID", &rowid),
+        ))?;
         assert_eq!(num_updated, 1);
         # conn.rollback()?;
         # Ok(())
@@ -353,7 +353,7 @@ impl<'a> Row<'a> {
         #      WHERE employee_id = :id
         #        FOR UPDATE
         # ").await?;
-        # let rows = stmt.query(&[ &107 ]).await?;
+        # let rows = stmt.query(107).await?;
         # let row = rows.next().await?.expect("first (and only) row");
         # let manager_id: u32 = row.get(0)?.unwrap();
         # assert_eq!(manager_id, 103);
@@ -363,10 +363,10 @@ impl<'a> Row<'a> {
         #        SET manager_id = :mgr_id
         #      WHERE rowid = :row_id
         # ").await?;
-        # let num_updated = stmt.execute(&[
-        #     &( ":MGR_ID", 103 ),
-        #     &( ":ROW_ID", &rowid )
-        # ]).await?;
+        # let num_updated = stmt.execute((
+        #     (":MGR_ID", 103),
+        #     (":ROW_ID", &rowid),
+        # )).await?;
         # assert_eq!(num_updated, 1);
         # conn.rollback().await?;
         # Ok(()) })

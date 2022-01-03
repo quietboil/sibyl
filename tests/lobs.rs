@@ -39,7 +39,7 @@ mod blocking {
               WHEN name_already_used THEN NULL;
             END;
         ")?;
-        stmt.execute(&[])?;
+        stmt.execute(())?;
         Ok(())
     }
 
@@ -152,7 +152,7 @@ mod blocking {
         let stmt = conn.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIR,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE")?;
         let mut id : usize = 0;
         let mut lob : BFile = BFile::new(&conn)?;
-        stmt.execute_into(&[ &(":DIR", "MEDIA_DIR"), &(":FILENAME", "mousepad_comp_ad.pdf") ], &mut [ &mut id, &mut lob ])?;
+        stmt.execute_into(("MEDIA_DIR", "mousepad_comp_ad.pdf", ()), (&mut id, &mut lob, ()))?;
 
         check_file(lob)?;
 
@@ -172,11 +172,11 @@ mod blocking {
 
         let stmt = conn.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
         let mut id : usize = 0;
-        stmt.execute_into(&[], &mut [ &mut id ])?;
+        stmt.execute_into((), &mut id)?;
 
         // retrieve BLOB and lock its row so we could write into it
         let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&[ &id ])?;
+        let rows = stmt.query(&id)?;
         let row = rows.next()?.expect("one row");
         let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -222,14 +222,14 @@ mod blocking {
         // and the last 2 for appending and piece-wise appending.
         let stmt = conn.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
         let mut ids = [0usize; 4];
-        stmt.execute_into(&[], &mut [ &mut ids[0] ])?;
-        stmt.execute_into(&[], &mut [ &mut ids[1] ])?;
-        stmt.execute_into(&[], &mut [ &mut ids[2] ])?;
-        stmt.execute_into(&[], &mut [ &mut ids[3] ])?;
+        stmt.execute_into((), &mut ids[0])?;
+        stmt.execute_into((), &mut ids[1])?;
+        stmt.execute_into((), &mut ids[2])?;
+        stmt.execute_into((), &mut ids[3])?;
 
         // retrieve BLOB and lock its row so we could write into it
         let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&[ &ids[0] ])?;
+        let rows = stmt.query(&ids[0])?;
         let row = rows.next()?.expect("one row");
         let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -238,7 +238,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(written, file_len);
 
-        let rows = stmt.query(&[ &ids[1] ])?;
+        let rows = stmt.query(&ids[1])?;
         let row = rows.next()?.expect("one row");
         let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -265,7 +265,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(total_written, file_len);
 
-        let rows = stmt.query(&[ &ids[2] ])?;
+        let rows = stmt.query(&ids[2])?;
         let row = rows.next()?.expect("one row");
         let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -274,7 +274,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(written, file_len);
 
-        let rows = stmt.query(&[ &ids[3] ])?;
+        let rows = stmt.query(&ids[3])?;
         let row = rows.next()?.expect("one row");
         let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -302,7 +302,7 @@ mod blocking {
         // read them back and check that they all match the source
         let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
         for id in ids {
-            let rows = stmt.query(&[ &id ])?;
+            let rows = stmt.query(&id)?;
             let row = rows.next()?.expect("one row");
             let lob : BLOB = row.get(0)?.expect("BLOB for reading");
 
@@ -327,13 +327,13 @@ mod blocking {
         // and the last 2 for appending and piece-wise appending.
         let stmt = conn.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID")?;
         let mut ids = [0usize; 4];
-        stmt.execute_into(&[], &mut [ &mut ids[0] ])?;
-        stmt.execute_into(&[], &mut [ &mut ids[1] ])?;
-        stmt.execute_into(&[], &mut [ &mut ids[2] ])?;
-        stmt.execute_into(&[], &mut [ &mut ids[3] ])?;
+        stmt.execute_into((), &mut ids[0])?;
+        stmt.execute_into((), &mut ids[1])?;
+        stmt.execute_into((), &mut ids[2])?;
+        stmt.execute_into((), &mut ids[3])?;
 
         let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&[ &ids[0] ])?;
+        let rows = stmt.query(&ids[0])?;
         let row = rows.next()?.expect("one row");
         let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -342,7 +342,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(written, expected_lob_char_len);
 
-        let rows = stmt.query(&[ &ids[1] ])?;
+        let rows = stmt.query(&ids[1])?;
         let row = rows.next()?.expect("one row");
         let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -361,7 +361,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(total_written, expected_lob_char_len);
 
-        let rows = stmt.query(&[ &ids[2] ])?;
+        let rows = stmt.query(&ids[2])?;
         let row = rows.next()?.expect("one row");
         let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -370,7 +370,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(written, expected_lob_char_len);
 
-        let rows = stmt.query(&[ &ids[3] ])?;
+        let rows = stmt.query(&ids[3])?;
         let row = rows.next()?.expect("one row");
         let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -394,7 +394,7 @@ mod blocking {
         // read them back and check that they all match the source
         let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
         for id in ids {
-            let rows = stmt.query(&[ &id ])?;
+            let rows = stmt.query(&id)?;
             let row = rows.next()?.expect("one row");
             let lob : CLOB = row.get(0)?.expect("CLOB for reading");
 
@@ -439,7 +439,7 @@ mod nonblocking {
               WHEN name_already_used THEN NULL;
             END;
         ").await ?;
-        stmt.execute(&[]).await?;
+        stmt.execute(()).await?;
         Ok(())
     }
 
@@ -507,10 +507,10 @@ mod nonblocking {
             let conn = connect(&oracle).await?;
             check_or_create_test_table(&conn).await?;
 
-            let stmt = conn.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIRNAME,:FILENAME)) RETURNING id, fbin INTO :REC_ID, :NEW_BFILE").await?;
+            let stmt = conn.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIRNAME,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE").await?;
             let mut id : usize = 0;
             let mut lob : BFile = BFile::new(&conn)?;
-            stmt.execute_into(&[ &(":DIRNAME", "MEDIA_DIR"), &(":FILENAME", "mousepad_comp_ad.pdf") ], &mut [ &mut id, &mut lob ]).await?;
+            stmt.execute_into(((":DIRNAME", "MEDIA_DIR"), (":FILENAME", "mousepad_comp_ad.pdf")), ((":ID", &mut id), (":NEW_BFILE", &mut lob))).await?;
 
             check_file(lob).await?;
 
@@ -557,7 +557,7 @@ mod nonblocking {
                 END;
             ").await?;
             let mut lob = BLOB::new(&conn)?;
-            stmt.execute_into(&[], &mut [ &mut lob ]).await?;
+            stmt.execute_into((), &mut lob).await?;
 
             let file = BFile::new(&conn)?;
             file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
@@ -603,14 +603,14 @@ mod nonblocking {
             // and the last 2 for appending and piece-wise appending.
             let stmt = conn.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID").await?;
             let mut ids = [0usize; 4];
-            stmt.execute_into(&[], &mut [ &mut ids[0] ]).await?;
-            stmt.execute_into(&[], &mut [ &mut ids[1] ]).await?;
-            stmt.execute_into(&[], &mut [ &mut ids[2] ]).await?;
-            stmt.execute_into(&[], &mut [ &mut ids[3] ]).await?;
+            stmt.execute_into((), &mut ids[0]).await?;
+            stmt.execute_into((), &mut ids[1]).await?;
+            stmt.execute_into((), &mut ids[2]).await?;
+            stmt.execute_into((), &mut ids[3]).await?;
 
             // retrieve BLOB and lock its row so we could write into it
             let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(&[ &ids[0] ]).await?;
+            let rows = stmt.query(ids[0]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -619,7 +619,7 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(written, file_len);
 
-            let rows = stmt.query(&[ &ids[1] ]).await?;
+            let rows = stmt.query(ids[1]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -646,7 +646,7 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(total_written, file_len);
 
-            let rows = stmt.query(&[ &ids[2] ]).await?;
+            let rows = stmt.query(ids[2]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -655,7 +655,7 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(written, file_len);
 
-            let rows = stmt.query(&[ &ids[3] ]).await?;
+            let rows = stmt.query(ids[3]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
@@ -684,7 +684,7 @@ mod nonblocking {
             let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
             for id in ids {
                 if id > 0 {
-                    let rows = stmt.query(&[ &id ]).await?;
+                    let rows = stmt.query(&id).await?;
                     let row = rows.next().await?.expect("one row");
                     let lob : BLOB = row.get(0)?.expect("BLOB for reading");
                     check_blob(lob).await?;
@@ -711,13 +711,13 @@ mod nonblocking {
             // and the last 2 for appending and piece-wise appending.
             let stmt = conn.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID").await?;
             let mut ids = [0usize; 4];
-            stmt.execute_into(&[], &mut [ &mut ids[0] ]).await?;
-            stmt.execute_into(&[], &mut [ &mut ids[1] ]).await?;
-            stmt.execute_into(&[], &mut [ &mut ids[2] ]).await?;
-            stmt.execute_into(&[], &mut [ &mut ids[3] ]).await?;
+            stmt.execute_into((), &mut ids[0]).await?;
+            stmt.execute_into((), &mut ids[1]).await?;
+            stmt.execute_into((), &mut ids[2]).await?;
+            stmt.execute_into((), &mut ids[3]).await?;
 
             let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(&[ &ids[0] ]).await?;
+            let rows = stmt.query(ids[0]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -726,7 +726,7 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(written, expected_lob_char_len);
 
-            let rows = stmt.query(&[ &ids[1] ]).await?;
+            let rows = stmt.query(ids[1]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -745,7 +745,7 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(total_written, expected_lob_char_len);
 
-            let rows = stmt.query(&[ &ids[2] ]).await?;
+            let rows = stmt.query(ids[2]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -754,7 +754,7 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(written, expected_lob_char_len);
 
-            let rows = stmt.query(&[ &ids[3] ]).await?;
+            let rows = stmt.query(ids[3]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
@@ -778,7 +778,7 @@ mod nonblocking {
             // read them back and check that they all match the source
             let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID").await?;
             for id in ids {
-                let rows = stmt.query(&[ &id ]).await?;
+                let rows = stmt.query(&id).await?;
                 let row = rows.next().await?.expect("one row");
                 let lob : CLOB = row.get(0)?.expect("CLOB for reading");
                 let lob_len = lob.len().await?;

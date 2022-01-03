@@ -1,23 +1,37 @@
 /// Implementation of traits that allow Dates to be used as SQL parameters
 
-use libc::c_void;
-use crate::{ oci::*, ToSql, ToSqlOut};
+use std::mem::size_of;
+use crate::{oci::*, ToSql, ToSqlOut, Result, stmt::Params};
 use super::Date;
 
+impl ToSql for OCIDate {
+    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind(pos, SQLT_ODT, self as *const OCIDate as _, size_of::<OCIDate>(), stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
 impl ToSql for Date<'_> {
-    fn sql_type(&self) -> u16 { SQLT_ODT }
-    fn sql_data_ptr(&self) -> Ptr<c_void> { Ptr::new(&self.date as *const OCIDate as _) }
-    fn sql_data_len(&self) -> usize { std::mem::size_of::<OCIDate>() }
+    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        self.date.bind_to(pos, params, stmt, err)
+    }
 }
 
 impl ToSql for &Date<'_> {
-    fn sql_type(&self) -> u16 { SQLT_ODT }
-    fn sql_data_ptr(&self) -> Ptr<c_void> { Ptr::new(&self.date as *const OCIDate as _) }
-    fn sql_data_len(&self) -> usize { std::mem::size_of::<OCIDate>() }
+    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        self.date.bind_to(pos, params, stmt, err)
+    }
 }
 
-impl ToSqlOut for Date<'_> {
-    fn sql_type(&self) -> u16 { SQLT_ODT }
-    fn sql_mut_data_ptr(&mut self) -> Ptr<c_void> { Ptr::new(&mut self.date as *const OCIDate as _) }
-    fn sql_data_len(&self) -> usize { std::mem::size_of::<OCIDate>() }
+impl ToSqlOut for OCIDate {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind_out(pos, SQLT_ODT, self as *mut OCIDate as _, size_of::<OCIDate>(), size_of::<OCIDate>(), stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
+impl ToSqlOut for &mut Date<'_> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        self.date.bind_to(pos, params, stmt, err)
+    }
 }

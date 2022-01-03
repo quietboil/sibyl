@@ -1,5 +1,4 @@
 use sibyl::*;
-use std::{env, sync::Arc};
 
 /**
     This example is a variant of `readme` that executes its work in multiple
@@ -9,18 +8,10 @@ use std::{env, sync::Arc};
     Note that most of the time this is **not** how you want to do it :-) as
     this shared connection might become a bottleneck. However, this - sharing
     a single connection - is possble. Hence, this example.
-
-    Note that `multi_thread_block_on` used in nonblocking version of this example
-    abstracts `block_on` for various executors and is intended to execute async tests
-    and examples.
 */
-fn main() -> Result<()> {
-    example()
-}
-
 #[cfg(feature="blocking")]
-fn example() -> Result<()> {
-    use std::thread;
+fn main() -> Result<()> {
+    use std::{env, thread, sync::Arc};
     use once_cell::sync::OnceCell;
 
     static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -48,7 +39,7 @@ fn example() -> Result<()> {
                        )
                  WHERE hire_date_rank = 1
             ")?;
-            let rows = stmt.query(&[])?;
+            let rows = stmt.query(())?;
             if let Some( row ) = rows.next()? {
                 let first_name : Option<&str> = row.get(0)?;
                 let last_name : &str = row.get(1)?.unwrap();
@@ -74,61 +65,15 @@ fn example() -> Result<()> {
     Ok(())
 }
 
+/**
+    Sharing single connection between tasks is not suported.
+
+    It is possible to implement in principle, but it would require an internal "fences" for futures.
+    Considering that the approch as a whole makes little sense, adding overhead of a fence to
+    support it makes even less sense.
+*/
 #[cfg(feature="nonblocking")]
-fn example() -> Result<()> {
-    sibyl::multi_thread_block_on(async {
-        use once_cell::sync::OnceCell;
-
-        static ORACLE : OnceCell<Environment> = OnceCell::new();
-        let oracle = ORACLE.get_or_try_init(|| {
-            env()
-        })?;
-
-        let dbname = env::var("DBNAME").expect("database name");
-        let dbuser = env::var("DBUSER").expect("user name");
-        let dbpass = env::var("DBPASS").expect("password");
-
-        let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let conn = Arc::new(conn);
-
-        let mut workers = Vec::with_capacity(100);
-        for _i in 0..workers.capacity() {
-            let conn = conn.clone();
-            let handle = sibyl::spawn(async move {
-                let stmt = conn.prepare("
-                    SELECT first_name, last_name, hire_date
-                      FROM (
-                            SELECT first_name, last_name, hire_date
-                                 , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
-                              FROM hr.employees
-                           )
-                     WHERE hire_date_rank = 1
-                ").await?;
-                let rows = stmt.query(&[]).await?;
-                if let Some( row ) = rows.next().await? {
-                    let first_name : Option<&str> = row.get(0)?;
-                    let last_name : &str = row.get(1)?.unwrap();
-                    let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-                    let hire_date : Date = row.get(2)?.unwrap();
-                    let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
-
-                    Ok::<_,Error>(Some((name, hire_date)))
-                } else {
-                    Ok(None)
-                }
-            });
-            workers.push(handle);
-        }
-        let mut n = 1;
-        for handle in workers {
-            if let Some((name,hire_date)) = handle.await.expect("task's result")? {
-                println!("{:?}: {} was hired on {}", n, name, hire_date);
-            } else {
-                println!("{:?}: did not find the latest hire", n);
-            }
-            n += 1;
-        }
-
-        Ok(())
-    })
+fn main() -> Result<()> {
+    eprintln!("Sharing single connection (between tasks in nonblocking mode) is not suported");
+    Ok(())
 }
