@@ -28,9 +28,9 @@ impl OutInfo {
 
 pub struct Params {
     /// Parameter placeholder (name) indexes
-    idxs: HashMap<String,usize>,
+    idxs: HashMap<&'static str,usize>,
     /// Parameter names
-    names: HashMap<usize,String>,
+    names: HashMap<usize,&'static str>,
     /// OCI bind handles
     binds: Vec<Ptr<OCIBind>>,
     /// Bit "vector" of binds that have been established before
@@ -69,8 +69,11 @@ impl Params {
             for i in 0..found as usize {
                 if dups[i] == 0 {
                     let name = unsafe { std::slice::from_raw_parts(bind_names[i], bind_name_lens[i] as usize) };
-                    let name = String::from_utf8_lossy(name).to_string();
-                    idxs.insert(name.clone(), i);
+                    let name = unsafe { std::str::from_utf8_unchecked(name) };
+                    // The `idxs` and `names` hash maps won't outlive `Params` and the latter won't outlive `Statement`.
+                    // While `str` for names that we created above will only live as long as the containing `Statement`,
+                    // within `Params` they can be seen as static as they will be alive longer.
+                    idxs.insert(name, i);
                     names.insert(i, name);
                 }
                 binds.push(Ptr::new(oci_binds[i]));
