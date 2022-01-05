@@ -286,7 +286,7 @@ impl ColumnBuffer {
     }
 }
 
-/// Internal representation of columns from SELECT projection
+/// Internal representation of columns from a SELECT projection
 pub struct Columns {
     names: HashMap<String, usize>,
     info: Vec<Descriptor<OCIParam>>,
@@ -295,13 +295,13 @@ pub struct Columns {
     /// Length of data fetched
     _lens: Vec<u32>,
     /// Output "indicator":
-    /// -2 : The length of the item is greater than the length of the output variable; the item has been truncated.
-    ///      Unline the case of indicators that are > 0, the original length is longer than the maximum data length
-    ///      that can be returned in the i16 indicator variable.
-    /// -1 : The selected value is null, and the value of the output variable is unchanged.
-    ///  0 : Oracle Database assigned an intact value to the host variable
-    /// >0 : The length of the item is greater than the length of the output variable; the item has been truncated.
-    ///      The positive value returned in the indicator variable is the actual length before truncation.
+    /// * -2  : The length of the item is greater than the length of the output variable; the item has been truncated.
+    ///         Unline the case of indicators that are > 0, the original length is longer than the maximum data length
+    ///         that can be returned in the i16 indicator variable.
+    /// * -1  : The selected value is null, and the value of the output variable is unchanged.
+    /// *  0  : Oracle Database assigned an intact value to the host variable
+    /// * \>0 : The length of the item is greater than the length of the output variable; the item has been truncated.
+    ///         The positive value returned in the indicator variable is the actual length before truncation.
     inds: Vec<i16>,
     env:  Ptr<OCIEnv>,
     err:  Ptr<OCIError>,

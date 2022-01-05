@@ -98,39 +98,167 @@ impl Connection<'_> {
     }
 
     /**
-        Sets the statement cache size.
+    Sets the statement cache size.
 
-        The default value of the statement cache size is 20 statements, for a statement cache-enabled session.
-        Statement caching can be enabled by setting the attribute to a nonzero size and disabled by setting it to zero.
+    The default value of the statement cache size is 20 statements, for a statement cache-enabled session.
+    Statement caching can be enabled by setting the attribute to a nonzero size and disabled by setting it to zero.
+
+    # Parameters
+
+    * `num_stmts` - Statement cache size
+
+    # Example
+
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    conn.set_stmt_cache_size(100)?;
+    # let size = conn.stmt_cache_size()?;
+    # assert_eq!(size, 100);
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.set_stmt_cache_size(100)?;
+    # let size = conn.stmt_cache_size()?;
+    # assert_eq!(size, 100);
+    # Ok(()) })
+    # }
+    ```
     */
     pub fn set_stmt_cache_size(&self, num_stmts: u32) -> Result<()> {
         let ctx : &OCISvcCtx = self.as_ref();
         attr::set(OCI_ATTR_STMTCACHESIZE, num_stmts, OCI_HTYPE_SVCCTX, ctx, self.as_ref())
     }
 
-    /// Returns the statement cache size.
+    /**
+    Returns the statement cache size.
+
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let size = conn.stmt_cache_size()?;
+    assert_eq!(size, 20);
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let size = conn.stmt_cache_size()?;
+    # assert_eq!(size, 20);
+    # Ok(()) })
+    # }
+    ```
+    */
     pub fn stmt_cache_size(&self) -> Result<u32> {
         let ctx : &OCISvcCtx = self.as_ref();
         attr::get(OCI_ATTR_STMTCACHESIZE, OCI_HTYPE_SVCCTX, ctx, self.as_ref())
     }
 
     /**
-        Sets the time (in milliseconds) for a database round-trip call to time out. When the call times out,
-        a network timeout error is returned. Setting this value stays effective for all subsequent round-trip
-        calls until a different value is set. To remove the timeout, the value must be set to 0.
+    Sets the time (in milliseconds) for a database round-trip call to time out. When the call times out,
+    a network timeout error is returned. Setting this value stays effective for all subsequent round-trip
+    calls until a different value is set. To remove the timeout, the value must be set to 0.
 
-        The Call timeout is on each individual round-trip between OCI and Oracle Database. Each OCI method or
-        operation may require zero or more round-trips to Oracle Database. The timeout value applies to each
-        round-trip individually, not to the sum of all round-trips. Time spent processing in OCI before or
-        after the completion of each round-trip is not counted.
+    The call timeout is applied to each individual round-trip between OCI and Oracle database. Each OCI
+    method or operation may require zero or more round-trips to Oracle database. The timeout value applies
+    to each round-trip individually, not to the sum of all round-trips. Time spent processing in OCI before
+    or after the completion of each round-trip is not counted.
+
+    # Parameters
+
+    * `timeout` - The time (in milliseconds) for a database round-trip call to time out.
+
+    # Example
+
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    conn.set_call_timeout(5000)?;
+    # let time = conn.call_timeout()?;
+    # assert_eq!(time, 5000);
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.set_call_timeout(5000)?;
+    # let time = conn.call_timeout()?;
+    # assert_eq!(time, 5000);
+    # Ok(()) })
+    # }
     */
-    pub fn set_call_timeout(&self, milliseconds: u32) -> Result<()> {
+    pub fn set_call_timeout(&self, timeout: u32) -> Result<()> {
         let ctx : &OCISvcCtx = self.as_ref();
-        attr::set(OCI_ATTR_CALL_TIMEOUT, milliseconds, OCI_HTYPE_SVCCTX, ctx, self.as_ref())
+        attr::set(OCI_ATTR_CALL_TIMEOUT, timeout, OCI_HTYPE_SVCCTX, ctx, self.as_ref())
     }
 
     /**
-        Returns time (in milliseconds) for a database round-trip call to time out.
+    Returns time (in milliseconds) for a database round-trip call to time out.
+
+    # Example
+
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    conn.set_call_timeout(1000)?;
+
+    let time = conn.call_timeout()?;
+
+    assert_eq!(time, 1000);
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.set_call_timeout(1000)?;
+    # let time = conn.call_timeout()?;
+    # assert_eq!(time, 1000);
+    # Ok(()) })
+    # }
     */
     pub fn call_timeout(&self) -> Result<u32> {
         let ctx : &OCISvcCtx = self.as_ref();
@@ -138,52 +266,52 @@ impl Connection<'_> {
     }
 
     /**
-        Causes the server to measure call time, in milliseconds, for each subsequent OCI call.
+    Causes the server to measure call time, in milliseconds, for each subsequent OCI call.
     */
     pub fn start_call_time_measurements(&self) -> Result<()> {
         self.set_attr(OCI_ATTR_COLLECT_CALL_TIME, 1u32)
     }
 
     /**
-        Returns the server-side time for the preceding call in microseconds.
+    Returns the server-side time for the preceding call in microseconds.
 
-        # Example
+    # Example
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
-        ```
-        # use sibyl::Result;
-        # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        conn.start_call_time_measurements()?;
-        conn.ping()?;
-        let dt = conn.call_time()?;
-        conn.stop_call_time_measurements()?;
-        assert!(dt > 0);
-        # Ok(())
-        # }
-        # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # conn.start_call_time_measurements()?;
-        # conn.ping().await?;
-        # let dt = conn.call_time()?;
-        # conn.stop_call_time_measurements()?;
-        # assert!(dt > 0);
-        # Ok(()) })
-        # }
-        ```
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    conn.start_call_time_measurements()?;
+    conn.ping()?;
+    let dt = conn.call_time()?;
+    conn.stop_call_time_measurements()?;
+    assert!(dt > 0);
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.start_call_time_measurements()?;
+    # conn.ping().await?;
+    # let dt = conn.call_time()?;
+    # conn.stop_call_time_measurements()?;
+    # assert!(dt > 0);
+    # Ok(()) })
+    # }
+    ```
     */
     pub fn call_time(&self) -> Result<u64> {
         self.get_attr(OCI_ATTR_CALL_TIME)
@@ -195,357 +323,382 @@ impl Connection<'_> {
     }
 
     /**
-        Sets the name of the current module (`V$SESSION.MODULE`) running in the client application.
-        When the current module terminates, call with the name of the new module, or use empty
-        string if there is no new module. The name can be up to 48 bytes long.
+    Sets the name of the current module (`V$SESSION.MODULE`) running in the client application.
+    When the current module terminates, call with the name of the new module, or use empty
+    string if there is no new module. The name can be up to 48 bytes long.
 
-        # Example
+    # Parameters
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    * `name` - The name of the current module running in the client application.
 
-        ```
-        # use sibyl::Result;
-        # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        conn.set_module("sibyl");
+    # Example
 
-        let stmt = conn.prepare("
-            SELECT module
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ")?;
-        let rows = stmt.query(())?;
-        let row = rows.next()?.unwrap();
-        let module : &str = row.get(0)?.unwrap();
-        assert_eq!(module, "sibyl");
-        # Ok(())
-        # }
-        # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # conn.set_module("sibyl");
-        # let stmt = conn.prepare("
-        #     SELECT module
-        #       FROM v$session
-        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        # ").await?;
-        # let rows = stmt.query(()).await?;
-        # let row = rows.next().await?.unwrap();
-        # let module : &str = row.get(0)?.unwrap();
-        # assert_eq!(module, "sibyl");
-        # Ok(()) })
-        # }
-        ```
+    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    conn.set_module("Sibyl DocTest");
+
+    let stmt = conn.prepare("
+        SELECT module
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ")?;
+    let rows = stmt.query(())?;
+    let row = rows.next()?.unwrap();
+    let module : &str = row.get(0)?.unwrap();
+    assert_eq!(module, "Sibyl DocTest");
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let oracle = sibyl::env()?;
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.set_module("Sibyl DocTest");
+    # let stmt = conn.prepare("
+    #     SELECT module
+    #       FROM v$session
+    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    # ").await?;
+    # let rows = stmt.query(()).await?;
+    # let row = rows.next().await?.unwrap();
+    # let module : &str = row.get(0)?.unwrap();
+    # assert_eq!(module, "Sibyl DocTest");
+    # Ok(()) })
+    # }
+    ```
     */
     pub fn set_module(&self, name: &str) -> Result<()> {
         self.set_attr(OCI_ATTR_MODULE, name)
     }
 
     /**
-        Sets the name of the current action (`V$SESSION.ACTION`) within the current module.
-        When the current action terminates, set this attribute again with the name of the
-        next action, or empty string if there is no next action. Can be up to 32 bytes long.
+    Sets the name of the current action (`V$SESSION.ACTION`) within the current module.
+    When the current action terminates, set this attribute again with the name of the
+    next action, or empty string if there is no next action. Can be up to 32 bytes long.
 
-        # Example
+    # Parameters
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    * `action` - The name of the current action within the current module.
 
-        ```
-        # use sibyl::Result;
-        # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        conn.set_action("Session Test");
+    # Example
 
-        let stmt = conn.prepare("
-            SELECT action
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ")?;
-        let rows = stmt.query(())?;
-        let row = rows.next()?.unwrap();
-        let action : &str = row.get(0)?.unwrap();
-        assert_eq!(action, "Session Test");
-        # Ok(())
-        # }
-        # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # conn.set_action("Session Test");
-        # let stmt = conn.prepare("
-        #     SELECT action
-        #       FROM v$session
-        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        # ").await?;
-        # let rows = stmt.query(()).await?;
-        # let row = rows.next().await?.unwrap();
-        # let action : &str = row.get(0)?.unwrap();
-        # assert_eq!(action, "Session Test");
-        # Ok(()) })
-        # }
-        ```
+    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    conn.set_action("Action Name Test");
+
+    let stmt = conn.prepare("
+        SELECT action
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ")?;
+    let rows = stmt.query(())?;
+    let row = rows.next()?.unwrap();
+    let action : &str = row.get(0)?.unwrap();
+    assert_eq!(action, "Action Name Test");
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let oracle = sibyl::env()?;
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.set_action("Action Name Test");
+    # let stmt = conn.prepare("
+    #     SELECT action
+    #       FROM v$session
+    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    # ").await?;
+    # let rows = stmt.query(()).await?;
+    # let row = rows.next().await?.unwrap();
+    # let action : &str = row.get(0)?.unwrap();
+    # assert_eq!(action, "Action Name Test");
+    # Ok(()) })
+    # }
+    ```
     */
     pub fn set_action(&self, action: &str) -> Result<()> {
         self.set_attr(OCI_ATTR_ACTION, action)
     }
 
     /**
-        Sets the user identifier (`V$SESSION.CLIENT_IDENTIFIER`) in the session handle.
-        Can be up to 64 bytes long.
+    Sets the user identifier (`V$SESSION.CLIENT_IDENTIFIER`) in the session handle.
+    Can be up to 64 bytes long.
 
-        # Example
+    # Parameters
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    # `id` - The user identifier.
 
-        ```
-        # use sibyl::Result;
-        # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        conn.set_client_identifier("Test Wielder");
+    # Example
 
-        let stmt = conn.prepare("
-            SELECT client_identifier
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ")?;
-        let rows = stmt.query(())?;
-        let row = rows.next()?.unwrap();
-        let client_identifier : &str = row.get(0)?.unwrap();
-        assert_eq!(client_identifier, "Test Wielder");
-        # Ok(())
-        # }
-        # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # conn.set_client_identifier("Test Wielder");
-        # let stmt = conn.prepare("
-        #     SELECT client_identifier
-        #       FROM v$session
-        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        # ").await?;
-        # let rows = stmt.query(()).await?;
-        # let row = rows.next().await?.unwrap();
-        # let client_identifier : &str = row.get(0)?.unwrap();
-        # assert_eq!(client_identifier, "Test Wielder");
-        # Ok(()) })
-        # }
-        ```
+    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    conn.set_client_identifier("Test Wielder");
+
+    let stmt = conn.prepare("
+        SELECT client_identifier
+            FROM v$session
+            WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ")?;
+    let rows = stmt.query(())?;
+    let row = rows.next()?.unwrap();
+    let client_identifier : &str = row.get(0)?.unwrap();
+    assert_eq!(client_identifier, "Test Wielder");
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.set_client_identifier("Test Wielder");
+    # let stmt = conn.prepare("
+    #     SELECT client_identifier
+    #       FROM v$session
+    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    # ").await?;
+    # let rows = stmt.query(()).await?;
+    # let row = rows.next().await?.unwrap();
+    # let client_identifier : &str = row.get(0)?.unwrap();
+    # assert_eq!(client_identifier, "Test Wielder");
+    # Ok(()) })
+    # }
+    ```
     */
     pub fn set_client_identifier(&self, id: &str) -> Result<()> {
         self.set_attr(OCI_ATTR_CLIENT_IDENTIFIER, id)
     }
 
     /**
-        Sets additional client application information (`V$SESSION.CLIENT_INFO`).
-        Can be up to 64 bytes long.
+    Sets additional client application information (`V$SESSION.CLIENT_INFO`).
+    Can be up to 64 bytes long.
 
-        # Example
+    # Parameters
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    * `info` - Additional client application information.
 
-        ```
-        # use sibyl::Result;
-        # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        conn.set_client_info("Nothing to see here, move along folks");
+    # Example
 
-        let stmt = conn.prepare("
-            SELECT client_info
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ")?;
-        let rows = stmt.query(())?;
-        let row = rows.next()?.unwrap();
-        let client_info : &str = row.get(0)?.unwrap();
-        assert_eq!(client_info, "Nothing to see here, move along folks");
-        # Ok(())
-        # }
-        # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # conn.set_client_info("Nothing to see here, move along folks");
-        # let stmt = conn.prepare("
-        #     SELECT client_info
-        #       FROM v$session
-        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        # ").await?;
-        # let rows = stmt.query(()).await?;
-        # let row = rows.next().await?.unwrap();
-        # let client_info : &str = row.get(0)?.unwrap();
-        # assert_eq!(client_info, "Nothing to see here, move along folks");
-        # Ok(()) })
-        # }
-        ```
+    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    conn.set_client_info("Nothing to see here, move along folks");
+
+    let stmt = conn.prepare("
+        SELECT client_info
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ")?;
+    let rows = stmt.query(())?;
+    let row = rows.next()?.unwrap();
+    let client_info : &str = row.get(0)?.unwrap();
+    assert_eq!(client_info, "Nothing to see here, move along folks");
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.set_client_info("Nothing to see here, move along folks");
+    # let stmt = conn.prepare("
+    #     SELECT client_info
+    #       FROM v$session
+    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    # ").await?;
+    # let rows = stmt.query(()).await?;
+    # let row = rows.next().await?.unwrap();
+    # let client_info : &str = row.get(0)?.unwrap();
+    # assert_eq!(client_info, "Nothing to see here, move along folks");
+    # Ok(()) })
+    # }
+    ```
     */
     pub fn set_client_info(&self, info: &str) -> Result<()> {
         self.set_attr(OCI_ATTR_CLIENT_INFO, info)
     }
 
     /**
-        Returns the current schema.
+    Returns the current schema.
 
-        # Example
+    # Example
 
-        ```
-        # use sibyl::Result;
-        # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let orig_name = conn.current_schema()?;
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let orig_name = conn.current_schema()?;
+    conn.set_current_schema("HR")?;
 
-        conn.set_current_schema("HR")?;
-        assert_eq!(conn.current_schema()?, "HR");
+    let current_schema = conn.current_schema()?;
 
-        conn.set_current_schema(orig_name)?;
-        assert_eq!(conn.current_schema()?, orig_name);
-        # Ok(())
-        # }
-        # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # let orig_name = conn.current_schema()?;
-        # conn.set_current_schema("HR")?;
-        # assert_eq!(conn.current_schema()?, "HR");
-        # conn.set_current_schema(orig_name)?;
-        # assert_eq!(conn.current_schema()?, orig_name);
-        # Ok(()) })
-        # }
-        ```
+    assert_eq!(current_schema, "HR");
+    conn.set_current_schema(orig_name)?;
+    let current_schema = conn.current_schema()?;
+    assert_eq!(current_schema, orig_name);
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let orig_name = conn.current_schema()?;
+    # conn.set_current_schema("HR")?;
+    # let current_schema = conn.current_schema()?;
+    # assert_eq!(current_schema, "HR");
+    # conn.set_current_schema(orig_name)?;
+    # let current_schema = conn.current_schema()?;
+    # assert_eq!(current_schema, orig_name);
+    # Ok(()) })
+    # }
+    ```
     */
     pub fn current_schema(&self) -> Result<&str> {
         self.get_attr(OCI_ATTR_CURRENT_SCHEMA)
     }
 
     /**
-        Sets the current schema. It has the same effect as the SQL command ALTER SESSION SET CURRENT_SCHEMA
-        if the schema name and the session exist. The schema is altered on the next OCI call that does a
-        round-trip to the server, avoiding an extra round-trip. If the new schema name does not exist, the
-        same error is returned as the error returned from ALTER SESSION SET CURRENT_SCHEMA. The new schema
-        name is placed before database objects in DML or DDL commands that you then enter.
+    Sets the current schema. It has the same effect as the SQL command `ALTER SESSION SET CURRENT_SCHEMA`
+    if the schema name and the session exist. The schema is altered on the next OCI call that does a
+    round-trip to the server, avoiding an extra round-trip. If the new schema name does not exist, the
+    same error is returned as the error returned from ALTER SESSION SET CURRENT_SCHEMA. The new schema
+    name is placed before database objects in DML or DDL commands that you then enter.
 
-        # Example
+    # Parameters
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    * `schema_name` - The new schema name.
 
-        ```
-        # use sibyl::Result;
-        # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let orig_name = conn.current_schema()?;
-        conn.set_current_schema("HR")?;
-        assert_eq!(conn.current_schema()?, "HR");
+    # Example
 
-        let stmt = conn.prepare("
-            SELECT schemaname
-              FROM v$session
-             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        ")?;
-        let rows = stmt.query(())?;
-        let row = rows.next()?.unwrap();
-        let schema_name : &str = row.get(0)?.unwrap();
-        assert_eq!(schema_name, "HR");
+    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
+    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
 
-        conn.set_current_schema(orig_name)?;
-        assert_eq!(conn.current_schema()?, orig_name);
-        # Ok(())
-        # }
-        # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # let orig_name = conn.current_schema()?;
-        # conn.set_current_schema("HR")?;
-        # assert_eq!(conn.current_schema()?, "HR");
-        # let stmt = conn.prepare("
-        #     SELECT schemaname
-        #       FROM v$session
-        #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-        # ").await?;
-        # let rows = stmt.query(()).await?;
-        # let row = rows.next().await?.unwrap();
-        # let schema_name : &str = row.get(0)?.unwrap();
-        # assert_eq!(schema_name, "HR");
-        # conn.set_current_schema(orig_name)?;
-        # assert_eq!(conn.current_schema()?, orig_name);
-        # Ok(()) })
-        # }
-        ```
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let orig_name = conn.current_schema()?;
+
+    conn.set_current_schema("HR")?;
+
+    assert_eq!(conn.current_schema()?, "HR");
+    let stmt = conn.prepare("
+        SELECT schemaname
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ")?;
+    let rows = stmt.query(())?;
+    let row = rows.next()?.unwrap();
+    let schema_name : &str = row.get(0)?.unwrap();
+    assert_eq!(schema_name, "HR");
+
+    conn.set_current_schema(orig_name)?;
+    assert_eq!(conn.current_schema()?, orig_name);
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let orig_name = conn.current_schema()?;
+    # conn.set_current_schema("HR")?;
+    # assert_eq!(conn.current_schema()?, "HR");
+    # let stmt = conn.prepare("
+    #     SELECT schemaname
+    #       FROM v$session
+    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    # ").await?;
+    # let rows = stmt.query(()).await?;
+    # let row = rows.next().await?.unwrap();
+    # let schema_name : &str = row.get(0)?.unwrap();
+    # assert_eq!(schema_name, "HR");
+    # conn.set_current_schema(orig_name)?;
+    # assert_eq!(conn.current_schema()?, orig_name);
+    # Ok(()) })
+    # }
+    ```
     */
     pub fn set_current_schema(&self, schema_name: &str) -> Result<()> {
         self.set_attr(OCI_ATTR_CURRENT_SCHEMA, schema_name)
     }
 
     /**
-        Sets the default prefetch buffer size for each LOB locator.
+    Sets the default prefetch buffer size for each LOB locator.
 
-        This attribute value enables prefetching for all the LOB locators fetched in the session.
-        The default value for this attribute is zero (no prefetch of LOB data). This option
-        relieves the application developer from setting the prefetch LOB size for each LOB column
-        in each prepared statement.
+    This attribute value enables prefetching for all the LOB locators fetched in the session.
+    The default value for this attribute is zero (no prefetch of LOB data). This option
+    relieves the application developer from setting the prefetch LOB size for each LOB column
+    in each prepared statement.
     */
     pub fn set_lob_prefetch_size(&self, size: u32) -> Result<()> {
         self.set_attr(OCI_ATTR_DEFAULT_LOBPREFETCH_SIZE, size)

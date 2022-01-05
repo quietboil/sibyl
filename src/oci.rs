@@ -63,23 +63,23 @@ pub(crate) const OCI_HTYPE_CPOOL            : u32 = 26;
 pub(crate) const OCI_HTYPE_SPOOL            : u32 = 27;
 
 // Handle Definitions
-#[repr(C)] pub struct OCIEnv                { _private: [u8; 0] }
-#[repr(C)] pub struct OCIError              { _private: [u8; 0] }
-#[repr(C)] pub struct OCISvcCtx             { _private: [u8; 0] }
-#[repr(C)] pub struct OCIStmt               { _private: [u8; 0] }
-#[repr(C)] pub struct OCIBind               { _private: [u8; 0] }
-#[repr(C)] pub struct OCIDefine             { _private: [u8; 0] }
-#[repr(C)] pub struct OCIDescribe           { _private: [u8; 0] }
-#[repr(C)] pub struct OCIServer             { _private: [u8; 0] }
-#[repr(C)] pub struct OCISession            { _private: [u8; 0] }
-#[repr(C)] pub struct OCIRaw                { _private: [u8; 0] }
+#[repr(C)] pub        struct OCIEnv         { _private: [u8; 0] }
+#[repr(C)] pub        struct OCIError       { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCISvcCtx      { _private: [u8; 0] }
+#[repr(C)] pub        struct OCIStmt        { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIBind        { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIDefine      { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIDescribe    { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIServer      { _private: [u8; 0] }
+#[repr(C)] pub        struct OCISession     { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIRaw         { _private: [u8; 0] }
 
-#[repr(C)] pub struct OCIAuthInfo           { _private: [u8; 0] }
-#[repr(C)] pub struct OCISPool              { _private: [u8; 0] }
-#[repr(C)] pub struct OCICPool              { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIAuthInfo    { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCISPool       { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCICPool       { _private: [u8; 0] }
 
 /// Trait of handles to have their own type
-pub trait HandleType : OCIStruct {
+pub(crate) trait HandleType : OCIStruct {
     fn get_type() -> u32;
 }
 
@@ -122,14 +122,14 @@ pub(crate) const OCI_DTYPE_TIMESTAMP_TZ     : u32 = 69;  // Timestamp with timez
 pub(crate) const OCI_DTYPE_TIMESTAMP_LTZ    : u32 = 70;  // Timestamp with local tz
 
 // Descriptor Definitions
-#[repr(C)] pub struct OCIResult             { _private: [u8; 0] }
-#[repr(C)] pub struct OCILobLocator         { _private: [u8; 0] }
-#[repr(C)] pub struct OCILobRegion          { _private: [u8; 0] }
-#[repr(C)] pub struct OCIParam              { _private: [u8; 0] }
-#[repr(C)] pub struct OCIRowid              { _private: [u8; 0] }
-#[repr(C)] pub struct OCIDateTime           { _private: [u8; 0] }
-#[repr(C)] pub struct OCIInterval           { _private: [u8; 0] }
-#[repr(C)] pub struct OCIString             { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIResult      { _private: [u8; 0] }
+#[repr(C)] pub        struct OCILobLocator  { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCILobRegion   { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIParam       { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIRowid       { _private: [u8; 0] }
+#[repr(C)] pub        struct OCIDateTime    { _private: [u8; 0] }
+#[repr(C)] pub        struct OCIInterval    { _private: [u8; 0] }
+#[repr(C)] pub(crate) struct OCIString      { _private: [u8; 0] }
 
 // Virtual descriptors
 pub struct OCICLobLocator           {}
@@ -2019,7 +2019,7 @@ macro_rules! ok_or_env_err {
     }};
 }
 
-pub(crate) fn descriptor_alloc<T>(parenth: &OCIEnv, descpp: *mut *mut T, desctype: u32) -> Result<()> 
+pub(crate) fn descriptor_alloc<T>(parenth: &OCIEnv, descpp: *mut *mut T, desctype: u32) -> Result<()>
 where T: OCIStruct
 {
     ok_or_env_err!(|parenth|
@@ -2141,16 +2141,16 @@ pub(crate) fn trans_rollback(
 }
 
 
-pub(crate) fn connection_pool_create ( 
+pub(crate) fn connection_pool_create (
     envhp:          &OCIEnv,
-    errhp:          &OCIError, 
+    errhp:          &OCIError,
     cpoolhp:        &OCICPool,
     pool_name:      *mut *const u8,
     pool_name_len:  *mut u32,
     dblink:         *const u8,
     dblink_len:     u32,
-    conn_min:       u32, 
-    conn_max:       u32, 
+    conn_min:       u32,
+    conn_max:       u32,
     conn_incr:      u32,
     username:       *const u8,
     username_len:   u32,
@@ -2163,16 +2163,16 @@ pub(crate) fn connection_pool_create (
     )
 }
 
-pub(crate) fn session_pool_create ( 
+pub(crate) fn session_pool_create (
     envhp:          &OCIEnv,
-    errhp:          &OCIError, 
+    errhp:          &OCIError,
     spoolhp:        &OCISPool,
     pool_name:      *mut *const u8,
     pool_name_len:  *mut u32,
     conn_str:       *const u8,
     conn_str_len:   u32,
-    sess_min:       u32, 
-    sess_max:       u32, 
+    sess_min:       u32,
+    sess_max:       u32,
     sess_incr:      u32,
     userid:         *const u8,
     userid_len:     u32,
@@ -2254,7 +2254,7 @@ pub(crate) fn stmt_execute(
     rowoff:     u32,
     mode:       u32
 ) -> Result<i32> {
-    let res = unsafe { 
+    let res = unsafe {
         OCIStmtExecute(svchp, stmtp, errhp, iters, rowoff, std::ptr::null(), std::ptr::null(), mode)
     };
     match res {
@@ -2599,7 +2599,7 @@ pub(crate) fn lob_read(
     csid:       u16,
     csfrm:      u8,
 ) -> Result<i32> {
-    let res = unsafe { 
+    let res = unsafe {
         OCILobRead2(svchp, errhp, loc, byte_cnt, char_cnt, offset, buf, buf_len, piece, std::ptr::null_mut::<c_void>(), std::ptr::null::<c_void>(), csid, csfrm)
     };
     match res {
@@ -3386,7 +3386,7 @@ pub(crate) fn number_floor(
 pub(crate) fn number_from_real(
     err:      &OCIError,
     rnum:     *const c_void,
-    rnum_len: u32,                  
+    rnum_len: u32,
     result:   *mut OCINumber
 ) -> Result<()> {
     ok_or_oci_err!(|err|
@@ -3470,7 +3470,7 @@ pub(crate) fn number_is_int(
 pub(crate) fn number_is_zero(
     err:      &OCIError,
     number:   &OCINumber,
-    result:   *mut i32          
+    result:   *mut i32
 ) -> Result<()> {
     ok_or_oci_err!(|err|
         OCINumberIsZero(err, number, result)
@@ -3544,7 +3544,7 @@ pub(crate) fn number_power(
 pub(crate) fn number_prec(
     err:      &OCIError,
     number:   &OCINumber,
-    num_dig:  i32,                  
+    num_dig:  i32,
     result:   *mut OCINumber
 ) -> Result<()> {
     ok_or_oci_err!(|err|
@@ -3555,7 +3555,7 @@ pub(crate) fn number_prec(
 pub(crate) fn number_round(
     err:      &OCIError,
     number:   &OCINumber,
-    num_dig:  i32,                  
+    num_dig:  i32,
     result:   *mut OCINumber
 ) -> Result<()> {
     ok_or_oci_err!(|err|
@@ -3646,7 +3646,7 @@ pub(crate) fn number_tan(
 pub(crate) fn number_to_real(
     err:      &OCIError,
     number:   &OCINumber,
-    res_len:  u32,                  
+    res_len:  u32,
     result:   *mut c_void
 ) -> Result<()> {
     ok_or_oci_err!(|err|

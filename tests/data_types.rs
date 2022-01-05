@@ -387,7 +387,7 @@ mod blocking {
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
             BEGIN
                 EXECUTE IMMEDIATE '
-                    CREATE TABLE test_long_and_raw_data (
+                    CREATE TABLE long_and_raw_test_data (
                         id      NUMBER GENERATED ALWAYS AS IDENTITY,
                         bin     RAW(100),
                         text    LONG
@@ -401,7 +401,7 @@ mod blocking {
 
         // Cannot return LONG
         let stmt = conn.prepare("
-            INSERT INTO test_long_and_raw_data (bin, text) VALUES (:BIN, :TEXT)
+            INSERT INTO long_and_raw_test_data (bin, text) VALUES (:BIN, :TEXT)
             RETURNING id, bin INTO :ID, :OBIN
         ")?;
         let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
@@ -413,7 +413,7 @@ mod blocking {
         assert!(id > 0);
         assert_eq!(data_out.as_slice(), &data[..]);
 
-        let stmt = conn.prepare("SELECT bin, text FROM test_long_and_raw_data WHERE id = :ID")?;
+        let stmt = conn.prepare("SELECT bin, text FROM long_and_raw_test_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
         let rows = stmt.query(&id)?;
         let row  = rows.next()?.unwrap();
@@ -1095,7 +1095,7 @@ mod nonblocking {
                     name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
                 BEGIN
                     EXECUTE IMMEDIATE '
-                        CREATE TABLE test_long_and_raw_data (
+                        CREATE TABLE long_and_raw_test_data (
                             id      NUMBER GENERATED ALWAYS AS IDENTITY,
                             bin     RAW(100),
                             text    LONG
@@ -1109,7 +1109,7 @@ mod nonblocking {
 
             // Cannot return LONG
             let stmt = conn.prepare("
-                INSERT INTO test_long_and_raw_data (bin, text) VALUES (:BIN, :TEXT)
+                INSERT INTO long_and_raw_test_data (bin, text) VALUES (:BIN, :TEXT)
                 RETURNING id, bin INTO :ID, :OBIN
             ").await?;
 
@@ -1125,7 +1125,7 @@ mod nonblocking {
             assert!(id > 0);
             assert_eq!(data_out.as_slice(), &data[..]);
 
-            let stmt = conn.prepare("SELECT bin, text FROM test_long_and_raw_data WHERE id = :ID").await?;
+            let stmt = conn.prepare("SELECT bin, text FROM long_and_raw_test_data WHERE id = :ID").await?;
             // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
             let rows = stmt.query(&id).await?;
             let row  = rows.next().await?.unwrap();

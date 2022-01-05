@@ -43,30 +43,45 @@ impl<'a> Statement<'a> {
     }
 
     /**
-        Executes the prepared statement. Returns the number of rows affected.
+    Executes the prepared statement. Returns the number of rows affected.
 
-        # Example
+    # Parameters
 
-        ```
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let stmt = conn.prepare("
-            UPDATE hr.departments
-               SET manager_id = :manager_id
-             WHERE department_id = :department_id
-        ").await?;
-        let num_updated_rows = stmt.execute((
+    * `args` - SQL statement arguments.
+
+    Arguments can be represented by:
+    - a value: `val`
+    - a reference: `&val`
+    - a tuple of values (or references) that will be bound to parameters by their position: `(val1, &val2, val3)`
+    - a 2-item tuple where first item is a parameter name: `(":PARAM", val)`
+    - a tuple of 2-item tuples with "named" parameters: `( (":P1", val1), (":P2", &val2) )`
+
+    # Example
+
+    ```
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = conn.prepare("
+        UPDATE hr.departments
+            SET manager_id = :manager_id
+            WHERE department_id = :department_id
+    ").await?;
+
+    let num_updated_rows = stmt.execute(
+        (
             (":DEPARTMENT_ID", 120),
             (":MANAGER_ID",    101),
-        )).await?;
-        assert_eq!(num_updated_rows, 1);
-        # conn.rollback().await?;
-        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-        ```
+        )
+    ).await?;
+
+    assert_eq!(num_updated_rows, 1);
+    # conn.rollback().await?;
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn execute(&self, args: impl ToSql) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
@@ -82,44 +97,67 @@ impl<'a> Statement<'a> {
     }
 
     /**
-        Executes a prepared RETURNING statement. Returns the number of rows affected.
+    Executes a prepared RETURNING statement. Returns the number of rows affected.
 
-        # Example
+    # Parameters
 
-        ```
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let stmt = conn.prepare("
-            INSERT INTO hr.departments
-                   ( department_id, department_name, manager_id, location_id )
-            VALUES ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
-         RETURNING department_id
-              INTO :department_id
-        ").await?;
-        let mut department_id : usize = 0;
-        // In this case (no duplicates in the statement parameters and the OUT parameter follows
-        // the IN parameters) we could have used positional arguments. However, there are many
-        // cases when positional is too difficult to use correcty with `execute_into`. For example,
-        // OUT is used as an IN-OUT parameter, OUT precedes or in the middle of the IN parameter
-        // list, parameter list is very long, etc. This example shows the call with the named
-        // arguments as this might be a more typical use case for it.
-        let num_rows = stmt.execute_into((
+    * `in_args` - SQL statement IN arguments.
+    * `out_args` - SQL statement OUT (and INOUT) arguments.
+
+    IN Arguments can be represented by:
+    - a value: `val`
+    - a reference: `&val`
+    - a tuple of values (or references) that will be bound to parameters by their position: `(val1, &val2, val3)`
+    - a 2-item tuple where first item is a parameter name: `(":PARAM", val)`
+    - a tuple of 2-item tuples with "named" parameters: `( (":P1", val1), (":P2", &val2) )`
+
+    OUT Arguments can be represented by:
+    - a mutable reference: `&mut val`
+    - a tuple of mutable references that will be bound to parameters by their position: `(&mut val1, &mut val2, &mut val3)`
+    - a 2-item tuple where first item is a parameter name: `(":PARAM", &mut val)`
+    - a tuple of 2-item tuples with "named" parameters: `( (":P1", &mut val1), (":P2", &mut val2) )`
+
+    # Example
+
+    ```
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = conn.prepare("
+        INSERT INTO hr.departments
+            ( department_id, department_name, manager_id, location_id )
+        VALUES
+            ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
+        RETURNING department_id
+             INTO :department_id
+    ").await?;
+    let mut department_id : usize = 0;
+
+    // In this case (no duplicates in the statement parameters and the OUT parameter follows
+    // the IN parameters) we could have used positional arguments. However, there are many
+    // cases when positional is too difficult to use correcty with `execute_into`. For example,
+    // OUT is used as an INOUT parameter, OUT precedes or in the middle of the IN parameter
+    // list, parameter list is very long, etc. This example shows the call with the named
+    // arguments as this might be a more typical use case for it.
+
+    let num_rows = stmt.execute_into(
+        (
             ( ":DEPARTMENT_NAME", "Security" ),
             ( ":MANAGER_ID",      ""         ),
             ( ":LOCATION_ID",     1700       ),
         ),
-            ( ":DEPARTMENT_ID", &mut department_id )
-        ).await?;
-        assert_eq!(num_rows, 1);
-        assert!(!stmt.is_null(":DEPARTMENT_ID")?);
-        assert!(department_id > 0);
-        # conn.rollback().await?;
-        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-        ```
+        ( ":DEPARTMENT_ID", &mut department_id )
+    ).await?;
+
+    assert_eq!(num_rows, 1);
+    assert!(!stmt.is_null(":DEPARTMENT_ID")?);
+    assert!(department_id > 0);
+    # conn.rollback().await?;
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn execute_into(&self, in_args: impl ToSql, mut out_args: impl ToSqlOut) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
@@ -134,51 +172,64 @@ impl<'a> Statement<'a> {
     }
 
     /**
-        Executes the prepared statement. Returns "streaming iterator" over the returned rows.
+    Executes the prepared statement. Returns "streaming iterator" over the returned rows.
 
-        # Example
+    # Parameters
 
-        ```
-        # use std::collections::HashMap;
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let stmt = conn.prepare("
-            SELECT employee_id, last_name, first_name
-              FROM hr.employees
-             WHERE manager_id = :id
-          ORDER BY employee_id
-        ").await?;
-        stmt.set_prefetch_rows(5)?;
-        let rows = stmt.query(103).await?; // Alexander Hunold
-        let mut subs = HashMap::new();
-        while let Some( row ) = rows.next().await? {
-            // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-            let id : u32 = row.get(0)?.unwrap();
-            // Same for the LAST_NAME.
-            // Note that `last_name` is retrieved as a slice. This is fast as it
-            // borrows directly from the column buffer, but it can only live until
-            // the end of the current scope, i.e. only during the lifetime of the
-            // current row.
-            let last_name : &str = row.get(1)?.unwrap();
-            // FIRST_NAME is NULL-able...
-            let first_name : Option<&str> = row.get(2)?;
-            let name = first_name.map_or(last_name.to_string(),
-                |first_name| format!("{}, {}", last_name, first_name)
-            );
-            subs.insert(id, name);
-        }
-        assert_eq!(stmt.row_count()?, 4);
-        assert_eq!(subs.len(), 4);
-        assert!(subs.contains_key(&104), "Bruce Ernst");
-        assert!(subs.contains_key(&105), "David Austin");
-        assert!(subs.contains_key(&106), "Valli Pataballa");
-        assert!(subs.contains_key(&107), "Diana Lorentz");
-        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-        ```
+    * `args` - SQL statement arguments.
+
+    Arguments can be represented by:
+    - a value: `val`
+    - a reference: `&val`
+    - a tuple of values (or references) that will be bound to parameters by their position: `(val1, &val2, val3)`
+    - a 2-item tuple where first item is a parameter name: `(":PARAM", val)`
+    - a tuple of 2-item tuples with "named" parameters: `( (":P1", val1), (":P2", &val2) )`
+
+    # Example
+
+    ```
+    # use std::collections::HashMap;
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = conn.prepare("
+        SELECT employee_id, last_name, first_name
+          FROM hr.employees
+         WHERE manager_id = :id
+      ORDER BY employee_id
+    ").await?;
+    stmt.set_prefetch_rows(5)?;
+
+    let rows = stmt.query(103).await?; // 103 is Alexander Hunold
+
+    let mut subs = HashMap::new();
+    while let Some( row ) = rows.next().await? {
+        // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
+        let id : u32 = row.get(0)?.unwrap();
+        // Same for the LAST_NAME.
+        // Note that `last_name` is retrieved as a slice. This is fast as it
+        // borrows directly from the column buffer, but it can only live until
+        // the end of the current scope, i.e. only during the lifetime of the
+        // current row.
+        let last_name : &str = row.get(1)?.unwrap();
+        // FIRST_NAME is NULL-able...
+        let first_name : Option<&str> = row.get(2)?;
+        let name = first_name.map_or(last_name.to_string(),
+            |first_name| format!("{}, {}", last_name, first_name)
+        );
+        subs.insert(id, name);
+    }
+    assert_eq!(stmt.row_count()?, 4);
+    assert_eq!(subs.len(), 4);
+    assert!(subs.contains_key(&104), "Bruce Ernst");
+    assert!(subs.contains_key(&105), "David Austin");
+    assert!(subs.contains_key(&106), "Valli Pataballa");
+    assert!(subs.contains_key(&107), "Diana Lorentz");
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn query(&'a self, args: impl ToSql) -> Result<Rows<'a>> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
@@ -201,119 +252,119 @@ impl<'a> Statement<'a> {
     }
 
     /**
-        Retrieves a single implicit result (cursor) in the order in which they were returned
-        from the PL/SQL procedure or block. If no more results are available, then `None` is
-        returned.
+    Retrieves a single implicit result (cursor) in the order in which they were returned
+    from the PL/SQL procedure or block. If no more results are available, then `None` is
+    returned.
 
-        PL/SQL provides a subprogram RETURN_RESULT in the DBMS_SQL package to return the result
-        of an executed statement. Only SELECT query result-sets can be implicitly returned by a
-        PL/SQL procedure or block.
+    PL/SQL provides a subprogram RETURN_RESULT in the DBMS_SQL package to return the result
+    of an executed statement. Only SELECT query result-sets can be implicitly returned by a
+    PL/SQL procedure or block.
 
-        `next_result` can be called iteratively by the application to retrieve each implicit
-        result from an executed PL/SQL statement. Applications retrieve each result-set sequentially
-        but can fetch rows from any result-set independently.
+    `next_result` can be called iteratively by the application to retrieve each implicit
+    result from an executed PL/SQL statement. Applications retrieve each result-set sequentially
+    but can fetch rows from any result-set independently.
 
-        # Example
+    # Example
 
-        ```
-        use sibyl::Number;
-        use std::cmp::Ordering::Equal;
+    ```
+    use sibyl::Number;
+    use std::cmp::Ordering::Equal;
 
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let stmt = conn.prepare("
-            DECLARE
-                c1 SYS_REFCURSOR;
-                c2 SYS_REFCURSOR;
-            BEGIN
-                OPEN c1 FOR
-                    SELECT department_name, first_name, last_name, salary
-                     FROM (
-                           SELECT first_name, last_name, salary, department_id
-                                , ROW_NUMBER() OVER (ORDER BY salary) ord
-                             FROM hr.employees
-                          ) e
-                     JOIN hr.departments d
-                       ON d.department_id = e.department_id
-                    WHERE ord = 1
-                ;
-                DBMS_SQL.RETURN_RESULT (c1);
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = conn.prepare("
+        DECLARE
+            c1 SYS_REFCURSOR;
+            c2 SYS_REFCURSOR;
+        BEGIN
+            OPEN c1 FOR
+                SELECT department_name, first_name, last_name, salary
+                  FROM (
+                        SELECT first_name, last_name, salary, department_id
+                             , ROW_NUMBER() OVER (ORDER BY salary) ord
+                          FROM hr.employees
+                       ) e
+                  JOIN hr.departments d
+                    ON d.department_id = e.department_id
+                 WHERE ord = 1
+            ;
+            DBMS_SQL.RETURN_RESULT (c1);
 
-                OPEN c2 FOR
-                    SELECT department_name, first_name, last_name, salary
-                      FROM (
-                            SELECT first_name, last_name, salary, department_id
-                                 , MEDIAN(salary) OVER () median_salary
-                              FROM hr.employees
-                           ) e
-                      JOIN hr.departments d
-                        ON d.department_id = e.department_id
-                     WHERE salary = median_salary
-                  ORDER BY department_name, last_name, first_name
-                ;
-                DBMS_SQL.RETURN_RESULT (c2);
-            END;
-        ").await?;
-        let expected_lowest_salary = Number::from_int(2100, &conn)?;
-        let expected_median_salary = Number::from_int(6200, &conn)?;
+            OPEN c2 FOR
+                SELECT department_name, first_name, last_name, salary
+                  FROM (
+                        SELECT first_name, last_name, salary, department_id
+                             , MEDIAN(salary) OVER () median_salary
+                          FROM hr.employees
+                       ) e
+                  JOIN hr.departments d
+                    ON d.department_id = e.department_id
+                 WHERE salary = median_salary
+              ORDER BY department_name, last_name, first_name
+            ;
+            DBMS_SQL.RETURN_RESULT (c2);
+        END;
+    ").await?;
+    let expected_lowest_salary = Number::from_int(2100, &conn)?;
+    let expected_median_salary = Number::from_int(6200, &conn)?;
 
-        stmt.execute(()).await?;
+    stmt.execute(()).await?;
 
-        let lowest_payed_employee = stmt.next_result().await?.unwrap();
+    let lowest_payed_employee = stmt.next_result().await?.unwrap();
 
-        let rows = lowest_payed_employee.rows().await?;
-        let row = rows.next().await?.unwrap();
+    let rows = lowest_payed_employee.rows().await?;
+    let row = rows.next().await?.unwrap();
 
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
+    let department_name : &str = row.get(0)?.unwrap();
+    let first_name : &str = row.get(1)?.unwrap();
+    let last_name : &str = row.get(2)?.unwrap();
+    let salary : Number = row.get(3)?.unwrap();
 
-        assert_eq!(department_name, "Shipping");
-        assert_eq!(first_name, "TJ");
-        assert_eq!(last_name, "Olson");
-        assert_eq!(salary.compare(&expected_lowest_salary)?, Equal);
+    assert_eq!(department_name, "Shipping");
+    assert_eq!(first_name, "TJ");
+    assert_eq!(last_name, "Olson");
+    assert_eq!(salary.compare(&expected_lowest_salary)?, Equal);
 
-        let row = rows.next().await?;
-        assert!(row.is_none());
+    let row = rows.next().await?;
+    assert!(row.is_none());
 
-        let median_salary_employees = stmt.next_result().await?.unwrap();
+    let median_salary_employees = stmt.next_result().await?.unwrap();
 
-        let rows = median_salary_employees.rows().await?;
+    let rows = median_salary_employees.rows().await?;
 
-        let row = rows.next().await?.unwrap();
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
+    let row = rows.next().await?.unwrap();
+    let department_name : &str = row.get(0)?.unwrap();
+    let first_name : &str = row.get(1)?.unwrap();
+    let last_name : &str = row.get(2)?.unwrap();
+    let salary : Number = row.get(3)?.unwrap();
 
-        assert_eq!(department_name, "Sales");
-        assert_eq!(first_name, "Amit");
-        assert_eq!(last_name, "Banda");
-        assert_eq!(salary.compare(&expected_median_salary)?, Equal);
+    assert_eq!(department_name, "Sales");
+    assert_eq!(first_name, "Amit");
+    assert_eq!(last_name, "Banda");
+    assert_eq!(salary.compare(&expected_median_salary)?, Equal);
 
-        let row = rows.next().await?.unwrap();
+    let row = rows.next().await?.unwrap();
 
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
+    let department_name : &str = row.get(0)?.unwrap();
+    let first_name : &str = row.get(1)?.unwrap();
+    let last_name : &str = row.get(2)?.unwrap();
+    let salary : Number = row.get(3)?.unwrap();
 
-        assert_eq!(department_name, "Sales");
-        assert_eq!(first_name, "Charles");
-        assert_eq!(last_name, "Johnson");
-        assert_eq!(salary.compare(&expected_median_salary)?, Equal);
+    assert_eq!(department_name, "Sales");
+    assert_eq!(first_name, "Charles");
+    assert_eq!(last_name, "Johnson");
+    assert_eq!(salary.compare(&expected_median_salary)?, Equal);
 
-        let row = rows.next().await?;
-        assert!(row.is_none());
+    let row = rows.next().await?;
+    assert!(row.is_none());
 
-        assert!(stmt.next_result().await?.is_none());
-        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-        ```
+    assert!(stmt.next_result().await?.is_none());
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn next_result(&'a self) -> Result<Option<Cursor<'a>>> {
         let res = oci::futures::StmtGetNextResult::new(self.as_ref(), self.as_ref()).await?;

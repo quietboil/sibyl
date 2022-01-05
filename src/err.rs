@@ -31,9 +31,13 @@ fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
 /// Represents possible errors returned from Sibyl
 #[derive(Debug)]
 pub enum Error {
+    /// Error conditions detected by Sibyl
     Interface(String),
+    /// Errors returned by OCI
     Oracle(i32,String),
+    /// Spawned task failed to execute to completion
     #[cfg(feature="nonblocking")]
+    #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
     JoinError(JoinError),
 }
 

@@ -707,7 +707,7 @@ impl<'a> Cursor<'a> {
         #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
         #     BEGIN
         #         EXECUTE IMMEDIATE '
-        #             CREATE TABLE test_long_and_raw_data (
+        #             CREATE TABLE long_and_raw_test_data (
         #                 id      NUMBER GENERATED ALWAYS AS IDENTITY,
         #                 bin     RAW(100),
         #                 text    LONG
@@ -719,7 +719,7 @@ impl<'a> Cursor<'a> {
         # ")?;
         # stmt.execute(())?;
         # let stmt = conn.prepare("
-        #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
+        #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT)
         #     RETURNING id INTO :ID
         # ")?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
@@ -729,7 +729,7 @@ impl<'a> Cursor<'a> {
             BEGIN
                 OPEN :long_texts FOR
                     SELECT text
-                      FROM test_long_and_raw_data
+                      FROM long_and_raw_test_data
                      WHERE id = :id
                 ;
             END;
@@ -756,7 +756,7 @@ impl<'a> Cursor<'a> {
         #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
         #     BEGIN
         #         EXECUTE IMMEDIATE '
-        #             CREATE TABLE test_long_and_raw_data (
+        #             CREATE TABLE long_and_raw_test_data (
         #                 id      NUMBER GENERATED ALWAYS AS IDENTITY,
         #                 bin     RAW(100),
         #                 text    LONG
@@ -768,7 +768,7 @@ impl<'a> Cursor<'a> {
         # ").await?;
         # stmt.execute(()).await?;
         # let stmt = conn.prepare("
-        #     INSERT INTO test_long_and_raw_data (text) VALUES (:TEXT)
+        #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT)
         #     RETURNING id INTO :ID
         # ").await?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
@@ -778,7 +778,7 @@ impl<'a> Cursor<'a> {
         #     BEGIN
         #         OPEN :long_texts FOR
         #             SELECT text
-        #               FROM test_long_and_raw_data
+        #               FROM long_and_raw_test_data
         #              WHERE id = :id
         #         ;
         #     END;

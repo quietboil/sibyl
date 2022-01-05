@@ -46,41 +46,41 @@ pub type BLOB<'a>         = lob::LOB<'a,oci::OCIBLobLocator>;
 pub type BFile<'a>        = lob::LOB<'a,oci::OCIBFileLocator>;
 
 /**
-    Returns a new environment handle, which is then used by the OCI functions.
+Returns a new environment handle, which is then used by the OCI functions.
 
-    While there can be multiple environments, most applications most likely will
-    need only one.
+While there can be multiple environments, most applications most likely will
+need only one.
 
-    As nothing can outlive its environment, when only one environment is used,
-    it might be created either in `main` function:
+As nothing can outlive its environment, when only one environment is used,
+it might be created either in the `main` function:
 
-    ```
-    use sibyl as oracle; // pun intended :)
-    fn main() {
-        let oracle = oracle::env().expect("Oracle OCI environment");
-        // ...
-    }
-    ```
+```
+use sibyl as oracle; // pun intended :)
+fn main() {
+    let oracle = oracle::env().expect("Oracle OCI environment");
+    // ...
+}
+```
 
-    and passed around, or it might be created statically:
+and passed around, or it might be created statically:
 
-    ```
-    use sibyl::{Environment, Result};
-    use once_cell::sync::OnceCell;
+```
+use sibyl::{Environment, Result};
+use once_cell::sync::OnceCell;
 
-    fn oracle() -> Result<&'static Environment> {
-        static OCI_ENV: OnceCell<Environment> = OnceCell::new();
-        OCI_ENV.get_or_try_init(||
-            sibyl::env()
-        )
-    }
+fn oracle() -> Result<&'static Environment> {
+    static OCI_ENV: OnceCell<Environment> = OnceCell::new();
+    OCI_ENV.get_or_try_init(||
+        sibyl::env()
+    )
+}
 
-    fn main() -> Result<()> {
-        let oracle = oracle()?;
-        // ...
-        Ok(())
-    }
-    ```
+fn main() -> Result<()> {
+    let oracle = oracle()?;
+    // ...
+    Ok(())
+}
+```
 */
 pub fn env() -> Result<Environment> {
     Environment::new()

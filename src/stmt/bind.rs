@@ -26,6 +26,7 @@ impl OutInfo {
     }
 }
 
+/// Represents statement parameters (a.k.a. parameter placeholders)
 pub struct Params {
     /// Parameter placeholder (name) indexes
     idxs: HashMap<&'static str,usize>,

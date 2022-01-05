@@ -65,6 +65,70 @@ impl<'a> SessionPool<'a> {
 
     /**
         Returns a new session with a new underlyng connection from this pool.
+
+        # Example
+
+        ```
+        use sibyl::{Environment, Connection, Date, Result};
+
+        fn main() -> Result<()> {
+            sibyl::multi_thread_block_on(async {
+                use std::{env, thread, sync::Arc};
+                use once_cell::sync::OnceCell;
+
+                static ORACLE : OnceCell<Environment> = OnceCell::new();
+                let oracle = ORACLE.get_or_try_init(|| {
+                    Environment::new()
+                })?;
+
+                let dbname = env::var("DBNAME").expect("database name");
+                let dbuser = env::var("DBUSER").expect("user name");
+                let dbpass = env::var("DBPASS").expect("password");
+
+                let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 4).await?;
+                let pool = Arc::new(pool);
+
+                let mut workers = Vec::with_capacity(10);
+                for _i in 0..workers.capacity() {
+                    let pool = pool.clone();
+                    let handle = sibyl::spawn(async move {
+                        let conn = pool.get_session().await.expect("database session");
+
+                        select_latest_hire(&conn).await.expect("selected employee name")
+                    });
+                    workers.push(handle);
+                }
+                for handle in workers {
+                    let name = handle.await.expect("select result");
+                    assert_eq!(name, "Amit Banda was hired on April 21, 2008");
+                }
+                Ok(())
+            })
+        }
+        # async fn select_latest_hire(conn: &Connection<'_>) -> Result<String> {
+        #     let stmt = conn.prepare("
+        #         SELECT first_name, last_name, hire_date
+        #           FROM (
+        #                 SELECT first_name, last_name, hire_date
+        #                      , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
+        #                   FROM hr.employees
+        #                )
+        #          WHERE hire_date_rank = 1
+        #     ").await?;
+        #     let rows = stmt.query(()).await?;
+        #     if let Some( row ) = rows.next().await? {
+        #         let first_name : Option<&str> = row.get(0)?;
+        #         let last_name : &str = row.get(1)?.expect("last_name");
+        #         let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
+        #         let hire_date : Date = row.get(2)?.expect("hire_date");
+        #         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
+        #         Ok(format!("{} was hired on {}", name, hire_date))
+        #     } else {
+        #         Ok("Not found".to_string())
+        #     }
+        # }
+        ```
+
     */
     pub async fn get_session(&self) -> Result<Connection<'_>> {
         Connection::from_session_pool(self).await

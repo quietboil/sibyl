@@ -28,7 +28,7 @@ impl SvcCtx {
     }
 
     pub(crate) fn from_session_pool(pool: &SessionPool) -> Result<Self> {
-        let env = pool.get_env();        
+        let env = pool.get_env();
         let err = Handle::<OCIError>::new(env.as_ref())?;
         let svc = pool.get_svc_ctx()?;
         Ok(SvcCtx { env, err, svc })
@@ -64,97 +64,122 @@ impl<'a> Connection<'a> {
         Ok(Self { ctx, usr, phantom_env: PhantomData })
     }
 
-    /// Confirms that the connection and the server are active.
+    /**
+    Confirms that the connection and the server are active.
+
+    # Example
+
+    ```
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # conn.start_call_time_measurements()?;
+    conn.ping()?;
+    # let dt = conn.call_time()?;
+    # conn.stop_call_time_measurements()?;
+    # assert!(dt > 0);
+    # Ok::<(),sibyl::Error>(())
+    ```
+    */
     pub fn ping(&self) -> Result<()> {
         oci::ping(self.as_ref(), self.as_ref())
     }
 
     /**
-        Prepares SQL or PL/SQL statement for execution.
+    Prepares SQL or PL/SQL statement for execution.
 
-        ## Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            SELECT employee_id
-              FROM (
-                    SELECT employee_id
-                         , row_number() OVER (ORDER BY hire_date) AS hire_date_rank
-                      FROM hr.employees
-                   )
-             WHERE hire_date_rank = 1
-        ")?;
-        let rows = stmt.query(())?;
-        let row = rows.next()?.expect("first (and only) row");
-        // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
-        let id : u32 = row.get(0)?.unwrap();
-        assert_eq!(id, 102);
-        assert!(rows.next()?.is_none());
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
+    # Parameters
+
+    * `sql` - SQL or PL/SQL statement
+
+    # Example
+
+    ```
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME")?;
+    # let dbuser = std::env::var("DBUSER")?;
+    # let dbpass = std::env::var("DBPASS")?;
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = conn.prepare("
+        SELECT employee_id
+          FROM (
+                SELECT employee_id
+                     , row_number() OVER (ORDER BY hire_date) AS hire_date_rank
+                  FROM hr.employees
+               )
+         WHERE hire_date_rank = 1
+    ")?;
+    let rows = stmt.query(())?;
+    let row = rows.next()?.expect("first (and only) row");
+    // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
+    let id : u32 = row.get(0)?.unwrap();
+    assert_eq!(id, 102);
+    assert!(rows.next()?.is_none(), "only one row was expected");
+    # Ok::<(),Box<dyn std::error::Error>>(())
+    ```
     */
     pub fn prepare(&self, sql: &str) -> Result<Statement> {
         Statement::new(sql, self)
     }
 
     /**
-        Commits the current transaction.
+    Commits the current transaction.
 
-        Current transaction is defined as the set of statements executed since
-        the last commit or since the beginning of the user session.
+    Current transaction is defined as the set of statements executed since
+    the last commit or since the beginning of the user session.
 
-        ## Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            UPDATE hr.employees
-               SET salary = :new_salary
-             WHERE employee_id = :emp_id
-        ")?;
-        let num_updated_rows = stmt.execute((
-            (":EMP_ID",     107 ),
-            (":NEW_SALARY", 4200),
-        ))?;
-        assert_eq!(num_updated_rows, 1);
+    # Example
 
-        conn.commit()?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
+    ```
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME")?;
+    # let dbuser = std::env::var("DBUSER")?;
+    # let dbpass = std::env::var("DBPASS")?;
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = conn.prepare("
+        UPDATE hr.employees
+           SET salary = :new_salary
+         WHERE employee_id = :emp_id
+    ")?;
+    let num_updated_rows = stmt.execute((
+        (":EMP_ID",     107 ),
+        (":NEW_SALARY", 4200),
+    ))?;
+    assert_eq!(num_updated_rows, 1);
+
+    conn.commit()?;
+    # Ok::<(),Box<dyn std::error::Error>>(())
+    ```
     */
     pub fn commit(&self) -> Result<()> {
         oci::trans_commit(self.as_ref(), self.as_ref())
     }
 
     /**
-        Rolls back the current transaction. The modified or updated objects in
-        the object cache for this transaction are also rolled back.
+    Rolls back the current transaction. The modified or updated objects in
+    the object cache for this transaction are also rolled back.
 
-        ## Example
-        ```
-        # let dbname = std::env::var("DBNAME")?;
-        # let dbuser = std::env::var("DBUSER")?;
-        # let dbpass = std::env::var("DBPASS")?;
-        # let oracle = sibyl::env()?;
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
-            UPDATE hr.employees
-               SET salary = ROUND(salary * 1.1)
-             WHERE employee_id = :emp_id
-        ")?;
-        let num_updated_rows = stmt.execute(107)?;
-        assert_eq!(num_updated_rows, 1);
+    # Example
 
-        conn.rollback()?;
-        # Ok::<(),Box<dyn std::error::Error>>(())
-        ```
+    ```
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME")?;
+    # let dbuser = std::env::var("DBUSER")?;
+    # let dbpass = std::env::var("DBPASS")?;
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = conn.prepare("
+        UPDATE hr.employees
+           SET salary = ROUND(salary * 1.1)
+         WHERE employee_id = :emp_id
+    ")?;
+    let num_updated_rows = stmt.execute(107)?;
+    assert_eq!(num_updated_rows, 1);
+
+    conn.rollback()?;
+    # Ok::<(),Box<dyn std::error::Error>>(())
+    ```
     */
     pub fn rollback(&self) -> Result<()> {
         oci::trans_rollback(self.as_ref(), self.as_ref())

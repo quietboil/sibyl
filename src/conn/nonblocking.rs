@@ -71,123 +71,125 @@ impl<'a> Connection<'a> {
     }
 
     /**
-        Confirms that the connection and the server are active.
+    Confirms that the connection and the server are active.
 
-        # Example
+    # Example
 
-        ```
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        # conn.start_call_time_measurements()?;
-        conn.ping().await?;
-        # let dt = conn.call_time()?;
-        # conn.stop_call_time_measurements()?;
-        # assert!(dt > 0);
-        # println!("dt={}", dt);
-        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-        ```
+    ```
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # conn.start_call_time_measurements()?;
+    conn.ping().await?;
+    # let dt = conn.call_time()?;
+    # conn.stop_call_time_measurements()?;
+    # assert!(dt > 0);
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn ping(&self) -> Result<()> {
         oci::futures::Ping::new(self.as_ref(), self.as_ref()).await
     }
 
     /**
-        Commits the current transaction.
+    Commits the current transaction.
 
-        Current transaction is defined as the set of statements executed since
-        the last commit or since the beginning of the user session.
+    Current transaction is defined as the set of statements executed since
+    the last commit or since the beginning of the user session.
 
-        # Example
+    # Example
 
-        ```
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let stmt = conn.prepare("
-            UPDATE hr.employees
-               SET salary = :new_salary
-             WHERE employee_id = :emp_id
-        ").await?;
-        let num_updated_rows = stmt.execute((
-            (":EMP_ID",     107 ),
-            (":NEW_SALARY", 4200),
-        )).await?;
-        assert_eq!(num_updated_rows, 1);
+    ```
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = conn.prepare("
+        UPDATE hr.employees
+           SET salary = :new_salary
+         WHERE employee_id = :emp_id
+    ").await?;
+    let num_updated_rows = stmt.execute((
+        (":EMP_ID",     107 ),
+        (":NEW_SALARY", 4200),
+    )).await?;
+    assert_eq!(num_updated_rows, 1);
 
-        conn.commit().await?;
-        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-        ```
+    conn.commit().await?;
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn commit(&self) -> Result<()> {
         oci::futures::TransCommit::new(self.as_ref(), self.as_ref()).await
     }
 
     /**
-        Rolls back the current transaction. The modified or updated objects in
-        the object cache for this transaction are also rolled back.
+    Rolls back the current transaction. The modified or updated objects in
+    the object cache for this transaction are also rolled back.
 
-        # Example
+    # Example
 
-        ```
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let stmt = conn.prepare("
-            UPDATE hr.employees
-               SET salary = ROUND(salary * 1.1)
-             WHERE employee_id = :emp_id
-        ").await?;
-        let num_updated_rows = stmt.execute(107).await?;
-        assert_eq!(num_updated_rows, 1);
+    ```
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = conn.prepare("
+        UPDATE hr.employees
+           SET salary = ROUND(salary * 1.1)
+         WHERE employee_id = :emp_id
+    ").await?;
+    let num_updated_rows = stmt.execute(107).await?;
+    assert_eq!(num_updated_rows, 1);
 
-        conn.rollback().await?;
-        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-        ```
+    conn.rollback().await?;
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn rollback(&self) -> Result<()> {
         oci::futures::TransRollback::new(self.as_ref(), self.as_ref()).await
     }
 
     /**
-        Prepares SQL or PL/SQL statement for execution.
+    Prepares SQL or PL/SQL statement for execution.
 
-        # Example
+    # Parameters
 
-        ```
-        # sibyl::current_thread_block_on(async {
-        # let oracle = sibyl::env()?;
-        # let dbname = std::env::var("DBNAME").expect("database name");
-        # let dbuser = std::env::var("DBUSER").expect("user name");
-        # let dbpass = std::env::var("DBPASS").expect("password");
-        # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let stmt = conn.prepare("
-            SELECT employee_id
-              FROM (
-                    SELECT employee_id
-                         , row_number() OVER (ORDER BY hire_date) AS hire_date_rank
-                      FROM hr.employees
-                   )
-             WHERE hire_date_rank = 1
-        ").await?;
-        let rows = stmt.query(()).await?;
-        let row = rows.next().await?.expect("first (and only) row");
-        // EMPLOYEE_ID is NOT NULL, so it always can be unwrapped safely
-        let id : u32 = row.get(0)?.unwrap();
-        assert_eq!(id, 102);
-        // Only one row is expected
-        assert!(rows.next().await?.is_none());
-        # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-        ```
+    * `sql` - SQL or PL/SQL statement
+
+    # Example
+
+    ```
+    # sibyl::current_thread_block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = conn.prepare("
+        SELECT employee_id
+          FROM (
+                SELECT employee_id
+                     , row_number() OVER (ORDER BY hire_date) AS hire_date_rank
+                  FROM hr.employees
+               )
+         WHERE hire_date_rank = 1
+    ").await?;
+    let rows = stmt.query(()).await?;
+    let row = rows.next().await?.expect("first (and only) row");
+    // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
+    let id : u32 = row.get(0)?.unwrap();
+    assert_eq!(id, 102);
+    assert!(rows.next().await?.is_none(), "only one row was expected");
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn prepare(&'a self, sql: &str) -> Result<Statement<'a>> {
         Statement::new(sql, self).await
@@ -264,5 +266,4 @@ mod tests {
             Ok(())
         })
     }
-
 }
