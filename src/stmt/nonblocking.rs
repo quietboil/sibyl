@@ -1,21 +1,9 @@
 //! Nonblocking SQL statement methods
 
 use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}};
-use crate::{Result, oci::{self, *}, Connection, task, Error, Rows, Cursor, ToSql, ToSqlOut};
+use crate::{Result, oci::{self, *}, Connection, Error, Rows, Cursor, ToSql, ToSqlOut};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
-
-impl Drop for Statement<'_> {
-    fn drop(&mut self) {
-        if !self.stmt.is_null() {
-            let mut stmt = Ptr::<OCIStmt>::null();
-            stmt.swap(&mut self.stmt);
-            let err = Handle::take_over(&mut self.err);
-            let svc = self.svc.clone();
-            task::spawn(oci::futures::StmtRelease::new(stmt, err, svc));
-        }
-    }
-}
 
 impl<'a> Statement<'a> {
     /// Creates a new statement

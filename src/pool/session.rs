@@ -11,6 +11,8 @@ mod nonblocking;
 use std::{sync::Arc, marker::PhantomData};
 
 use crate::{Error, Result, oci::*, Environment};
+#[cfg(feature="nonblocking")]
+use crate::{oci, task};
 
 /**
 Session pool creates and maintains a group of stateless sessions to the database.
@@ -26,6 +28,21 @@ pub struct SessionPool<'a> {
     pool: Handle<OCISPool>,
     name: &'a [u8],
     phantom_env: PhantomData<&'a Environment>
+}
+
+impl Drop for SessionPool<'_> {
+    #[cfg(feature="blocking")]
+    fn drop(&mut self) {
+        oci_session_pool_destroy(&self.pool, &self.err);
+    }
+
+    #[cfg(feature="nonblocking")]
+    fn drop(&mut self) {
+        let pool = Handle::take_over(&mut self.pool);
+        let err = Handle::take_over(&mut self.err);
+        let env = self.env.clone();
+        task::spawn(oci::futures::SessionPoolDestroy::new(pool, err, env));
+    }
 }
 
 /**

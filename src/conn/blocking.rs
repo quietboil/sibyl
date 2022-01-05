@@ -4,13 +4,6 @@ use super::{SvcCtx, Connection};
 use crate::{Result, Statement, oci::{self, *, attr}, Environment, SessionPool, ConnectionPool};
 use std::{marker::PhantomData, sync::Arc};
 
-impl Drop for SvcCtx {
-    fn drop(&mut self) {
-        oci_trans_rollback(&self.svc, &self.err);
-        oci_session_release(&self.svc, &self.err);
-    }
-}
-
 impl SvcCtx {
     pub(crate) fn new(env: &Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
         let err = Handle::<OCIError>::new(env)?;

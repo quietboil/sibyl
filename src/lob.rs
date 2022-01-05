@@ -11,6 +11,8 @@ mod nonblocking;
 use std::sync::{Arc, atomic::AtomicU32};
 use std::mem::size_of;
 use crate::{Result, Connection, oci::{self, *}, stmt::{ToSql, ToSqlOut, Params}, conn::SvcCtx};
+#[cfg(feature="nonblocking")]
+use crate::task;
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
 pub trait InternalLob {}
@@ -28,6 +30,57 @@ where T: DescriptorType<OCIType=OCILobLocator>
 struct LobInner<T> where T: DescriptorType<OCIType=OCILobLocator>  + 'static {
     locator: Descriptor<T>,
     svc: Arc<SvcCtx>,
+}
+
+impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 'static {
+    #[cfg(feature="blocking")]
+    fn drop(&mut self) {
+        let mut is_open = 0u8;
+        let res = unsafe {
+            OCILobIsOpen(self.as_ref(), self.as_ref(), self.as_ref(), &mut is_open)
+        };
+        if res == OCI_SUCCESS && is_open != 0 {
+            unsafe {
+                OCILobClose(self.as_ref(), self.as_ref(), self.as_ref());
+            }
+        }
+        let mut is_temp = 0u8;
+        let res = unsafe {
+            OCILobIsTemporary(self.as_ref(), self.as_ref(), self.as_ref(), &mut is_temp)
+        };
+        if res == OCI_SUCCESS && is_temp != 0 {
+            unsafe {
+                OCILobFreeTemporary(self.as_ref(), self.as_ref(), self.as_ref());
+            }
+        }
+    }
+
+    #[cfg(feature="nonblocking")]
+    fn drop(&mut self) {
+        let svc_ctx = self.svc.clone();
+        let locator = Descriptor::take_over(&mut self.locator);
+
+        let async_drop = async move {
+            let svc_ctx = svc_ctx;
+            let loc = locator;
+            let svc: &OCISvcCtx = svc_ctx.as_ref().as_ref();
+            let err: &OCIError  = svc_ctx.as_ref().as_ref();
+
+            match oci::futures::LobIsOpen::new(svc, err, &loc).await {
+                Ok(is_open) if is_open => {
+                    let _res = oci::futures::LobClose::new(svc, err, &loc).await;
+                },
+                _ => {}
+            };
+            match oci::futures::LobIsTemporary::new(svc, err, &loc).await {
+                Ok(is_temp) if is_temp => {
+                    let _res = oci::futures::LobFreeTemporary::new(svc, err, &loc).await;
+                },
+                _ => {}
+            };
+        };
+        task::spawn(async_drop);
+    }
 }
 
 impl<T> AsRef<OCILobLocator> for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
@@ -629,3 +682,94 @@ impl_lob_to_sql_output!{ OCICLobLocator  => SQLT_CLOB  }
 impl_lob_to_sql_output!{ OCIBLobLocator  => SQLT_BLOB  }
 impl_lob_to_sql_output!{ OCIBFileLocator => SQLT_BFILE }
 
+
+impl LOB<'_,OCICLobLocator> {
+    /// Debug helper that fetches first 50 (at most) bytes of CLOB content
+    #[cfg(feature="blocking")]
+    fn content_head(&self) -> Result<String> {
+        const MAX_LEN : usize = 50;
+        let len = self.len()?;
+        let len = std::cmp::min(len, MAX_LEN);
+        let mut buf = String::new();
+        let len = self.read(0, len, &mut buf)?;
+        if len == MAX_LEN {
+            buf.push_str("...");
+        }
+        Ok(buf)
+    }
+}
+
+impl std::fmt::Debug for LOB<'_,OCICLobLocator> {
+    #[cfg(feature="blocking")]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.content_head() {
+            Ok(text) => f.write_fmt(format_args!("CLOB {}", text)),
+            Err(err) => f.write_fmt(format_args!("CLOB {:?}", err))
+        }
+    }
+
+    #[cfg(feature="nonblocking")]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("CLOB")
+    }
+}
+
+impl LOB<'_,OCIBLobLocator> {
+    /// Debug helper that fetches first 50 (at most) bytes of BLOB content
+    #[cfg(feature="blocking")]
+    fn content_head(&self) -> Result<String> {
+        const MAX_LEN : usize = 50;
+        let len = self.len()?;
+        let len = std::cmp::min(len, MAX_LEN);
+        let mut buf = Vec::new();
+        let len = self.read(0, len, &mut buf)?;
+        let res = &buf[..len];
+        let res = if len == MAX_LEN { format!("{:?}...", res) } else { format!("{:?}", res) };
+        Ok(res)
+    }
+}
+
+impl std::fmt::Debug for LOB<'_,OCIBLobLocator> {
+    #[cfg(feature="blocking")]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.content_head() {
+            Ok(text) => f.write_fmt(format_args!("BLOB {}", text)),
+            Err(err) => f.write_fmt(format_args!("BLOB {:?}", err))
+        }
+    }
+
+    #[cfg(feature="nonblocking")]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("BLOB")
+    }
+}
+
+impl LOB<'_,OCIBFileLocator> {
+    /// Debug helper that fetches first 50 (at most) bytes of BFILE content
+    #[cfg(feature="blocking")]
+    fn content_head(&self) -> Result<String> {
+        const MAX_LEN : usize = 50;
+        let len = self.len()?;
+        let len = std::cmp::min(len, MAX_LEN);
+        let mut buf = Vec::new();
+        let len = self.read(0, len, &mut buf)?;
+        let res = &buf[..len];
+        let res = if len == MAX_LEN { format!("{:?}...", res) } else { format!("{:?}", res) };
+        Ok(res)
+    }
+}
+
+impl std::fmt::Debug for LOB<'_,OCIBFileLocator> {
+    #[cfg(feature="blocking")]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.content_head() {
+            Ok(text) => f.write_fmt(format_args!("BFILE {}", text)),
+            Err(err) => f.write_fmt(format_args!("BFILE {:?}", err))
+        }
+    }
+
+    #[cfg(feature="nonblocking")]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("BFILE")
+    }
+}

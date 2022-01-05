@@ -9,8 +9,9 @@ mod blocking;
 mod nonblocking;
 
 use std::{sync::Arc, marker::PhantomData};
-
 use crate::{Result, Environment, oci::*, types::Ctx};
+#[cfg(feature="nonblocking")]
+use crate::{oci, task};
 
 /// Representation of the service context.
 /// It will be behinfd `Arc` as it needs to survive beyond the `Connection`
@@ -19,6 +20,25 @@ pub(crate) struct SvcCtx {
     env: Arc<Handle<OCIEnv>>,
     err: Handle<OCIError>,
     svc: Ptr<OCISvcCtx>,
+}
+
+impl Drop for SvcCtx {
+    #[cfg(feature="blocking")]
+    fn drop(&mut self) {
+        let svc : &OCISvcCtx = self.as_ref();
+        let err : &OCIError  = self.as_ref();
+        oci_trans_rollback(svc, err);
+        oci_session_release(svc, err);
+    }
+
+    #[cfg(feature="nonblocking")]
+    fn drop(&mut self) {
+        let mut svc = Ptr::<OCISvcCtx>::null();
+        svc.swap(&mut self.svc);
+        let err = Handle::take_over(&mut self.err);
+        let env = self.env.clone();
+        task::spawn(oci::futures::SessionRelease::new(svc, err, env));
+    }
 }
 
 impl AsRef<OCIEnv> for SvcCtx {

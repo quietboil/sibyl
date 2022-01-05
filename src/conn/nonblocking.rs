@@ -6,16 +6,6 @@ use crate::{oci::{self, *}, task, Environment, Result, pool::SessionPool, Statem
 
 use super::{SvcCtx, Connection};
 
-impl Drop for SvcCtx {
-    fn drop(&mut self) {
-        let mut svc = Ptr::<OCISvcCtx>::null();
-        svc.swap(&mut self.svc);
-        let err = Handle::take_over(&mut self.err);
-        let env = self.env.clone();
-        task::spawn(oci::futures::SessionRelease::new(svc, err, env));
-    }
-}
-
 impl SvcCtx {
     async fn new(env: &Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
         let err = Handle::<OCIError>::new(&env)?;

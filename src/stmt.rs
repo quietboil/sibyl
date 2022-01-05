@@ -25,6 +25,8 @@ use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{Result, conn::SvcCtx, oci::*, Connection, types::Ctx};
+#[cfg(feature="nonblocking")]
+use crate::{oci, task};
 
 use std::sync::Arc;
 
@@ -56,6 +58,25 @@ pub struct Statement<'a> {
     cols:     OnceCell<RwLock<Columns>>,
     err:      Handle<OCIError>,
     max_long: u32,
+}
+
+impl Drop for Statement<'_> {
+    #[cfg(feature="blocking")]
+    fn drop(&mut self) {
+        let _ = self.svc;
+        oci_stmt_release(&self.stmt, &self.err);
+    }
+
+    #[cfg(feature="nonblocking")]
+    fn drop(&mut self) {
+        if !self.stmt.is_null() {
+            let mut stmt = Ptr::<OCIStmt>::null();
+            stmt.swap(&mut self.stmt);
+            let err = Handle::take_over(&mut self.err);
+            let svc = self.svc.clone();
+            task::spawn(oci::futures::StmtRelease::new(stmt, err, svc));
+        }
+    }
 }
 
 impl AsRef<OCIEnv> for Statement<'_> {

@@ -8,13 +8,6 @@ use crate::{Error, Result, oci::{self, *}, Connection, ToSql, ToSqlOut};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
-impl Drop for Statement<'_> {
-    fn drop(&mut self) {
-        let _ = self.svc;
-        oci_stmt_release(&self.stmt, &self.err);
-    }
-}
-
 impl<'a> Statement<'a> {
     /// Creates a new statement
     pub(crate) fn new(sql: &str, conn: &'a Connection) -> Result<Self> {

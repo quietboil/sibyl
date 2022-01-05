@@ -5,29 +5,6 @@ use crate::*;
 use crate::oci::*;
 use std::sync::atomic::Ordering;
 
-impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 'static {
-    fn drop(&mut self) {
-        let mut is_open = 0u8;
-        let res = unsafe {
-            OCILobIsOpen(self.as_ref(), self.as_ref(), self.as_ref(), &mut is_open)
-        };
-        if res == OCI_SUCCESS && is_open != 0 {
-            unsafe {
-                OCILobClose(self.as_ref(), self.as_ref(), self.as_ref());
-            }
-        }
-        let mut is_temp = 0u8;
-        let res = unsafe {
-            OCILobIsTemporary(self.as_ref(), self.as_ref(), self.as_ref(), &mut is_temp)
-        };
-        if res == OCI_SUCCESS && is_temp != 0 {
-            unsafe {
-                OCILobFreeTemporary(self.as_ref(), self.as_ref(), self.as_ref());
-            }
-        }
-    }
-}
-
 impl<T> LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
     pub(super) fn clone(&self) -> Result<Self> {
         let mut locator = Descriptor::<T>::new(self)?;
@@ -1851,75 +1828,5 @@ impl<'a> LOB<'a,OCIBFileLocator> {
         let (has_more, byte_count, _) = self.read_piece(OCI_NEXT_PIECE, piece_size, 0, 0, 0, 0, buf)?;
         *num_read = byte_count;
         Ok(has_more)
-    }
-}
-
-impl LOB<'_,OCICLobLocator> {
-    /// Debug helper that fetches first 50 (at most) bytes of CLOB content
-    fn content_head(&self) -> Result<String> {
-        const MAX_LEN : usize = 50;
-        let len = self.len()?;
-        let len = std::cmp::min(len, MAX_LEN);
-        let mut buf = String::new();
-        let len = self.read(0, len, &mut buf)?;
-        if len == MAX_LEN {
-            buf.push_str("...");
-        }
-        Ok(buf)
-    }
-}
-
-impl std::fmt::Debug for LOB<'_,OCICLobLocator> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.content_head() {
-            Ok(text) => f.write_fmt(format_args!("CLOB {}", text)),
-            Err(err) => f.write_fmt(format_args!("CLOB {:?}", err))
-        }
-    }
-}
-
-impl LOB<'_,OCIBLobLocator> {
-    /// Debug helper that fetches first 50 (at most) bytes of BLOB content
-    fn content_head(&self) -> Result<String> {
-        const MAX_LEN : usize = 50;
-        let len = self.len()?;
-        let len = std::cmp::min(len, MAX_LEN);
-        let mut buf = Vec::new();
-        let len = self.read(0, len, &mut buf)?;
-        let res = &buf[..len];
-        let res = if len == MAX_LEN { format!("{:?}...", res) } else { format!("{:?}", res) };
-        Ok(res)
-    }
-}
-
-impl std::fmt::Debug for LOB<'_,OCIBLobLocator> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.content_head() {
-            Ok(text) => f.write_fmt(format_args!("BLOB {}", text)),
-            Err(err) => f.write_fmt(format_args!("BLOB {:?}", err))
-        }
-    }
-}
-
-impl LOB<'_,OCIBFileLocator> {
-    /// Debug helper that fetches first 50 (at most) bytes of BFILE content
-    fn content_head(&self) -> Result<String> {
-        const MAX_LEN : usize = 50;
-        let len = self.len()?;
-        let len = std::cmp::min(len, MAX_LEN);
-        let mut buf = Vec::new();
-        let len = self.read(0, len, &mut buf)?;
-        let res = &buf[..len];
-        let res = if len == MAX_LEN { format!("{:?}...", res) } else { format!("{:?}", res) };
-        Ok(res)
-    }
-}
-
-impl std::fmt::Debug for LOB<'_,OCIBFileLocator> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.content_head() {
-            Ok(text) => f.write_fmt(format_args!("BFILE {}", text)),
-            Err(err) => f.write_fmt(format_args!("BFILE {:?}", err))
-        }
     }
 }

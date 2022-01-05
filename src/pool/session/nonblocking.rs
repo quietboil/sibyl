@@ -135,15 +135,6 @@ impl<'a> SessionPool<'a> {
     }
 }
 
-impl Drop for SessionPool<'_> {
-    fn drop(&mut self) {
-        let pool = Handle::take_over(&mut self.pool);
-        let err = Handle::take_over(&mut self.err);
-        let env = self.env.clone();
-        task::spawn(oci::futures::SessionPoolDestroy::new(pool, err, env));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::{Result, Error, Environment, spawn};

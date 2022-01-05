@@ -109,9 +109,3 @@ impl<'a> SessionPool<'a> {
         Connection::from_session_pool(self)
     }
 }
-
-impl Drop for SessionPool<'_> {
-    fn drop(&mut self) {
-        oci_session_pool_destroy(&self.pool, &self.err);
-    }
-}

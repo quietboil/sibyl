@@ -8,37 +8,8 @@ nonblocking mode (*Note* that they work just fine in blocking mode).
 */
 
 use super::{LOB, InternalLob, LobInner};
-use crate::{Result, BFile, oci::{self, *}, conn::Connection, task, Error};
+use crate::{Result, BFile, oci::{self, *}, conn::Connection, Error};
 use std::sync::atomic::{AtomicU32, Ordering};
-
-
-impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 'static {
-    fn drop(&mut self) {
-        let svc_ctx = self.svc.clone();
-        let locator = Descriptor::take_over(&mut self.locator);
-
-        let async_drop = async move {
-            let svc_ctx = svc_ctx;
-            let loc = locator;
-            let svc: &OCISvcCtx = svc_ctx.as_ref().as_ref();
-            let err: &OCIError  = svc_ctx.as_ref().as_ref();
-
-            match oci::futures::LobIsOpen::new(svc, err, &loc).await {
-                Ok(is_open) if is_open => {
-                    let _res = oci::futures::LobClose::new(svc, err, &loc).await;
-                },
-                _ => {}
-            };
-            match oci::futures::LobIsTemporary::new(svc, err, &loc).await {
-                Ok(is_temp) if is_temp => {
-                    let _res = oci::futures::LobFreeTemporary::new(svc, err, &loc).await;
-                },
-                _ => {}
-            };
-        };
-        task::spawn(async_drop);
-    }
-}
 
 impl<T> LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
     async fn clone(&self) -> Result<Self> {
@@ -1756,23 +1727,5 @@ impl LOB<'_,OCIBFileLocator> {
         let (has_more, byte_count, _) = self.read_piece(OCI_NEXT_PIECE, piece_size, 0, 0, 0, 0, buf).await?;
         *num_read = byte_count;
         Ok(has_more)
-    }
-}
-
-impl std::fmt::Debug for LOB<'_,OCICLobLocator> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("CLOB")
-    }
-}
-
-impl std::fmt::Debug for LOB<'_,OCIBLobLocator> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("BLOB")
-    }
-}
-
-impl std::fmt::Debug for LOB<'_,OCIBFileLocator> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("BFILE")
     }
 }
