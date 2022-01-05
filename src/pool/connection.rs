@@ -218,7 +218,7 @@ impl<'a> ConnectionPool<'a> {
     in the pool are found to be busy and the number of connections has reached the maximum.
 
     If the pool operates in "no wait" mode, an error is thrown when all the connections
-    are busy and no more connections can be opened. Otherwise, the [`get_session()`] call
+    are busy and no more connections can be opened. Otherwise, the [`ConnectionPool::get_session()`] call
     waits until it gets a connection.
 
     # Example

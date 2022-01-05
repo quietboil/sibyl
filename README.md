@@ -51,13 +51,6 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
 
 ### Nonblocking Mode
 
-:memo: Note that the example below uses and depends on [Tokio](https://crates.io/crates/tokio)
-
-:recycle: Note also that the nonblocking mode example is almost a verbatim copy of the blocking
-mode example (see above) with `await`s added.
-
-:warning: For the moment, Sibyl can use only Tokio as an async runtime.
-
 ```rust
 use sibyl as oracle;
 
@@ -98,33 +91,40 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
 }
 ```
 
+> Note that:
+> - The nonblocking mode example is almost a verbatim copy of the blocking mode example (see above) with `await`s added.
+> - The example below uses and depends on [Tokio](https://crates.io/crates/tokio)
+> - For the moment, Sibyl can use only Tokio as an async runtime.
+
+
 ## Notes on Building
 
-Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can supply that information via environment variable `OCI_LIB_DIR` in Windows or `LIBRARY_PATH` in Linux. In Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build Sibyl's example as:
+Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can supply that information via environment variable `OCI_LIB_DIR` on Windows or `LIBRARY_PATH` on Linux. On Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build Sibyl's example as:
+
 ```bash
 LIBRARY_PATH=/usr/lib/oracle/19.13/client64/lib cargo build --examples --features=blocking
 ```
 
-In Windows the process is similar if the target environment is `gnu`. The `OCI_LIB_DIR` would point to the directory with `oci.dll`:
+On Windows the process is similar if the target environment is `gnu`. The `OCI_LIB_DIR` would point to the directory with `oci.dll`:
+
 ```bat
 set OCI_LIB_DIR=%ORACLE_HOME%\bin
 cargo build --examples --features=blocking
 ```
 
 However, for `msvc` environment the `OCI_LIB_DIR` must point to the directory with `oci.lib`. For example, you might build that example as:
+
 ```bat
 set OCI_LIB_DIR=%ORACLE_HOME%\oci\lib\msvc
 cargo build --examples --features=blocking
 ```
 
-:memo: Note that Sibyl has 2 features - `blocking` and `nonblocking`. They are exclusive and one must be explictly selected. Thus, when Sibyl is used as a dependency it might be included as:
+> Note that Sibyl has 2 features - `blocking` and `nonblocking`. They are exclusive and one must be explictly selected. Thus, when Sibyl is used as a dependency it might be included as:
 
 ```toml
 [dependencies]
 sibyl = { version = "0.5", features = "blocking" }
 ```
-
-:warning: Version `0.5` is not released yet. At the moment it is the latest on GitHub.
 
 ## Usage
 
@@ -163,7 +163,7 @@ let current_timestamp = TimestampTZ::from_systimestamp(&ORACLE)?;
 Use `Environment::connect` method to connect to a database:
 
 ```rust
-fn main() -> Result<(),Box<dyn std::error::Error>> {
+fn main() -> sibyl::Result<()> {
     let oracle = sibyl::env()?;
     let conn = oracle.connect("dbname", "username", "password")?;
     // ...
@@ -197,7 +197,7 @@ A prepared statement can be executed either with the `query` or `execute` or `ex
 let rows = stmt.query(103)?;
 ```
 
-or when binding argument to `:id` by name as:
+or bind a value to `:id` by name as:
 
 ```rust
 let rows = stmt.query((":ID", 103))?;
@@ -205,7 +205,7 @@ let rows = stmt.query((":ID", 103))?;
 
 In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicares. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one "duplicate" name in a statement.
 
-:memo: Note one caveat - until [min_specialization][5] is stabilized Sibyl has no way to distinguish whether a 2-item tuple is used to pass a named argument or 2 positional arguments. At the moment you'll have to use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is treated as "nothing", so effectively only first 2 arguments are used. For example:
+> Note one caveat - until [min_specialization][5] is stabilized Sibyl has no way to distinguish whether a 2-item tuple is used to pass a named argument or 2 positional arguments. At the moment you'll have to use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is treated as "nothing", so effectively only first 2 arguments are used. For example:
 
 ```rust
 let stmt = conn.prepare("
@@ -259,12 +259,13 @@ while let Some( row ) = rows.next()? {
     employees.insert(employee_id, name);
 }
 ```
+
 There are a few notable points of interest in the last example:
 - Sibyl uses 0-based column indexing in a projection.
 - Column value is returned as an `Option`. However, if a column is declared as `NOT NULL`, like `EMPLOYEE_ID` and `LAST_NAME`, the result will always be `Some` and therefore can be safely unwrapped.
 - `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they are borrowed directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
 
-:memo: Note that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:
+> Note that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:
 
 ```rust
 while let Some( row ) = rows.next()? {
@@ -328,9 +329,7 @@ assert_eq!(
 );
 ```
 
-:memo: If you are getting `ORA-01805` when timestamp with time zone is used, then most likely your local client and
-the server it is connected to are using different versions of the time zone file. This [stackoverflow answer][4]
-should help you in setting up your local client with the correct time zone file.
+> Note that if you are getting `ORA-01805` when timestamp with time zone is used, then most likely your local client and the server it is connected to are using different versions of the time zone file. This [stackoverflow answer][4] should help you in setting up your local client with the correct time zone file.
 
 ### Interval
 
@@ -399,6 +398,7 @@ let rows = cursor.rows()?;
 ```
 
 Or, beginning with Oracle 12.1, implicitly:
+
 ```rust
 let stmt = conn.prepare("
     DECLARE
@@ -469,7 +469,7 @@ conn.commit().await?;
 And then later it could be read as:
 
 ```rust
-let id: usize = 1234; // it was retrieved from somewhere...
+let id: usize = 1234; // assume it was retrieved from somewhere...
 let stmt = conn.prepare("SELECT bin FROM lob_example WHERE id = :ID").await?;
 let rows = stmt.query(&id).await?;
 if let Some(row) = rows.next().await? {
@@ -505,15 +505,15 @@ Some of Sibyl's tests connect to the database and expect certain objects to exis
 
 ## Supported Clients
 
-The minimal supported client is 12.2 as Sibyl uses APIs that are not available in earlier clients. While suporting those is definitely feasible, it was not a priority.
+The minimal supported client is 12.2 as Sibyl uses some API functions that are not available in earlier clients. While suporting those is definitely feasible, it was not a priority.
 
-Sibyl tests are routinely executed on x64 Linux with Instant Clients 12.2, 18.5, 19.13 and 21.4 that connect to the 19.3 database.
+Sibyl tests are routinely executed on x64 Linux with Instant Clients 12.2, 18.5, 19.13 and 21.4 that connect to the 19.3 database. Sibyl is also tested on x64 Windows with Instant CLient 19.12.
 
 ### Known Issues with Some Clients
 
-:memo: `SessionPool::session_max_use_count` and `SessionPool::set_session_max_use_count` will fail on 12.2 client with `ORA-24315: illegal attribute type`.
+`SessionPool::session_max_use_count` and `SessionPool::set_session_max_use_count` will fail on 12.2 client with `ORA-24315: illegal attribute type`.
 
-:warning: Client 21.4 (at least with 19.3 database) is strangely picky about names of parameter placeholders for LOB columns. For example, if a table was created with the following LOB column:
+Client 21.4 (at least with 19.3 database) is strangely picky about names of parameter placeholders for LOB columns. For example, if a table was created with the following LOB column:
 
 ```sql
 CREATE TABLE table_with_lob (
@@ -540,9 +540,9 @@ let stmt = conn.prepare("
 
 21.4 also does not "like" some specific parameter names like `:NAME` which makes it fail with the same `ORA-03120`.
 
-:memo: Note that 12.2 through 19.13 clients (as far as Sibyl's tests showed) do not exhibit this issue.
+> Note that 12.2 through 19.13 clients (as far as Sibyl's tests showed) do not exhibit this issue.
 
-:warning: 21.4 client (at least when it is connected to the 19.3 database) cannot read **CLOBs** piece-wize - something bad happens in `OCILobRead2` as it reads the last piece and the process gets killed. 21.4 client has no issues executing piece-wise reads from BFILEs and BLOBs.
+21.4 client (at least when it is connected to the 19.3 database) cannot read **CLOBs** piece-wize - something bad happens in `OCILobRead2` as it reads the last piece and the process gets killed. 21.4 client has no issues executing piece-wise reads from BFILEs and BLOBs.
 
 ## Limitations
 
