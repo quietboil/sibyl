@@ -5,7 +5,7 @@ use std::{ptr, sync::Arc, marker::PhantomData};
 use crate::{Error, Result, oci::{self, *}, Environment, Connection};
 
 /**
-Connection pool - a shared pool of physical connections.
+A shared pool of physical connections.
 
 Connection pooling is beneficial only if the application is multithreaded.
 Each thread can maintain a stateful session to the database. The actual
@@ -15,10 +15,11 @@ these connections are shared among all the appication threads.
 With connection pooling the number of physical connections is less than
 the number of database sessions in use by the application.
 */
+#[cfg_attr(docsrs, doc(cfg(feature="blocking")))]
 pub struct ConnectionPool<'a> {
-    env:  Arc<Handle<OCIEnv>>,
-    err:  Handle<OCIError>,
     pool: Handle<OCICPool>,
+    err:  Handle<OCIError>,
+    env:  Arc<Handle<OCIEnv>>,
     name: &'a [u8],
     phantom_env: PhantomData<&'a Environment>,
 }

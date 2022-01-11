@@ -18,41 +18,42 @@ pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: &OCIDateTime, ctx: &dyn Ctx) 
     Ok( String::from_utf8_lossy(txt).to_string() )
 }
 
-pub(crate) fn from_timestamp<'a,T>(ts: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<Timestamp<'a, T>>
+pub(crate) fn from_timestamp<'a,T>(ts: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<DateTime<'a, T>>
 where T: DescriptorType<OCIType=OCIDateTime>
 {
     let mut datetime = Descriptor::<T>::new(&ctx)?;
     oci::date_time_assign(ctx.as_context(), ctx.as_ref(), ts, datetime.as_mut())?;
-    Ok( Timestamp { ctx, datetime } )
+    Ok( DateTime { ctx, datetime } )
 }
 
-pub(crate) fn convert_into<'a,T,U>(ts: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<Timestamp<'a, U>>
+pub(crate) fn convert_into<'a,T,U>(ts: &Descriptor<T>, ctx: &'a dyn Ctx) -> Result<DateTime<'a, U>>
 where T: DescriptorType<OCIType=OCIDateTime>
     , U: DescriptorType<OCIType=OCIDateTime>
 {
     let mut datetime: Descriptor<U> = Descriptor::new(&ctx)?;
     oci::date_time_convert(ctx.as_context(), ctx.as_ref(), ts.as_ref(), datetime.as_mut())?;
-    Ok( Timestamp { ctx, datetime } )
+    Ok( DateTime { ctx, datetime } )
 }
 
-pub struct Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
+/// Represents datetime data types.
+pub struct DateTime<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
     datetime: Descriptor<T>,
     ctx: &'a dyn Ctx,
 }
 
-impl<'a,T> AsRef<T::OCIType> for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
+impl<'a,T> AsRef<T::OCIType> for DateTime<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
     fn as_ref(&self) -> &T::OCIType {
         self.datetime.as_ref()
     }
 }
 
-impl<'a,T> AsMut<T::OCIType> for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
+impl<'a,T> AsMut<T::OCIType> for DateTime<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
     fn as_mut(&mut self) -> &mut T::OCIType {
         self.datetime.as_mut()
     }
 }
 
-impl<'a,T> Deref for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
+impl<'a,T> Deref for DateTime<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
     type Target = T::OCIType;
 
     fn deref(&self) -> &Self::Target {
@@ -60,13 +61,13 @@ impl<'a,T> Deref for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime
     }
 }
 
-impl<'a,T> DerefMut for Timestamp<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
+impl<'a,T> DerefMut for DateTime<'a,T> where T: DescriptorType<OCIType=OCIDateTime> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_mut()
     }
 }
 
-impl<'a, T> Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
+impl<'a, T> DateTime<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
     /**
         Creates an uninitialized timestamp.
 
@@ -87,7 +88,7 @@ impl<'a, T> Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
     /**
         Creates a timestamp and populates its fields.
 
-        Time zone, as a string, is represented in the format "[+|-][HH:MM]". If the time zone is not
+        Time zone, as a string, is represented in the format "\[+|-\]\[HH:MM\]". If the time zone is not
         specified, then the session default time zone is assumed.
 
         Time zone is ignored for timestamps that do not have one.
@@ -195,7 +196,7 @@ impl<'a, T> Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn convert_into<U>(&self, ctx: &'a dyn Ctx) -> Result<Timestamp<'a, U>>
+    pub fn convert_into<U>(&self, ctx: &'a dyn Ctx) -> Result<DateTime<'a, U>>
     where U: DescriptorType<OCIType=OCIDateTime>
     {
         convert_into(&self.datetime, ctx)
@@ -284,7 +285,7 @@ impl<'a, T> Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn subtract<U, I>(&self, other: &Timestamp<U>) -> Result<Interval<I>>
+    pub fn subtract<U, I>(&self, other: &DateTime<U>) -> Result<Interval<I>>
     where U: DescriptorType<OCIType=OCIDateTime>
         , I: DescriptorType<OCIType=OCIInterval>
     {
@@ -310,7 +311,7 @@ impl<'a, T> Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn compare<U>(&self, other: &Timestamp<U>) -> Result<Ordering>
+    pub fn compare<U>(&self, other: &DateTime<U>) -> Result<Ordering>
     where U: DescriptorType<OCIType=OCIDateTime>
     {
         let mut cmp = 0i32;
@@ -474,7 +475,7 @@ impl<'a, T> Timestamp<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
 //   of the same type, one of which was created via OCIDateTimeSysTimeStamp, are compared.
 // For now, let's just limit `from_systimestamp` to `TimestampTZ` where it produces the expected
 // results.
-impl<'a> Timestamp<'a, OCITimestampTZ> {
+impl<'a> DateTime<'a, OCITimestampTZ> {
     /**
         Creates new timestamp from the system current date and time.
 
@@ -497,7 +498,7 @@ impl<'a> Timestamp<'a, OCITimestampTZ> {
     }
 }
 
-impl std::fmt::Debug for Timestamp<'_, OCITimestampTZ> {
+impl std::fmt::Debug for DateTime<'_, OCITimestampTZ> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.to_string("YYYY-DD-MM HH24:MI:SSXFF TZR", 3) {
             Ok(txt)  => fmt.write_fmt(format_args!("TimestampTZ({})", txt)),
@@ -506,7 +507,7 @@ impl std::fmt::Debug for Timestamp<'_, OCITimestampTZ> {
     }
 }
 
-impl std::fmt::Debug for Timestamp<'_, OCITimestampLTZ> {
+impl std::fmt::Debug for DateTime<'_, OCITimestampLTZ> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.to_string("YYYY-DD-MM HH24:MI:SSXFF TZR", 3) {
             Ok(txt)  => fmt.write_fmt(format_args!("TimestampLTZ({})", txt)),
@@ -515,7 +516,7 @@ impl std::fmt::Debug for Timestamp<'_, OCITimestampLTZ> {
     }
 }
 
-impl std::fmt::Debug for Timestamp<'_, OCITimestamp> {
+impl std::fmt::Debug for DateTime<'_, OCITimestamp> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.to_string("YYYY-DD-MM HH24:MI:SSXFF", 3) {
             Ok(txt)  => fmt.write_fmt(format_args!("Timestamp({})", txt)),

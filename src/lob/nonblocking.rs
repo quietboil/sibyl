@@ -1,169 +1,17 @@
 /*!
 Nonblocking mode LOB methods.
 
-**Note** that in BLOBs and CLOBs in nonblocking mode do not support piece-wise LOB content reading
-(i.e. `read_first` and `read_next` methods). Only `read` method is implemented and even it uses
-`DBMS_LOB.READ` workaround as both `OCILobRead2` and deprecated `OCILobRead` behave erratically in
-nonblocking mode (*Note* that they work just fine in blocking mode).
+> **Note** that for various reasons piece-wise LOB content operations - i.e. `read_first`, `read_next`
+and `write_first`, `write_next`, `write_last` methods - are not supported in nonblocking mode.
 */
 
-use super::{LOB, InternalLob, LobInner};
-use crate::{Result, BFile, oci::{self, *}, conn::Connection, Error};
-use std::sync::atomic::{AtomicU32, Ordering};
-
-impl<T> LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
-    async fn clone(&self) -> Result<Self> {
-        let mut locator = Descriptor::<T>::new(self)?;
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
-        let lob: &OCILobLocator = self.as_ref();
-        let new_locator_ptr = oci::futures::LobLocatorAssign::new(svc, err, lob, locator.as_mut()).await?;
-        locator.replace(new_locator_ptr);
-        let svc = self.svc.clone();
-        Ok(Self { locator, svc } )
-    }
-}
+use super::{LOB, InternalLob, LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP};
+use crate::{Result, BFile, oci::*, conn::{Connection, SvcCtx}, Error};
+use std::sync::{atomic::Ordering, Arc};
 
 impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
-    /**
-    Creates a new LOB locator that points to the same LOB data as the provided locator.
-
-    For internal LOBs, the source locator's LOB data gets copied to the destination locator's
-    LOB data only when the destination locator gets stored in the table. Therefore, issuing a
-    flush of the object containing the destination locator copies the LOB data. For BFILEs,
-    only the locator that refers to the operating system file is copied to the table; the
-    operating system file is not copied.
-
-    If the source locator is for an internal LOB that was enabled for buffering, and the source
-    locator has been used to modify the LOB data through the LOB buffering subsystem, and the
-    buffers have not been flushed since the write, then the source locator may not be assigned
-    to the destination locator. This is because only one locator for each LOB can modify the LOB
-    data through the LOB buffering subsystem.
-
-    If the source LOB locator refers to a temporary LOB, the destination is made into a temporary
-    LOB too. The source and the destination are conceptually different temporary LOBs. The source
-    temporary LOB is deep copied, and a destination locator is created to refer to the new deep
-    copy of the temporary LOB. Hence `is_equal` returns `false` when the new locator is created
-    from the temporary one. However, as an optimization is made to minimize the number of deep
-    copies, so the source and destination locators point to the same LOB until any modification
-    is made through either LOB locator. Hence `is_equal` returns `true` right after the clone
-    locator is created until the first modification. In both these cases, after new locator is
-    constructed any changes to either LOB do not reflect in the other LOB.
-
-    # Failures
-
-    Returns `Err` when a remote locator is passed to it.
-
-    # Example
-
-    ```
-    use sibyl::CLOB;
-
-    # sibyl::current_thread_block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ").await?;
-    # stmt.execute(()).await?;
-    let stmt = conn.prepare("
-        insert into test_lobs (text) values (empty_clob()) returning id into :id
-    ").await?;
-    let mut id : usize = 0;
-    stmt.execute_into((), &mut id).await?;
-
-    // must lock LOB's row before writing into it
-    let stmt = conn.prepare("
-        select text from test_lobs where id = :id for update
-    ").await?;
-    let rows = stmt.query(&id).await?;
-    let row = rows.next().await?.expect("a single row");
-    let mut lob1 : CLOB = row.get(0)?.expect("CLOB for writing");
-
-    let text = [
-        "To see a World in a Grain of Sand\n",
-        "And a Heaven in a Wild Flower\n",
-        "Hold Infinity in the palm of your hand\n",
-        "And Eternity in an hour\n"
-    ];
-
-    lob1.open().await?;
-    let written = lob1.append(text[0]).await?;
-    assert_eq!(written, text[0].len());
-    assert_eq!(lob1.len().await?, text[0].len());
-
-    let lob2 = lob1.clone().await?;
-    // Note that clone also makes lob2 open (as lob1 was open).
-    assert!(lob2.is_open().await?, "lob2 is already open");
-    // They both will be auto-closed when they go out of scope
-    // at end of this test.
-
-    // They point to the same value and at this time they are completely in sync
-    assert!(lob2.is_equal(&lob1)?);
-
-    let written = lob2.append(text[1]).await?;
-    assert_eq!(written, text[1].len());
-
-    // Now they are out of sync
-    assert!(!lob2.is_equal(&lob1)?);
-    // At this time `lob1` is not yet aware that `lob2` added more text the LOB they "share".
-    assert_eq!(lob2.len().await?, text[0].len() + text[1].len());
-    assert_eq!(lob1.len().await?, text[0].len());
-
-    let written = lob1.append(text[2]).await?;
-    assert_eq!(written, text[2].len());
-
-    // Now, after writing, `lob1` has caught up with `lob2` prior writing and added more text
-    // on its own. But now it's `lob2` turn to lag behind and not be aware of the added text.
-    assert_eq!(lob1.len().await?, text[0].len() + text[1].len() + text[2].len());
-    assert_eq!(lob2.len().await?, text[0].len() + text[1].len());
-
-    // Let's save `lob2` now. It is still only knows about `text[0]` and `text[1]` fragments.
-    let stmt = conn.prepare("
-        insert into test_lobs (text) values (:new_text) returning id, text into :id, :saved_text
-    ").await?;
-    let mut saved_lob_id : usize = 0;
-    let mut saved_lob = CLOB::new(&conn)?;
-    stmt.execute_into(&lob2, (&mut saved_lob_id, &mut saved_lob, ())).await?;
-
-    // And thus `saved_lob` locator points to a distinct LOB value ...
-    assert!(!saved_lob.is_equal(&lob2)?);
-    // ... which has only the `text[0]` and `text[1]`
-    assert_eq!(saved_lob.len().await?, text[0].len() + text[1].len());
-
-    let written = lob2.append(text[3]).await?;
-    assert_eq!(written, text[3].len());
-
-    assert_eq!(lob2.len().await?, text[0].len() + text[1].len() + text[2].len() + text[3].len());
-    assert_eq!(lob1.len().await?, text[0].len() + text[1].len() + text[2].len());
-
-    // As `saved_lob` points to the entirely different LOB ...
-    assert!(!saved_lob.is_equal(&lob2)?);
-    // ... it is not affected by `lob1` and `lob2` additions.
-    assert_eq!(saved_lob.len().await?, text[0].len() + text[1].len());
-    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-    ```
-    */
-    pub async fn clone(&'a self) -> Result<LOB<'a,T>> {
-        let inner = self.inner.clone().await?;
-        let chunk_size = self.chunk_size.load(Ordering::Relaxed);
-        Ok(Self { inner, chunk_size: AtomicU32::new(chunk_size), ..*self })
+    fn get_svc(&self) -> Arc<SvcCtx> {
+        self.inner.svc.clone()
     }
 
     /**
@@ -173,26 +21,28 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     For internal LOBs, `close` triggers other code that relies on the close call and for external
     LOBs (BFILEs), close actually closes the server-side operating system file.
 
-    It is not required to close a LOB explicitly as it will be automatically closed when Rust drops
-    the locator.
+    If you open a LOB, you must close it before you commit the transaction; an error is produced
+    if you do not. When an internal LOB is closed, it updates the functional and domain indexes
+    on the LOB column.
+
+    It is an error to commit the transaction before closing all opened LOBs that were opened by
+    the transaction. When the error is returned, the openness of the open LOBs is discarded, but
+    the transaction is successfully committed. Hence, all the changes made to the LOB and non-LOB
+    data in the transaction are committed, but the domain and function-based indexes are not updated.
+    If this happens, you should rebuild the functional and domain indexes on the LOB column.
 
     # Failures
 
-    - An error is returned if the internal LOB is not open.
+    - The internal LOB is not open.
 
     No error is returned if the BFILE exists but is not opened.
-
-    When the error is returned, the LOB is no longer marked as open, but the transaction is successfully
-    committed. Hence, all the changes made to the LOB and non-LOB data in the transaction are committed,
-    but the domain and function-based indexing are not updated. If this happens, rebuild your functional
-    and domain indexes on the LOB column.
 
     # Example
 
     ```
     use sibyl::CLOB;
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -245,10 +95,10 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     ```
     */
     pub async fn close(&self) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobClose::new(svc, err, lob).await
+        futures::LobClose::new(self.get_svc(), lob).await?;
+        self.inner.status_flags.fetch_and(!LOB_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -266,10 +116,8 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         included in the length count.
     */
     pub async fn len(&self) -> Result<usize> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        let len = oci::futures::LobGetLength::new(svc, err, lob).await?;
+        let len = futures::LobGetLength::new(self.get_svc(), lob).await?;
         Ok( len as usize )
     }
 
@@ -289,10 +137,8 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     because the operating system file on the server side must be checked to see if it is open.
     */
     pub async fn is_open(&self) -> Result<bool> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobIsOpen::new(svc, err, lob).await
+        futures::LobIsOpen::new(self.get_svc(), lob).await
     }
 
     /**
@@ -309,10 +155,10 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
     */
     pub async fn open_readonly(&self) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobOpen::new(svc, err, lob, OCI_LOB_READONLY).await
+        futures::LobOpen::new(self.get_svc(), lob, OCI_LOB_READONLY).await?;
+        self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -327,10 +173,8 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         if piece_size > space_available {
             buf.reserve(piece_size - space_available);
         }
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        let (res, num_bytes, num_chars) = oci::futures::LobRead::new(svc, err, lob, piece, piece_size, offset, byte_len, char_len, cs_form, buf).await?;
+        let (res, num_bytes, num_chars) = futures::LobRead::new(self.get_svc(), lob, piece, piece_size, offset, byte_len, char_len, cs_form, buf).await?;
         unsafe {
             buf.set_len(buf.len() + num_bytes);
         }
@@ -339,6 +183,25 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 }
 
 impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalLob {
+    pub(crate) fn make(locator: Descriptor<T>, conn: &'a Connection) -> Self {
+        let this = Self::make_new(locator, conn);
+        let _ = this.is_temp();
+        this
+    }
+
+    pub async fn is_temp(&self) -> Result<bool> {
+        let stmt = self.conn.prepare("BEGIN :RES := DBMS_LOB.ISTEMPORARY(:LOC); END;").await?;
+        let mut flag = 0;
+        stmt.execute_into((":LOC", &self.inner.locator), (":RES", &mut flag)).await?;
+        let is_temp = flag != 0;
+        if is_temp {
+            self.inner.status_flags.fetch_or(LOB_IS_TEMP, Ordering::Release);
+        } else {
+            self.inner.status_flags.fetch_and(!LOB_IS_TEMP, Ordering::Release);
+        }
+        Ok(is_temp)
+    }
+
     /**
     Appends another LOB value at the end of this LOB.
 
@@ -347,7 +210,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -383,10 +246,9 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     */
     pub async fn append_lob(&self, other_lob: &Self) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobAppend::new(svc, err, lob, other_lob.as_ref()).await
+        let src: &OCILobLocator = other_lob.as_ref();
+        futures::LobAppend::new(self.get_svc(), lob, src).await
     }
 
     /**
@@ -422,7 +284,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -499,10 +361,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     */
     pub async fn copy(&self, src: &Self, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobCopy::new(svc, err, lob, offset, src.as_ref(), src_offset, amount).await
+        futures::LobCopy::new(self.get_svc(), lob, offset, src.as_ref(), src_offset, amount).await
     }
 
     /**
@@ -540,7 +400,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     use sibyl::{CLOB, Cache, CharSetForm, BFile};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -629,10 +489,9 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     */
     pub async fn load_from_file(&self, src: &'a BFile<'a>, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobLoadFromFile::new(svc, err, lob, offset, src.as_ref(), src_offset, amount).await
+        let src: &OCILobLocator = src.as_ref();
+        futures::LobLoadFromFile::new(self.get_svc(), lob, offset, src, src_offset, amount).await
     }
 
     /**
@@ -650,10 +509,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     Returns the actual number of characters or bytes erased.
     */
     pub async fn erase(&self, offset: usize, amount: usize) -> Result<usize> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        let count = oci::futures::LobErase::new(svc, err, lob, offset, amount).await?;
+        let count = futures::LobErase::new(self.get_svc(), lob, offset, amount).await?;
         Ok( count as usize )
     }
 
@@ -681,10 +538,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     pub async fn chunk_size(&self) -> Result<usize> {
         let mut size = self.chunk_size.load(Ordering::Relaxed);
         if size == 0 {
-            let svc: &OCISvcCtx     = self.as_ref();
-            let err: &OCIError      = self.as_ref();
             let lob: &OCILobLocator = self.as_ref();
-            size = oci::futures::LobGetChunkSize::new(svc, err, lob).await?;
+            size = futures::LobGetChunkSize::new(self.get_svc(), lob).await?;
             self.chunk_size.store(size, Ordering::Relaxed);
         }
         Ok( size as usize )
@@ -696,11 +551,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     This function only works on SecureFiles.
     */
     pub async fn content_type(&self) -> Result<String> {
-        let env: &OCIEnv        = self.as_ref();
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobGetContentType::new(svc, err, env, lob).await
+        futures::LobGetContentType::new(self.get_svc(), lob).await
     }
 
     /**
@@ -709,11 +561,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     This function only works on SecureFiles.
     */
     pub async    fn set_content_type(&self, content_type: &str) -> Result<()> {
-        let env: &OCIEnv        = self.as_ref();
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobSetContentType::new(svc, err, env, lob, content_type).await
+        futures::LobSetContentType::new(self.get_svc(), lob, content_type).await
     }
 
     /**
@@ -750,10 +599,10 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
 
     */
     pub async fn open(&self) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobOpen::new(svc, err, lob, OCI_LOB_READWRITE).await
+        futures::LobOpen::new(self.get_svc(), lob, OCI_LOB_READWRITE).await?;
+        self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -767,24 +616,18 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     of bytes in the LOB.
     */
     pub async fn trim(&self, new_len: usize) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobTrim::new(svc, err, lob, new_len).await
+        futures::LobTrim::new(self.get_svc(), lob, new_len).await
     }
 
     async fn write_piece(&self, piece: u8, offset: usize, cs_form: u8, data: &[u8]) -> Result<(usize,usize)> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobWrite::new(svc, err, lob, piece, cs_form, offset, data).await
+        futures::LobWrite::new(self.get_svc(), lob, piece, cs_form, offset, data).await
     }
 
     async fn append_piece(&self, piece: u8, cs_form: u8, data: &[u8]) -> Result<(usize,usize)> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobWriteAppend::new(svc, err, lob, piece, cs_form, data).await
+        futures::LobWriteAppend::new(self.get_svc(), lob, piece, cs_form, data).await
     }
 }
 
@@ -801,10 +644,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
     */
     pub async fn temp(conn: &'a Connection<'a>, csform: CharSetForm, cache: Cache) -> Result<LOB<'a,OCICLobLocator>> {
         let locator = Descriptor::new(conn)?;
-        let svc: &OCISvcCtx = conn.as_ref();
-        let err: &OCIError  = conn.as_ref();
-        oci::futures::LobCreateTemporary::new(svc, err, &locator, OCI_TEMP_CLOB, csform as u8, cache as u8).await?;
-        Ok(Self::make(locator, conn))
+        futures::LobCreateTemporary::new(conn.get_svc(), &locator, OCI_TEMP_CLOB, csform as u8, cache as u8).await?;
+        Ok(Self::make_temp(locator, conn))
     }
 
     /**
@@ -824,7 +665,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -857,93 +698,6 @@ impl<'a> LOB<'a,OCICLobLocator> {
     }
 
     /**
-    Starts piece-wise writing into a LOB.
-
-    The application must call `write_next` to write more pieces into the LOB.
-    `write_last` terminates the piecewise write.
-
-    # Parameters
-
-    * `offset` - The absolute offset (in number of characters) from the beginning of the LOB,
-    * `text` - The first piece of text to be written into this LOB.
-
-    # Returns
-
-    The number of characters written to the database for the first piece.
-
-    # Example
-
-    ```
-    use sibyl::{ CLOB, CharSetForm, Cache };
-
-    # sibyl::current_thread_block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let lob = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
-    lob.open().await?;
-    let chunk_size = lob.chunk_size().await?;
-    let data = vec![42u8;chunk_size];
-    let text = std::str::from_utf8(&data)?;
-
-    let written = lob.write_first(0, text).await?;
-
-    assert_eq!(written, chunk_size);
-    for i in 0..8 {
-        let written = lob.write_next(text).await?;
-        assert_eq!(written, chunk_size);
-    }
-    let written = lob.write_last(text).await?;
-    assert_eq!(written, chunk_size);
-
-    assert_eq!(lob.len().await?, chunk_size * 10);
-    # Ok::<(),Box<dyn std::error::Error>>(()) }).expect("Ok from async");
-    ```
-    */
-    pub async fn write_first(&self, offset: usize, text: &str) -> Result<usize> {
-        let cs_form = self.charset_form()? as u8;
-        let (_, char_count) = self.write_piece(OCI_FIRST_PIECE, offset, cs_form, text.as_bytes()).await?;
-        Ok(char_count)
-    }
-
-    /**
-    Continues piece-wise writing into a LOB.
-
-    The application must call `write_next` to write more pieces into the LOB.
-    `write_last` terminates the piecewise write.
-
-    # Parameters
-
-    * `text` - the next piece of text to be written into this LOB.
-
-    # Returns
-
-    The number of characters written to the database for this piece.
-    */
-    pub async fn write_next(&self, text: &str) -> Result<usize> {
-        let (_, char_count) = self.write_piece(OCI_NEXT_PIECE, 0, 0, text.as_bytes()).await?;
-        Ok(char_count)
-    }
-
-    /**
-    Terminates piece-wise writing into a LOB.
-
-    # Parameters
-
-    * `text` - the last piece of text to be written into this LOB.
-
-    # Returns
-
-    The number of characters written to the database for the last piece.
-    */
-    pub async fn write_last(&self, text: &str) -> Result<usize> {
-        let (_, char_count) = self.write_piece(OCI_LAST_PIECE, 0, 0, text.as_bytes()).await?;
-        Ok(char_count)
-    }
-
-    /**
     Writes data starting at the end of a LOB.
 
     # Parameters
@@ -959,7 +713,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -976,92 +730,6 @@ impl<'a> LOB<'a,OCICLobLocator> {
     pub async fn append(&self, text: &str) -> Result<usize> {
         let cs_form = self.charset_form()? as u8;
         let (_, char_count) = self.append_piece(OCI_ONE_PIECE, cs_form, text.as_bytes()).await?;
-        Ok(char_count)
-    }
-
-    /*
-    Starts piece-wise writing at the end of a LOB.
-
-    The application must call `append_next` to write more pieces into the LOB.
-    `append_last` terminates the piecewise write.
-
-    # Parameters
-
-    * `text` - the firt piece of text to be written into this LOB.
-
-    # Returns
-
-    The number of characters written to the database for the first piece.
-
-    # Example
-
-    ```
-    use sibyl::{ CLOB, CharSetForm, Cache };
-
-    # sibyl::current_thread_block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let lob = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
-    lob.open().await?;
-    let chunk_size = lob.chunk_size().await?;
-    let data = vec![42u8;chunk_size];
-    let text = std::str::from_utf8(&data)?;
-
-    let written = lob.append_first(text).await?;
-
-    assert_eq!(written, chunk_size);
-    for i in 0..8 {
-        let written = lob.append_next(text).await?;
-        assert_eq!(written, chunk_size);
-    }
-    let written = lob.append_last(text).await?;
-    assert_eq!(written, chunk_size);
-
-    assert_eq!(lob.len().await?, chunk_size * 10);
-    # Ok::<(),Box<dyn std::error::Error>>(()) }).expect("Ok from async");
-    ```
-    */
-    pub async fn append_first(&self, text: &str) -> Result<usize> {
-        let cs_form = self.charset_form()? as u8;
-        let (_,char_count) = self.append_piece(OCI_FIRST_PIECE, cs_form, text.as_bytes()).await?;
-        Ok(char_count)
-    }
-
-    /*
-    Continues piece-wise writing at the end of a LOB.
-
-    The application must call `append_next` to write more pieces into the LOB.
-    `append_last` terminates the piecewise write.
-
-    # Parameters
-
-    * `text` - the next piece of text to be written into this LOB.
-
-    # Returns
-
-    The number of characters written to the database for this piece.
-    */
-    pub async fn append_next(&self, text: &str) -> Result<usize> {
-        let (_,char_count) = self.append_piece(OCI_NEXT_PIECE, 0, text.as_bytes()).await?;
-        Ok(char_count)
-    }
-
-    /**
-    Terminates piece-wise writing at the end of a LOB.
-
-    # Parameters
-
-    * `text` - the next piece of text to be written into this LOB.
-
-    # Returns
-
-    The number of characters written to the database for the last piece.
-    */
-    pub async fn append_last(&self, text: &str) -> Result<usize> {
-        let (_,char_count) = self.append_piece(OCI_LAST_PIECE, 0, text.as_bytes()).await?;
         Ok(char_count)
     }
 
@@ -1082,7 +750,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -1147,10 +815,8 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     */
     pub async fn temp(conn: &'a Connection<'a>, cache: Cache) -> Result<LOB<'a,OCIBLobLocator>> {
         let locator = Descriptor::new(conn)?;
-        let svc: &OCISvcCtx = conn.as_ref();
-        let err: &OCIError  = conn.as_ref();
-        oci::futures::LobCreateTemporary::new(svc, err, &locator, OCI_TEMP_BLOB, 0u8, cache as u8).await?;
-        Ok(Self::make(locator, conn))
+       futures::LobCreateTemporary::new(conn.get_svc(), &locator, OCI_TEMP_BLOB, 0u8, cache as u8).await?;
+        Ok(Self::make_temp(locator, conn))
     }
 
     /**
@@ -1170,7 +836,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, Cache};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -1186,111 +852,6 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     */
     pub async fn write(&self, offset: usize, data: &[u8]) -> Result<usize> {
         let (byte_count, _) = self.write_piece(OCI_ONE_PIECE, offset, 0, data).await?;
-        Ok(byte_count)
-    }
-
-    /*
-    Starts piece-wise writing into a LOB.
-
-    The application must call `write_next` to write more pieces into the LOB.
-    `write_last` terminates the piecewise write.
-
-    # Parameters
-
-    - `offset` - the number of bytes from the beginning of the LOB
-    - `data` - the first slice of bytes to write into this LOB
-
-    # Returns
-
-    The number of bytes written to the database for the first piece.
-
-    # Example
-    ```
-    use sibyl::BLOB;
-
-    # sibyl::current_thread_block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ").await?;
-    # stmt.execute(()).await?;
-    let stmt = conn.prepare("
-        insert into test_lobs (data) values (empty_blob()) returning data into :data
-    ").await?;
-    let mut lob = BLOB::new(&conn)?;
-    stmt.execute_into((), &mut lob).await?;
-    lob.open().await?;
-    let chunk_size = lob.chunk_size().await?;
-    let data = vec![42u8;chunk_size];
-
-    let written = lob.write_first(0, &data).await?;
-
-    assert_eq!(written, chunk_size);
-    for i in 0..8 {
-        let written = lob.write_next(&data).await?;
-        assert_eq!(written, chunk_size);
-    }
-    let written = lob.write_last(&data).await?;
-    assert_eq!(written, chunk_size);
-
-    assert_eq!(lob.len().await?, chunk_size * 10);
-    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-    ```
-    */
-    pub async fn write_first(&self, offset: usize, data: &[u8]) -> Result<usize> {
-        let (byte_count, _) = self.write_piece(OCI_FIRST_PIECE, offset, 0, data).await?;
-        Ok(byte_count)
-    }
-
-    /*
-    Continues piece-wise writing into a LOB.
-
-    The application must call `write_next` to write more pieces into the LOB.
-    `write_last` terminates the piecewise write.
-
-    # Parameters
-
-    - `data` - the next slice of bytes to write into this LOB
-
-    # Returns
-
-    The number of bytes written to the database for this piece.
-    */
-    pub async fn write_next(&self, data: &[u8]) -> Result<usize> {
-        let (byte_count, _) = self.write_piece(OCI_NEXT_PIECE, 0, 0, data).await?;
-        Ok(byte_count)
-    }
-
-    /*
-    Terminates piece-wise writing into a LOB.
-
-    # Parameters
-
-    - `data` - the next slice of bytes to write into this LOB
-
-    # Returns
-
-    The number of bytes written to the database for this piece.
-    */
-    pub async fn write_last(&self, data: &[u8]) -> Result<usize> {
-        let (byte_count, _) = self.write_piece(OCI_LAST_PIECE, 0, 0, data).await?;
         Ok(byte_count)
     }
 
@@ -1310,7 +871,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, Cache};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -1326,88 +887,6 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     */
     pub async fn append(&self, data: &[u8]) -> Result<usize> {
         let (byte_count, _) = self.append_piece(OCI_ONE_PIECE, 0, data).await?;
-        Ok(byte_count)
-    }
-
-    /*
-    Starts piece-wise writing at the end of a LOB.
-
-    The application must call `append_next` to write more pieces into the LOB.
-    `append_last` terminates the piecewise write.
-
-    # Parameters
-
-    - `data` - the first slice of bytes to append to this LOB
-
-    # Returns
-
-    The number of bytes written to the database for the first piece.
-
-    # Example
-    ```
-    use sibyl::{BLOB, Cache};
-
-    # sibyl::current_thread_block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let mut lob = BLOB::temp(&conn, Cache::No).await?;
-    let chunk_size = lob.chunk_size().await?;
-    let data = vec![165u8;chunk_size];
-
-    let written = lob.append_first(&data).await?;
-
-    assert_eq!(written, chunk_size);
-    for i in 0..8 {
-        let written = lob.append_next(&data).await?;
-        assert_eq!(written, chunk_size);
-    }
-    let written = lob.append_last(&data).await?;
-    assert_eq!(written, chunk_size);
-
-    assert_eq!(lob.len().await?, chunk_size * 10);
-    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-    ```
-    */
-    pub async fn append_first(&self, data: &[u8]) -> Result<usize> {
-        let (byte_count, _) = self.append_piece(OCI_FIRST_PIECE, 0, data).await?;
-        Ok(byte_count)
-    }
-
-    /*
-    Continues piece-wise writing at the end of a LOB.
-
-    The application must call `append_next` to write more pieces into the LOB.
-    `append_last` terminates the piecewise write.
-
-    # Parameters
-
-    - `data` - the next slice of bytes to append to this LOB
-
-    # Returns
-
-    The number of bytes written to the database for this piece.
-    */
-    pub async fn append_next(&self, data: &[u8]) -> Result<usize> {
-        let (byte_count, _) = self.append_piece(OCI_NEXT_PIECE, 0, data).await?;
-        Ok(byte_count)
-    }
-
-    /*
-    Terminates piece-wise writing at the end of a LOB.
-
-    # Parameters
-
-    - `data` - the next slice of bytes to append to this LOB
-
-    # Returns
-
-    The number of bytes written to the database for this piece.
-    */
-    pub async fn append_last(&self, data: &[u8]) -> Result<usize> {
-        let (byte_count, _) = self.append_piece(OCI_LAST_PIECE, 0, data).await?;
         Ok(byte_count)
     }
 
@@ -1429,7 +908,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, Cache, BFile};
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -1491,7 +970,11 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     }
 }
 
-impl LOB<'_,OCIBFileLocator> {
+impl<'a> LOB<'a,OCIBFileLocator> {
+    pub(crate) fn make(locator: Descriptor<OCIBFileLocator>, conn: &'a Connection) -> Self {
+        Self::make_new(locator, conn)
+    }
+
     /**
     Closes a previously opened BFILE.
 
@@ -1502,10 +985,10 @@ impl LOB<'_,OCIBFileLocator> {
     have no effect.
     */
     pub async fn close_file(&self) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobClose::new(svc, err, lob).await
+        futures::LobFileClose::new(self.get_svc(), lob).await?;
+        self.inner.status_flags.fetch_and(!LOB_FILE_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -1516,7 +999,7 @@ impl LOB<'_,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -1530,10 +1013,8 @@ impl LOB<'_,OCIBFileLocator> {
     ```
     */
     pub async fn file_exists(&self) -> Result<bool> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobFileExists::new(svc, err, lob).await
+        futures::LobFileExists::new(self.get_svc(), lob).await
     }
 
     /**
@@ -1546,7 +1027,7 @@ impl LOB<'_,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -1565,10 +1046,8 @@ impl LOB<'_,OCIBFileLocator> {
     ```
     */
     pub async fn is_file_open(&self) -> Result<bool> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobFileIsOpen::new(svc, err, lob).await
+        futures::LobFileIsOpen::new(self.get_svc(), lob).await
     }
 
     /**
@@ -1584,7 +1063,7 @@ impl LOB<'_,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -1600,10 +1079,10 @@ impl LOB<'_,OCIBFileLocator> {
     ```
     */
     pub async fn open_file(&self) -> Result<()> {
-        let svc: &OCISvcCtx     = self.as_ref();
-        let err: &OCIError      = self.as_ref();
         let lob: &OCILobLocator = self.as_ref();
-        oci::futures::LobFileOpen::new(svc, err, lob).await
+        futures::LobFileOpen::new(self.get_svc(), lob).await?;
+        self.inner.status_flags.fetch_or(LOB_FILE_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -1624,7 +1103,7 @@ impl LOB<'_,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -1646,86 +1125,5 @@ impl LOB<'_,OCIBFileLocator> {
     pub async fn read(&self, offset: usize, len: usize, buf: &mut Vec<u8>) -> Result<usize> {
         let (_, byte_count, _) = self.read_piece(OCI_ONE_PIECE, len, offset, len, 0, 0, buf).await?;
         Ok(byte_count)
-    }
-
-    /**
-    Starts piece-wise reading of the specified number of bytes from this LOB into the provided buffer, returning a tuple
-    with 2 elements - the number of bytes read in the current piece and the flag which indicates whether there are more
-    pieces to read until the requested fragment is complete. Application should call `read_next` (and **only** `read_next`)
-    repeatedly until "more data" flag becomes `false`.
-
-    # Parameters
-
-    - `piece_size` - number of bytes to read for the first piece
-    - `offset` - The absolute offset (in bytes) from the beginning of the LOB value.
-    - `len` - The total maximum number of bytes to read.
-    - `buf` - The output buffer.
-    - `num_read` - The number of bytes actually read for this piece.
-
-    # Returns
-
-    `true` if `read_next` should be called to continue reading the specified LOB fragment.
-
-    # Example
-
-    ```
-    use sibyl::{BFile};
-
-    # sibyl::current_thread_block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let file = BFile::new(&conn)?;
-    file.set_file_name("MEDIA_DIR", "keyboard.jpg")?;
-    assert!(file.file_exists().await?);
-    let file_len = file.len().await?;
-    file.open_readonly().await?;
-
-    let mut data = Vec::with_capacity(file_len); // to avoid reallocations
-    let mut data_len : usize = 0;
-    let piece_size = 8192;
-    let offset = 0;
-    let length = file_len;
-    let mut has_next = file.read_first(piece_size, offset, length, &mut data, &mut data_len).await?;
-    assert_eq!(data.len(), data_len);
-    while has_next {
-        let mut bytes_read : usize = 0;
-        has_next = file.read_next(piece_size, &mut data, &mut bytes_read).await?;
-        data_len += bytes_read;
-        assert_eq!(data_len, data.len());
-    }
-
-    assert_eq!(data_len, file_len);
-    assert_eq!(data.len(), file_len);
-    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-    ```
-    */
-    pub async fn read_first(&self, piece_size: usize, offset: usize, len: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
-        let (has_more, byte_count, _) = self.read_piece(OCI_FIRST_PIECE, piece_size, offset, len, 0, 0, buf).await?;
-        *num_read = byte_count;
-        Ok(has_more)
-    }
-
-    /**
-    Continues piece-wise reading of the fragment started by `read_first`, returning a tuple with 2 elements - the number of
-    bytes read in the current piece and the flag which indicates whether there are more pieces to read until the requested
-    fragment is complete. Application should keep calling `read_next` until "more data" flag becomes `false`.
-
-    # Parameters
-
-    - `piece_size` - number of bytes to read for the next piece
-    - `buf` - The output buffer.
-    - `num_read` - The number of bytes actually read for this piece.
-
-    # Returns
-
-    `true` if `read_next` should be called again to continue reading the specified LOB fragment.
-    */
-    pub async fn read_next(&self, piece_size: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
-        let (has_more, byte_count, _) = self.read_piece(OCI_NEXT_PIECE, piece_size, 0, 0, 0, 0, buf).await?;
-        *num_read = byte_count;
-        Ok(has_more)
     }
 }

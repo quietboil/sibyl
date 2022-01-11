@@ -14,10 +14,10 @@ use crate::{Error, Result, oci::*, types::Ctx};
 
 /// Represents an OCI environment.
 pub struct Environment {
+    err: Handle<OCIError>,
     // `OCIEnv` handle must be behind Arc as it needs to survive the Environment drop,
     // so that `OCIEnv` is still available to async-drop used, for example, in `Session`.
     env: Arc<Handle<OCIEnv>>,
-    err: Handle<OCIError>,
 }
 
 impl AsRef<OCIEnv> for Environment {

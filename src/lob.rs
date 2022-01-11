@@ -8,8 +8,7 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-use std::sync::{Arc, atomic::AtomicU32};
-use std::mem::size_of;
+use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
 use crate::{Result, Connection, oci::{self, *}, stmt::{ToSql, ToSqlOut, Params}, conn::SvcCtx};
 #[cfg(feature="nonblocking")]
 use crate::task;
@@ -27,59 +26,53 @@ where T: DescriptorType<OCIType=OCILobLocator>
     Ok( flag != 0 )
 }
 
+pub(crate) const LOB_IS_TEMP       : u32 = 1;
+pub(crate) const LOB_IS_OPEN       : u32 = 2;
+pub(crate) const LOB_FILE_IS_OPEN  : u32 = 4;
+
 struct LobInner<T> where T: DescriptorType<OCIType=OCILobLocator>  + 'static {
     locator: Descriptor<T>,
     svc: Arc<SvcCtx>,
+    status_flags: AtomicU32,
 }
 
 impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 'static {
     #[cfg(feature="blocking")]
     fn drop(&mut self) {
-        let mut is_open = 0u8;
-        let res = unsafe {
-            OCILobIsOpen(self.as_ref(), self.as_ref(), self.as_ref(), &mut is_open)
-        };
-        if res == OCI_SUCCESS && is_open != 0 {
+        let svc: &OCISvcCtx     = self.as_ref();
+        let err: &OCIError      = self.as_ref();
+        let loc: &OCILobLocator = self.as_ref();
+        let status_flags = self.status_flags.load(Ordering::Acquire);
+
+        if status_flags & LOB_IS_OPEN != 0 {
             unsafe {
-                OCILobClose(self.as_ref(), self.as_ref(), self.as_ref());
+                OCILobClose(svc, err, loc);
+            }
+        } else if status_flags & LOB_FILE_IS_OPEN != 0 {
+            unsafe {
+                OCILobFileClose(svc, err, loc);
             }
         }
-        let mut is_temp = 0u8;
-        let res = unsafe {
-            OCILobIsTemporary(self.as_ref(), self.as_ref(), self.as_ref(), &mut is_temp)
-        };
-        if res == OCI_SUCCESS && is_temp != 0 {
+        if status_flags & LOB_IS_TEMP != 0 {
             unsafe {
-                OCILobFreeTemporary(self.as_ref(), self.as_ref(), self.as_ref());
+                OCILobFreeTemporary(svc, err, loc);
+            }
+        } else {
+            let mut flag = 0u8;
+            if oci::lob_is_temporary(svc, err, loc, &mut flag).is_ok() && flag != 0 {
+                unsafe {
+                    OCILobFreeTemporary(svc, err, loc);
+                }
             }
         }
     }
 
     #[cfg(feature="nonblocking")]
     fn drop(&mut self) {
-        let svc_ctx = self.svc.clone();
-        let locator = Descriptor::take_over(&mut self.locator);
-
-        let async_drop = async move {
-            let svc_ctx = svc_ctx;
-            let loc = locator;
-            let svc: &OCISvcCtx = svc_ctx.as_ref().as_ref();
-            let err: &OCIError  = svc_ctx.as_ref().as_ref();
-
-            match oci::futures::LobIsOpen::new(svc, err, &loc).await {
-                Ok(is_open) if is_open => {
-                    let _res = oci::futures::LobClose::new(svc, err, &loc).await;
-                },
-                _ => {}
-            };
-            match oci::futures::LobIsTemporary::new(svc, err, &loc).await {
-                Ok(is_temp) if is_temp => {
-                    let _res = oci::futures::LobFreeTemporary::new(svc, err, &loc).await;
-                },
-                _ => {}
-            };
-        };
-        task::spawn(async_drop);
+        let ctx = self.svc.clone();
+        let loc = Descriptor::take_over(&mut self.locator);
+        let flags = self.status_flags.load(Ordering::Acquire);
+        task::spawn(futures::LobDrop::new(ctx, loc, flags));
     }
 }
 
@@ -109,7 +102,11 @@ impl<T> AsRef<OCISvcCtx> for LobInner<T> where T: DescriptorType<OCIType=OCILobL
 
 impl<T> LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
     fn new(locator: Descriptor<T>, svc: Arc<SvcCtx>) -> Self {
-        Self { locator, svc }
+        Self { locator, svc, status_flags: AtomicU32::new(0) }
+    }
+
+    fn new_temp(locator: Descriptor<T>, svc: Arc<SvcCtx>) -> Self {
+        Self { locator, svc, status_flags: AtomicU32::new(LOB_IS_TEMP) }
     }
 }
 
@@ -117,8 +114,8 @@ impl<T> LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
 pub struct LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + 'static
 {
     inner: LobInner<T>,
-    conn: &'a Connection<'a>,
     chunk_size: AtomicU32,
+    conn: &'a Connection<'a>,
 }
 
 impl<'a,T> AsRef<Descriptor<T>> for LOB<'a,T>
@@ -155,9 +152,17 @@ impl<'a,T> AsRef<OCISvcCtx> for LOB<'a,T> where T: DescriptorType<OCIType=OCILob
 
 impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
-    pub(crate) fn make(locator: Descriptor<T>, conn: &'a Connection) -> Self {
+    fn make_new(locator: Descriptor<T>, conn: &'a Connection) -> Self {
         Self {
             inner: LobInner::new(locator, conn.get_svc()),
+            chunk_size: AtomicU32::new(0),
+            conn
+        }
+    }
+
+    fn make_temp(locator: Descriptor<T>, conn: &'a Connection) -> Self {
+        Self {
+            inner: LobInner::new_temp(locator, conn.get_svc()),
             chunk_size: AtomicU32::new(0),
             conn
         }
@@ -280,7 +285,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -425,7 +430,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -462,7 +467,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     pub fn empty(conn: &'a Connection) -> Result<Self> {
         let locator = Descriptor::<T>::new(conn)?;
         locator.set_attr(OCI_ATTR_LOBEMPTY, 0u32, conn.as_ref())?;
-        Ok(Self::make(locator, conn))
+        Ok(Self::make_new(locator, conn))
     }
 
     /**
@@ -504,7 +509,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -526,7 +531,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     /// Creates a new uninitialized BFILE.
     pub fn new(conn: &'a Connection) -> Result<Self> {
         let locator = Descriptor::<OCIBFileLocator>::new(conn)?;
-        Ok(Self::make(locator, conn))
+        Ok(Self::make_new(locator, conn))
     }
 
     /**
@@ -558,7 +563,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -619,7 +624,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -643,45 +648,23 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 }
 
 macro_rules! impl_lob_to_sql {
-    ($ts:ty => $sqlt:ident) => {
-        impl ToSql for Descriptor<$ts> {
-            fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                params.bind(pos, $sqlt, self.as_ptr() as _, size_of::<*mut OCILobLocator>(), stmt, err)?;
-                Ok(pos + 1)
+    ($($ts:ty),+) => {
+        $(
+            impl ToSql for &LOB<'_, $ts> {
+                fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                    self.inner.locator.bind_to(pos, params, stmt, err)
+                }
             }
-        }
-        impl ToSql for &LOB<'_, $ts> {
-            fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                self.inner.locator.bind_to(pos, params, stmt, err)
+            impl ToSqlOut for &mut LOB<'_, $ts> {
+                fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                    self.inner.locator.bind_to(pos, params, stmt, err)
+                }
             }
-        }
+        )+
     };
 }
 
-impl_lob_to_sql!{ OCICLobLocator  => SQLT_CLOB  }
-impl_lob_to_sql!{ OCIBLobLocator  => SQLT_BLOB  }
-impl_lob_to_sql!{ OCIBFileLocator => SQLT_BFILE }
-
-macro_rules! impl_lob_to_sql_output {
-    ($ts:ty => $sqlt:ident) => {
-        impl ToSqlOut for Descriptor<$ts> {
-            fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                params.bind_out(pos, $sqlt, self.as_mut_ptr() as _, size_of::<*mut OCILobLocator>(), size_of::<*mut OCILobLocator>(), stmt, err)?;
-                Ok(pos + 1)
-            }
-        }
-        impl ToSqlOut for &mut LOB<'_, $ts> {
-            fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                self.inner.locator.bind_to(pos, params, stmt, err)
-            }
-        }
-    };
-}
-
-impl_lob_to_sql_output!{ OCICLobLocator  => SQLT_CLOB  }
-impl_lob_to_sql_output!{ OCIBLobLocator  => SQLT_BLOB  }
-impl_lob_to_sql_output!{ OCIBFileLocator => SQLT_BFILE }
-
+impl_lob_to_sql!{ OCICLobLocator, OCIBLobLocator, OCIBFileLocator }
 
 impl LOB<'_,OCICLobLocator> {
     /// Debug helper that fetches first 50 (at most) bytes of CLOB content

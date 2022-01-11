@@ -1,12 +1,10 @@
 use sibyl::*;
-use std::{env, sync::Arc};
-
 /**
     This example is a variant of `readme` that executes its work in multiple
     threads (or async tasks). It creates a session pool which threads (or
     tasks) then use to "borrow" sessions to execute queries.
 
-    Note that `multi_thread_block_on` used in nonblocking version of this example
+    Note that `block_on` used in nonblocking version of this example
     abstracts `block_on` for various executors and is intended to execute async tests
     and examples.
 */
@@ -16,7 +14,7 @@ fn main() -> Result<()> {
 
 #[cfg(feature="blocking")]
 fn example() -> Result<()> {
-    use std::thread;
+    use std::{env, thread, sync::Arc};
     use once_cell::sync::OnceCell;
 
     static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -74,8 +72,10 @@ fn example() -> Result<()> {
 
 #[cfg(feature="nonblocking")]
 fn example() -> Result<()> {
-    sibyl::multi_thread_block_on(async {
-        use once_cell::sync::OnceCell;
+    use std::{env, sync::Arc};
+    use once_cell::sync::OnceCell;
+
+    block_on(async {
 
         static ORACLE : OnceCell<Environment> = OnceCell::new();
         let oracle = ORACLE.get_or_try_init(|| {
@@ -92,7 +92,7 @@ fn example() -> Result<()> {
         let mut workers = Vec::with_capacity(100);
         for _i in 0..workers.capacity() {
             let pool = pool.clone();
-            let handle = sibyl::spawn(async move {
+            let handle = spawn(async move {
                 let conn = pool.get_session().await?;
                 let stmt = conn.prepare("
                     SELECT first_name, last_name, hire_date

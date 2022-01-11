@@ -1,6 +1,6 @@
 //! Nonblocking mode Connection methods.
 
-use std::{sync::Arc, marker::PhantomData};
+use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, marker::PhantomData};
 
 use crate::{oci::{self, *}, task, Environment, Result, pool::SessionPool, Statement};
 
@@ -27,7 +27,7 @@ impl SvcCtx {
             )?;
             Ok(svc)
         }).await??;
-        Ok(Self { env: env.get_env(), err, svc })
+        Ok(Self { env: env.get_env(), err, svc, active_future: AtomicUsize::new(0) })
     }
 
     fn set_nonblocking_mode(&self) -> Result<()> {
@@ -39,7 +39,19 @@ impl SvcCtx {
         let env = pool.get_env();
         let err = Handle::<OCIError>::new(env.as_ref())?;
         let svc = pool.get_svc_ctx().await?;
-        Ok(Self { env, err, svc })
+        Ok(Self { env, err, svc, active_future: AtomicUsize::new(0) })
+    }
+
+    pub(crate) fn lock(&self, id: usize) -> bool {
+        if let Err(current) = self.active_future.compare_exchange(0, id, Ordering::AcqRel, Ordering::Relaxed) {
+            current == id
+        } else {
+            true
+        }
+    }
+
+    pub(crate) fn unlock(&self) {
+        self.active_future.store(0, Ordering::Release)
     }
 }
 
@@ -66,7 +78,7 @@ impl<'a> Connection<'a> {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -81,7 +93,7 @@ impl<'a> Connection<'a> {
     ```
     */
     pub async fn ping(&self) -> Result<()> {
-        oci::futures::Ping::new(self.as_ref(), self.as_ref()).await
+        futures::Ping::new(self.get_svc()).await
     }
 
     /**
@@ -93,7 +105,7 @@ impl<'a> Connection<'a> {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -115,7 +127,7 @@ impl<'a> Connection<'a> {
     ```
     */
     pub async fn commit(&self) -> Result<()> {
-        oci::futures::TransCommit::new(self.as_ref(), self.as_ref()).await
+        futures::TransCommit::new(self.get_svc()).await
     }
 
     /**
@@ -125,7 +137,7 @@ impl<'a> Connection<'a> {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -144,7 +156,7 @@ impl<'a> Connection<'a> {
     ```
     */
     pub async fn rollback(&self) -> Result<()> {
-        oci::futures::TransRollback::new(self.as_ref(), self.as_ref()).await
+        futures::TransRollback::new(self.get_svc()).await
     }
 
     /**
@@ -157,7 +169,7 @@ impl<'a> Connection<'a> {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -192,7 +204,7 @@ mod tests {
 
     #[test]
     fn async_connect_multi_thread_static_env() -> Result<()> {
-        crate::multi_thread_block_on(async {
+        crate::block_on(async {
             use std::env;
             use once_cell::sync::OnceCell;
 
@@ -216,7 +228,7 @@ mod tests {
     /// available for `Connection`'s async drop
     #[test]
     fn async_connect_single_thread() -> Result<()> {
-        crate::current_thread_block_on(async {
+        crate::block_on(async {
             use std::env;
 
             let oracle = Environment::new()?;
@@ -241,7 +253,7 @@ mod tests {
     /// available for `Connection`'s async drop
     #[test]
     fn async_connect_multi_thread_stack_env() -> Result<()> {
-        crate::multi_thread_block_on(async {
+        crate::block_on(async {
             use std::env;
 
             let oracle = Environment::new()?;

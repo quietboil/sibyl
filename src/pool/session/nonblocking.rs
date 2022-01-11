@@ -70,12 +70,11 @@ impl<'a> SessionPool<'a> {
 
         ```
         use sibyl::{Environment, Connection, Date, Result};
+        use once_cell::sync::OnceCell;
+        use std::{env, sync::Arc};
 
         fn main() -> Result<()> {
-            sibyl::multi_thread_block_on(async {
-                use std::{env, thread, sync::Arc};
-                use once_cell::sync::OnceCell;
-
+            sibyl::block_on(async {
                 static ORACLE : OnceCell<Environment> = OnceCell::new();
                 let oracle = ORACLE.get_or_try_init(|| {
                     Environment::new()
@@ -141,7 +140,7 @@ mod tests {
 
     #[test]
     fn async_session_pool() -> Result<()> {
-        crate::multi_thread_block_on(async {
+        crate::block_on(async {
             use std::sync::Arc;
             use once_cell::sync::OnceCell;
 

@@ -56,9 +56,15 @@ mod tests {
         }
     }
 
-     /**
+    /**
         Creates a single connections in a multithreaded environment,
         which is then used by (shared between) all threads.
+
+        **Note** this is possible in some limited cases but very not
+        advisable. Some functions - like piece-wise LOB operations -
+        demand an uninterrupted serialized execution for all pieces,
+        which cannot be orchestrated on a shared connection without
+        dedicated mutexes.
     */
     #[test]
     fn shared_connection() -> Result<()> {
@@ -206,25 +212,25 @@ mod tests {
 
     #[test]
     fn session_pool() -> Result<()> {
-        sibyl::multi_thread_block_on(async {
+        block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
             let oracle = ORACLE.get_or_try_init(|| {
                 sibyl::env()
             })?;
-    
+
             let dbname = env::var("DBNAME").expect("database name");
             let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
-    
+
             let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
             let pool = Arc::new(pool);
-                
+
             let mut workers = Vec::with_capacity(100);
             for _i in 0..workers.capacity() {
                 let pool = pool.clone();
-                let handle = sibyl::spawn(async move {
+                let handle = spawn(async move {
                     let conn = pool.get_session().await.expect("database session");
                     let stmt = conn.prepare("
                         SELECT first_name, last_name, hire_date
@@ -243,7 +249,7 @@ mod tests {
                 let name = handle.await.expect("select result");
                 assert_eq!(name, "Amit Banda was hired on April 21, 2008");
             }
-    
+
             Ok(())
         })
     }

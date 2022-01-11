@@ -11,37 +11,26 @@ mod nonblocking;
 use std::{sync::Arc, marker::PhantomData};
 
 use crate::{Error, Result, oci::*, Environment};
-#[cfg(feature="nonblocking")]
-use crate::{oci, task};
 
 /**
 Session pool creates and maintains a group of stateless sessions to the database.
 
 These sessions are provided to the application as requested. If no sessions are
-available, a new one may be created. Thus, the number of sessions in the pool can
-increase dynamically. When the application is done with the session, it is returned
-to the pool.
+available, a new one may be created. Thus, the number of sessions in the pool
+can increase dynamically. When the application is done (DROPS) with the session,
+it is returned to the pool.
 */
 pub struct SessionPool<'a> {
-    env:  Arc<Handle<OCIEnv>>,
-    err:  Handle<OCIError>,
     pool: Handle<OCISPool>,
+    err:  Handle<OCIError>,
+    env:  Arc<Handle<OCIEnv>>,
     name: &'a [u8],
     phantom_env: PhantomData<&'a Environment>
 }
 
 impl Drop for SessionPool<'_> {
-    #[cfg(feature="blocking")]
     fn drop(&mut self) {
         oci_session_pool_destroy(&self.pool, &self.err);
-    }
-
-    #[cfg(feature="nonblocking")]
-    fn drop(&mut self) {
-        let pool = Handle::take_over(&mut self.pool);
-        let err = Handle::take_over(&mut self.err);
-        let env = self.env.clone();
-        task::spawn(oci::futures::SessionPoolDestroy::new(pool, err, env));
     }
 }
 
@@ -73,7 +62,7 @@ impl SessionPool<'_> {
     }
 
     /**
-    Returns the number of (busy) sessions checked out from the pool.
+    Returns the number of sessions checked out from the pool.
 
     # Example
 
@@ -97,8 +86,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -139,8 +130,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -184,8 +177,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -239,8 +234,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -285,8 +282,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -331,8 +330,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -373,8 +374,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -423,8 +426,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -467,8 +472,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -514,8 +521,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -558,8 +567,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -603,8 +614,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -647,8 +660,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
@@ -694,8 +709,10 @@ impl SessionPool<'_> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::multi_thread_block_on(async {
-    # let oracle = sibyl::env()?;
+    # sibyl::block_on(async {
+    # use once_cell::sync::OnceCell;
+    # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
+    # let oracle = ORACLE.get_or_try_init(|| sibyl::Environment::new())?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");

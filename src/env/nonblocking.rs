@@ -16,7 +16,7 @@ impl Environment {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     let oracle = sibyl::env()?;
 
     let dbname = std::env::var("DBNAME").expect("database name");
@@ -51,7 +51,7 @@ impl Environment {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     let oracle = sibyl::env()?;
 
     let dbname = std::env::var("DBNAME").expect("database name");

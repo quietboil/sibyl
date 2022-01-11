@@ -308,11 +308,11 @@ mod tests {
         let val = num.to_int::<u128>()?;
         assert_eq!(std::u128::MAX, val);
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let val = num.to_int::<i32>()?;
         assert_eq!(3, val);
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let num = num.pow10(2)?;
         let val = num.to_int::<i32>()?;
         assert_eq!(314, val);

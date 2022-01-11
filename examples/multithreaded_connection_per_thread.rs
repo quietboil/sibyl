@@ -1,13 +1,11 @@
 use sibyl::*;
-use std::{env, sync::Arc};
-
 /**
     This example is a variant of `readme` that executes its work in multiple
     threads (or async tasks) where each thread (or task) establishes its own
     connection and then uses it to execute queries.
 
-    Note that `multi_thread_block_on` used in nonblocking version of this example
-    abstracts `block_on` for various executors and is intended to execute async tests
+    Note that `block_on` used in nonblocking version of this example abstracts
+    `block_on` for various executors and is intended to execute async tests
     and examples.
 */
 fn main() -> Result<()> {
@@ -16,7 +14,7 @@ fn main() -> Result<()> {
 
 #[cfg(feature="blocking")]
 fn example() -> Result<()> {
-    use std::thread;
+    use std::{env, thread, sync::Arc};
 
     let oracle = sibyl::env()?;
     let oracle = Arc::new(oracle);
@@ -68,7 +66,9 @@ fn example() -> Result<()> {
 
 #[cfg(feature="nonblocking")]
 fn example() -> Result<()> {
-    sibyl::multi_thread_block_on(async {
+    use std::{env, sync::Arc};
+
+    block_on(async {
         let oracle = sibyl::env()?;
         let oracle = Arc::new(oracle);
 
@@ -76,7 +76,7 @@ fn example() -> Result<()> {
         let mut workers = Vec::with_capacity(100);
         for _i in 0..workers.capacity() {
             let oracle = oracle.clone();
-            let handle = sibyl::spawn(async move {
+            let handle = spawn(async move {
                 let dbname = env::var("DBNAME").expect("database name");
                 let dbuser = env::var("DBUSER").expect("user name");
                 let dbpass = env::var("DBPASS").expect("password");

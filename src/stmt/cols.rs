@@ -288,10 +288,10 @@ impl ColumnBuffer {
 
 /// Internal representation of columns from a SELECT projection
 pub struct Columns {
-    names: HashMap<String, usize>,
-    info: Vec<Descriptor<OCIParam>>,
+    names: HashMap<&'static str, usize>,
     bufs: Vec<ColumnData>,
-    _defs: Vec<Handle<OCIDefine>>,
+    info: Vec<Descriptor<OCIParam>>,
+    _defs: Vec<Ptr<OCIDefine>>,
     /// Length of data fetched
     _lens: Vec<u32>,
     /// Output "indicator":
@@ -336,7 +336,7 @@ impl Columns {
                 _ => info[i].get_attr::<u16>(OCI_ATTR_DATA_SIZE, err.as_ref())? as u32,
             };
             bufs.push(ColumnData{ buf: ColumnBuffer::new(data_type, data_size, &env, &err)? });
-            defs.push(Handle::from(Ptr::<OCIDefine>::null()));
+            defs.push(Ptr::<OCIDefine>::null());
 
             // Now, that columns buffers are in the vector and thus their locations in memory are fixed,
             // define the output buffers in OCI
@@ -355,7 +355,6 @@ impl Columns {
             }
 
             let name : &str = info[i].get_attr(OCI_ATTR_NAME, err.as_ref())?;
-            let name = name.to_string();
             names.insert(name, i);
         }
         Ok(Self { names, info, _defs: defs, bufs, _lens: lens, inds, env, err })

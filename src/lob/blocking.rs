@@ -5,150 +5,9 @@ use crate::*;
 use crate::oci::*;
 use std::sync::atomic::Ordering;
 
-impl<T> LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
-    pub(super) fn clone(&self) -> Result<Self> {
-        let mut locator = Descriptor::<T>::new(self)?;
-        oci::lob_locator_assign(self.as_ref(), self.as_ref(), self.as_ref(), locator.as_mut_ptr())?;
-        let svc = self.svc.clone();
-        Ok(Self { locator, svc } )
-    }
-}
-
 impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
-    /**
-    Creates a new LOB locator that points to the same LOB data as the provided locator.
-
-    For internal LOBs, the source locator's LOB data gets copied to the destination locator's
-    LOB data only when the destination locator gets stored in the table. Therefore, issuing a
-    flush of the object containing the destination locator copies the LOB data. For BFILEs,
-    only the locator that refers to the operating system file is copied to the table; the
-    operating system file is not copied.
-
-    If the source locator is for an internal LOB that was enabled for buffering, and the source
-    locator has been used to modify the LOB data through the LOB buffering subsystem, and the
-    buffers have not been flushed since the write, then the source locator may not be assigned
-    to the destination locator. This is because only one locator for each LOB can modify the LOB
-    data through the LOB buffering subsystem.
-
-    If the source LOB locator refers to a temporary LOB, the destination is made into a temporary
-    LOB too. The source and the destination are conceptually different temporary LOBs. The source
-    temporary LOB is deep copied, and a destination locator is created to refer to the new deep
-    copy of the temporary LOB. Hence `is_equal` returns `false` when the new locator is created
-    from the temporary one. However, as an optimization is made to minimize the number of deep
-    copies, so the source and destination locators point to the same LOB until any modification
-    is made through either LOB locator. Hence `is_equal` returns `true` right after the clone
-    locator is created until the first modification. In both these cases, after new locator is
-    constructed any changes to either LOB do not reflect in the other LOB.
-
-    # Failures
-
-    Returns `Err` when a remote locator is passed to it.
-
-    # Example
-    ```
-    use sibyl::{ CLOB };
-
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    # let stmt = conn.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ")?;
-    # stmt.execute(())?;
-    let stmt = conn.prepare("
-        DECLARE
-            row_id ROWID;
-        BEGIN
-            INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO row_id;
-            SELECT text INTO :TXT FROM test_lobs WHERE rowid = row_id FOR UPDATE;
-        END;
-    ")?;
-    let mut lob1 = CLOB::new(&conn)?;
-    stmt.execute_into((), &mut lob1)?;
-
-    let text = [
-        "To see a World in a Grain of Sand\n",
-        "And a Heaven in a Wild Flower\n",
-        "Hold Infinity in the palm of your hand\n",
-        "And Eternity in an hour\n"
-    ];
-
-    lob1.open()?;
-    let written = lob1.append(text[0])?;
-    assert_eq!(written, text[0].len());
-    assert_eq!(lob1.len()?, text[0].len());
-
-    let lob2 = lob1.clone()?;
-    // Note that clone also makes lob2 open (as lob1 was open).
-    assert!(lob2.is_open()?, "lob2 is already open");
-    // They both will be auto-closed when they go out of scope
-    // at end of this test.
-
-    // They point to the same value and at this time they are completely in sync
-    assert!(lob2.is_equal(&lob1)?);
-
-    let written = lob2.append(text[1])?;
-    assert_eq!(written, text[1].len());
-
-    // Now they are out of sync
-    assert!(!lob2.is_equal(&lob1)?);
-    // At this time `lob1` is not yet aware that `lob2` added more text the LOB they "share".
-    assert_eq!(lob2.len()?, text[0].len() + text[1].len());
-    assert_eq!(lob1.len()?, text[0].len());
-
-    let written = lob1.append(text[2])?;
-    assert_eq!(written, text[2].len());
-
-    // Now, after writing, `lob1` has caught up with `lob2` prior writing and added more text
-    // on its own. But now it's `lob2` turn to lag behind and not be aware of the added text.
-    assert_eq!(lob1.len()?, text[0].len() + text[1].len() + text[2].len());
-    assert_eq!(lob2.len()?, text[0].len() + text[1].len());
-
-    // Let's save `lob2` now. It is still only aware of `text[0]` and `text[1]` fragments.
-    let stmt = conn.prepare("
-        insert into test_lobs (text) values (:new_lob) returning id, text into :id, :saved_text
-    ")?;
-    let mut saved_lob_id : usize = 0;
-    let mut saved_lob = CLOB::new(&conn)?;
-    stmt.execute_into(&lob2, (&mut saved_lob_id, &mut saved_lob, ()))?;
-
-    // And thus `saved_lob` locator points to a distinct LOB value ...
-    assert!(!saved_lob.is_equal(&lob2)?);
-    // ... which has only `text[0]` and `text[1]`
-    assert_eq!(saved_lob.len()?, text[0].len() + text[1].len());
-
-    let written = lob2.append(text[3])?;
-    assert_eq!(written, text[3].len());
-
-    assert_eq!(lob2.len()?, text[0].len() + text[1].len() + text[2].len() + text[3].len());
-    assert_eq!(lob1.len()?, text[0].len() + text[1].len() + text[2].len());
-
-    // As `saved_lob` points to the enturely different LOB ...
-    assert!(!saved_lob.is_equal(&lob2)?);
-    // ... it is not affected by `lob1` and `lob2` additions.
-    assert_eq!(saved_lob.len()?, text[0].len() + text[1].len());
-    # Ok::<(),Box<dyn std::error::Error>>(())
-    ```
-    */
-    pub fn clone(&self) -> Result<Self> {
-        let inner = self.inner.clone()?;
-        let chunk_size = self.chunk_size.load(Ordering::Relaxed);
-        Ok(Self { inner, chunk_size: AtomicU32::new(chunk_size), ..*self })
+    pub(crate) fn make(locator: Descriptor<T>, conn: &'a Connection) -> Self {
+        Self::make_new(locator, conn)
     }
 
     /**
@@ -158,19 +17,21 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     For internal LOBs, `close` triggers other code that relies on the close call and for external
     LOBs (BFILEs), close actually closes the server-side operating system file.
 
-    It is not required to close LOB explicitly as it will be automatically closed when Rust drops
-    the locator.
+    If you open a LOB, you must close it before you commit the transaction; an error is produced
+    if you do not. When an internal LOB is closed, it updates the functional and domain indexes
+    on the LOB column.
+
+    It is an error to commit the transaction before closing all opened LOBs that were opened by
+    the transaction. When the error is returned, the openness of the open LOBs is discarded, but
+    the transaction is successfully committed. Hence, all the changes made to the LOB and non-LOB
+    data in the transaction are committed, but the domain and function-based indexes are not updated.
+    If this happens, you should rebuild the functional and domain indexes on the LOB column.
 
     # Failures
 
-    - An error is returned if the internal LOB is not open.
+    - The internal LOB is not open.
 
     No error is returned if the BFILE exists but is not opened.
-
-    When the error is returned, the LOB is no longer marked as open, but the transaction is successfully
-    committed. Hence, all the changes made to the LOB and non-LOB data in the transaction are committed,
-    but the domain and function-based indexing are not updated. If this happens, rebuild your functional
-    and domain indexes on the LOB column.
 
     # Example
 
@@ -232,7 +93,9 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     ```
     */
     pub fn close(&self) -> Result<()> {
-        oci::lob_close(self.as_ref(), self.as_ref(), self.as_ref())
+        oci::lob_close(self.as_ref(), self.as_ref(), self.as_ref())?;
+        self.inner.status_flags.fetch_and(!LOB_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -289,7 +152,9 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
     */
     pub fn open_readonly(&self) -> Result<()> {
-        oci::lob_open(self.as_ref(), self.as_ref(), self.as_ref(), OCI_LOB_READONLY)
+        oci::lob_open(self.as_ref(), self.as_ref(), self.as_ref(), OCI_LOB_READONLY)?;
+        self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -730,7 +595,9 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
 
     */
     pub fn open(&self) -> Result<()> {
-        oci::lob_open(self.as_ref(), self.as_ref(), self.as_ref(), OCI_LOB_READWRITE)
+        oci::lob_open(self.as_ref(), self.as_ref(), self.as_ref(), OCI_LOB_READWRITE)?;
+        self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -791,7 +658,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
             conn.as_ref(), conn.as_ref(), locator.as_ref(),
             OCI_DEFAULT as u16, csform as u8, OCI_TEMP_CLOB, cache as u8, OCI_DURATION_SESSION
         )?;
-        Ok(Self::make(locator, conn))
+        Ok(Self::make_temp(locator, conn))
     }
 
     /**
@@ -1208,7 +1075,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
             conn.as_ref(), conn.as_ref(), locator.as_ref(),
             OCI_DEFAULT as u16, 0u8, OCI_TEMP_BLOB, cache as u8, OCI_DURATION_SESSION
         )?;
-        Ok(Self::make(locator, conn))
+        Ok(Self::make_temp(locator, conn))
     }
 
     /**
@@ -1615,7 +1482,9 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     have no effect.
     */
     pub fn close_file(&self) -> Result<()> {
-        oci::lob_file_close(self.as_ref(), self.as_ref(), self.as_ref())
+        oci::lob_file_close(self.as_ref(), self.as_ref(), self.as_ref())?;
+        self.inner.status_flags.fetch_and(!LOB_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**
@@ -1705,7 +1574,9 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     */
     pub fn open_file(&self) -> Result<()> {
-        oci::lob_file_open(self.as_ref(), self.as_ref(), self.as_ref(), OCI_FILE_READONLY)
+        oci::lob_file_open(self.as_ref(), self.as_ref(), self.as_ref(), OCI_FILE_READONLY)?;
+        self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
+        Ok(())
     }
 
     /**

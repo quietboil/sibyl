@@ -13,6 +13,8 @@ pub use raw::Raw;
 pub use number::Number;
 pub use varchar::Varchar;
 pub use rowid::RowID;
+pub use timestamp::DateTime;
+pub use interval::Interval;
 
 use libc::c_void;
 use crate::oci::{OCIError, OCIEnv, OCISession};

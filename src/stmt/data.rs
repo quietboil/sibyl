@@ -220,10 +220,10 @@ macro_rules! impl_from_lob {
         impl<'a> FromSql<'a> for LOB<'a,$t> {
             fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
                 match col.buf {
-                    $var ( ref mut lob ) => {
-                        if lob::is_initialized(lob, row.as_ref(), row.as_ref())? {
+                    $var ( ref mut row_loc ) => {
+                        if lob::is_initialized(row_loc, row.as_ref(), row.as_ref())? {
                             let mut loc : Descriptor<$t> = Descriptor::new(row)?;
-                            loc.swap(lob);
+                            loc.swap(row_loc);
                             Ok( LOB::<$t>::make(loc, row.conn()) )
                         } else {
                             Err(Error::new("already consumed"))

@@ -233,7 +233,7 @@ let num_inserted = stmt.execute(
         (":DEPARTMENT_NAME", "Security"),
         (":MANAGER_ID",      ""        ),
         (":LOCATION_ID",     1700      ),
-    ), 
+    ),
         (":DEPARTMENT_ID",   &mut department_id)
 )?;
 ```
@@ -289,7 +289,7 @@ use sibyl::Number;
 
 let oracle = sibyl::env()?;
 
-let pi = Number::pi(&oracle)?;
+let pi = Number::pi(&oracle);
 let two = Number::from_int(2, &oracle);
 let two_pi = pi.mul(&two)?;
 let h = Number::from_string("6.62607004E-34", "9D999999999EEEE", &oracle)?;
@@ -507,7 +507,7 @@ Some of Sibyl's tests connect to the database and expect certain objects to exis
 
 The minimal supported client is 12.2 as Sibyl uses some API functions that are not available in earlier clients. While suporting those is definitely feasible, it was not a priority.
 
-Sibyl tests are routinely executed on x64 Linux with Instant Clients 12.2, 18.5, 19.13 and 21.4 that connect to the 19.3 database. Sibyl is also tested on x64 Windows with Instant CLient 19.12.
+Sibyl tests are routinely executed on x64 Linux with Instant Clients 12.2, 18.5, 19.13 and 21.4 that connect to the 19.3 database. Sibyl is also tested on x64 Windows the with Instant Client 19.12.
 
 ### Known Issues with Some Clients
 

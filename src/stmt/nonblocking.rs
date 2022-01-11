@@ -1,7 +1,7 @@
 //! Nonblocking SQL statement methods
 
 use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}};
-use crate::{Result, oci::{self, *}, Connection, Error, Rows, Cursor, ToSql, ToSqlOut};
+use crate::{Result, oci::*, Connection, Error, Rows, Cursor, ToSql, ToSqlOut};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
@@ -9,7 +9,7 @@ impl<'a> Statement<'a> {
     /// Creates a new statement
     pub(crate) async fn new(sql: &str, conn: &'a Connection<'a>) -> Result<Statement<'a>> {
         let err = Handle::<OCIError>::new(conn)?;
-        let stmt = oci::futures::StmtPrepare::new(conn.as_ref(), &err, sql).await?;
+        let stmt = futures::StmtPrepare::new(conn.get_svc(), &err, sql).await?;
         let params = Params::new(&stmt, &err)?.map(|params| RwLock::new(params));
         Ok(Self {conn, svc: conn.get_svc(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
     }
@@ -24,10 +24,9 @@ impl<'a> Statement<'a> {
     }
 
     /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
-    async fn exec(&self, stmt_type: u16, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<i32>{
+    async fn exec(&self, stmt_type: u16, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<i32> {
         self.bind_args(in_args, out_args)?;
-
-        oci::futures::StmtExecute::new(self.as_ref(), &self.err, &self.stmt, stmt_type).await
+        futures::StmtExecute::new(self.svc.clone(), &self.err, &self.stmt, stmt_type).await
     }
 
     /**
@@ -47,7 +46,7 @@ impl<'a> Statement<'a> {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -108,7 +107,7 @@ impl<'a> Statement<'a> {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -177,7 +176,7 @@ impl<'a> Statement<'a> {
 
     ```
     # use std::collections::HashMap;
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -258,7 +257,7 @@ impl<'a> Statement<'a> {
     use sibyl::Number;
     use std::cmp::Ordering::Equal;
 
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -355,7 +354,7 @@ impl<'a> Statement<'a> {
     ```
     */
     pub async fn next_result(&'a self) -> Result<Option<Cursor<'a>>> {
-        let res = oci::futures::StmtGetNextResult::new(self.as_ref(), self.as_ref()).await?;
+        let res = futures::StmtGetNextResult::new(self.svc.clone(), &self.stmt, &self.err).await?;
         if let Some(stmt) = res {
             Ok(Some(Cursor::implicit(stmt, self)))
         } else {
@@ -370,7 +369,7 @@ mod tests {
 
     #[test]
     fn async_query() -> Result<()> {
-        crate::current_thread_block_on(async {
+        crate::block_on(async {
             use std::env;
 
             let oracle = crate::env()?;

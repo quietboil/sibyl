@@ -7,7 +7,7 @@ use libc::c_void;
 use super::attr::{AttrGetInto, AttrGet, AttrSet};
 
 /// Send-able cell-like wrapper around a pointer to OCI handle or descriptor.
-pub struct Ptr<T> (*mut T);
+pub(crate) struct Ptr<T> (*mut T);
 
 impl<T> Ptr<T> {
     pub(crate) fn new(ptr: *const T) -> Self {

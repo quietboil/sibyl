@@ -9,7 +9,6 @@ compile_error!("'blocking' and 'nonblocking' features are exclusive");
 compile_error!("either 'blocking' or 'nonblocking' feature must be explicitly specified");
 
 #[cfg(feature="nonblocking")]
-#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod task;
 
 mod oci;
@@ -25,25 +24,36 @@ mod lob;
 pub use pool::ConnectionPool;
 
 #[cfg(feature="nonblocking")]
-pub use task::{spawn, spawn_blocking, JoinError, current_thread_block_on, multi_thread_block_on};
+#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+pub use task::{spawn, block_on};
 
 pub use err::Error;
 pub use env::Environment;
 pub use conn::Connection;
 pub use pool::{SessionPool, SessionPoolGetMode};
 pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ToSqlOut, ColumnType};
-pub use types::{Date, Raw, Number, Varchar, RowID};
+pub use types::{Date, Raw, Number, Varchar, RowID, DateTime, Interval};
 pub use oci::{Cache, CharSetForm};
+pub use lob::LOB;
 
+/// A specialized `Result` type for Sibyl.
 pub type Result<T>        = std::result::Result<T, Error>;
-pub type Timestamp<'a>    = types::timestamp::Timestamp<'a, oci::OCITimestamp>;
-pub type TimestampTZ<'a>  = types::timestamp::Timestamp<'a, oci::OCITimestampTZ>;
-pub type TimestampLTZ<'a> = types::timestamp::Timestamp<'a, oci::OCITimestampLTZ>;
-pub type IntervalYM<'a>   = types::interval::Interval<'a, oci::OCIIntervalYearToMonth>;
-pub type IntervalDS<'a>   = types::interval::Interval<'a, oci::OCIIntervalDayToSecond>;
-pub type CLOB<'a>         = lob::LOB<'a,oci::OCICLobLocator>;
-pub type BLOB<'a>         = lob::LOB<'a,oci::OCIBLobLocator>;
-pub type BFile<'a>        = lob::LOB<'a,oci::OCIBFileLocator>;
+/// Represents the `TIMESTAMP` data type. It stores year, month, day, hour, minute, second and fractional seconds.
+pub type Timestamp<'a>    = types::DateTime<'a, oci::OCITimestamp>;
+/// Represents the `TIMESTAMP WITH TIME ZONE` data type. It's a variant of `TIMESTAMP` that includes of a time zone region name or time zone offset in its value.
+pub type TimestampTZ<'a>  = types::DateTime<'a, oci::OCITimestampTZ>;
+/// Represents the `TIMESTAMP WITH LOCAL TIME ZONE` data type. It's a variant of `TIMESTAMP` that is normalized to the database time zone.
+pub type TimestampLTZ<'a> = types::DateTime<'a, oci::OCITimestampLTZ>;
+/// Represents `INTERVAL YEAR TO MONTH` data type. It stores a period of time in terms of years and months.
+pub type IntervalYM<'a>   = types::Interval<'a, oci::OCIIntervalYearToMonth>;
+/// Represents `INTERVAL DAY TO SECOND` data type. It stores a period of time in terms of days, hours, minutes, and seconds.
+pub type IntervalDS<'a>   = types::Interval<'a, oci::OCIIntervalDayToSecond>;
+/// A character large object locator.
+pub type CLOB<'a>         = LOB<'a,oci::OCICLobLocator>;
+/// A binary large object locator.
+pub type BLOB<'a>         = LOB<'a,oci::OCIBLobLocator>;
+/// A locator to a large binary file.
+pub type BFile<'a>        = LOB<'a,oci::OCIBFileLocator>;
 
 /**
 Returns a new environment handle, which is then used by the OCI functions.

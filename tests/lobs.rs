@@ -250,17 +250,23 @@ mod blocking {
         let mut start_index = 0usize;
         let mut end_index = chunk_size;
         let written = lob.write_first(0, &data[start_index..end_index])?;
+        // let res = lob.write_first(0, &data[start_index..end_index]); println!("write_first={:?}", res); let written = res.unwrap();
+
         assert!(written > 0, "first written chunk is not empty");
         let mut total_written = written;
         start_index += written;
         end_index += written;
         while end_index < file_len {
             let written = lob.write_next(&data[start_index..end_index])?;
+            // let res = lob.write_next(&data[start_index..end_index]); println!("write_next={:?}", res); let written = res.unwrap();
+
             start_index += written;
             end_index += written;
             total_written += written;
         }
         let written = lob.write_last(&data[start_index..])?;
+        // let res = lob.write_last(&data[start_index..]); println!("write_last={:?}", res); let written = res.unwrap();
+
         total_written += written;
         lob.close()?;
         assert_eq!(total_written, file_len);
@@ -446,6 +452,7 @@ mod nonblocking {
     async fn check_file(lob: BFile<'_>) -> Result<()> {
         assert!(lob.is_initialized()?, "is initialized");
         assert!(lob.file_exists().await?, "file exists");
+
         let file_len = lob.len().await?;
         assert_eq!(file_len, 539977);
 
@@ -454,13 +461,6 @@ mod nonblocking {
         assert_eq!(name, "mousepad_comp_ad.pdf");
 
         let mut data = Vec::new();
-
-        let res = lob.read(0, file_len, &mut data).await;
-        assert!(res.is_err(), "expected 'read' error");
-        match res.unwrap_err() {
-            Error::Oracle(code, _msg) => { assert_eq!(code, 22289, "cannot perform FILEREAD operation on an unopened file or LOB"); },
-            _ => { panic!("unexpected 'read' error"); },
-        }
 
         lob.open_file().await?;
         assert!(lob.is_file_open().await?, "file is open");
@@ -474,26 +474,6 @@ mod nonblocking {
         let text = std::str::from_utf8(&data.as_slice()[539971..539977]).expect("last 6 bytes as str");
         assert_eq!(text, "%%EOF\r");
 
-        data.truncate(0);
-        let mut num_read : usize = 0;
-        let mut has_more = lob.read_first(8192, 0, file_len, &mut data, &mut num_read).await?;
-        assert!(num_read >= 8, "read at least first 8 bytes");
-        assert_eq!(data.len(), num_read);
-        let mut total_read = num_read;
-
-        let text = std::str::from_utf8(&data.as_slice()[0..8]).expect("first 8 bytes as str");
-        assert_eq!(text, "%PDF-1.3");
-
-        while has_more {
-            has_more = lob.read_next(8192, &mut data, &mut num_read).await?;
-            total_read += num_read;
-        }
-        assert_eq!(total_read, file_len);
-        assert_eq!(data.len(), file_len);
-
-        let text = std::str::from_utf8(&data.as_slice()[539971..539977]).expect("last 6 bytes as str");
-        assert_eq!(text, "%%EOF\r");
-
         lob.close_file().await?;
         assert!(!lob.is_file_open().await?, "file is closed");
 
@@ -502,7 +482,7 @@ mod nonblocking {
 
     #[test]
     fn read_file() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             let oracle = sibyl::env()?;
             let conn = connect(&oracle).await?;
             check_or_create_test_table(&conn).await?;
@@ -543,7 +523,7 @@ mod nonblocking {
 
     #[test]
     fn read_blob() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             let oracle = sibyl::env()?;
             let conn = connect(&oracle).await?;
             check_or_create_test_table(&conn).await?;
@@ -578,7 +558,7 @@ mod nonblocking {
 
     #[test]
     fn write_blob() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             let oracle = sibyl::env()?;
             let conn = connect(&oracle).await?;
             check_or_create_test_table(&conn).await?;
@@ -599,14 +579,11 @@ mod nonblocking {
             file.close_file().await?;
             assert!(!file.is_open().await?, "source file is closed");
 
-            // make 4 blobs - one for "one piece" writing, another for piece-wise writing
-            // and the last 2 for appending and piece-wise appending.
+            // make 2 blobs - one for writing and another for appending
             let stmt = conn.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID").await?;
-            let mut ids = [0usize; 4];
+            let mut ids = [0usize; 2];
             stmt.execute_into((), &mut ids[0]).await?;
             stmt.execute_into((), &mut ids[1]).await?;
-            stmt.execute_into((), &mut ids[2]).await?;
-            stmt.execute_into((), &mut ids[3]).await?;
 
             // retrieve BLOB and lock its row so we could write into it
             let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
@@ -623,60 +600,10 @@ mod nonblocking {
             let row = rows.next().await?.expect("one row");
             let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
-            let chunk_size = lob.chunk_size().await?;
-            assert!(chunk_size > 0, "chunk size");
-            assert!(chunk_size < file_len, "chunk size is smaller than the data we have"); // otherwise we need a better test data
-
-            lob.open().await?;
-            let mut start_index = 0usize;
-            let mut end_index = chunk_size;
-            let written = lob.write_first(0, &data[start_index..end_index]).await?;
-            assert!(written > 0, "first written chunk is not empty");
-            let mut total_written = written;
-            start_index += written;
-            end_index += written;
-            while end_index < file_len {
-                let written = lob.write_next(&data[start_index..end_index]).await?;
-                start_index += written;
-                end_index += written;
-                total_written += written;
-            }
-            let written = lob.write_last(&data[start_index..]).await?;
-            total_written += written;
-            lob.close().await?;
-            assert_eq!(total_written, file_len);
-
-            let rows = stmt.query(ids[2]).await?;
-            let row = rows.next().await?.expect("one row");
-            let lob : BLOB = row.get(0)?.expect("BLOB for writing");
-
             lob.open().await?;
             let written = lob.append(&data).await?;
             lob.close().await?;
             assert_eq!(written, file_len);
-
-            let rows = stmt.query(ids[3]).await?;
-            let row = rows.next().await?.expect("one row");
-            let lob : BLOB = row.get(0)?.expect("BLOB for writing");
-
-            lob.open().await?;
-            start_index = 0usize;
-            end_index = chunk_size;
-            let written = lob.append_first(&data[start_index..end_index]).await?;
-            assert!(written > 0, "first written chunk is not empty");
-            total_written = written;
-            start_index += written;
-            end_index += written;
-            while end_index < file_len {
-                let written = lob.append_next(&data[start_index..end_index]).await?;
-                start_index += written;
-                end_index += written;
-                total_written += written;
-            }
-            let written = lob.append_last(&data[start_index..]).await?;
-            total_written += written;
-            lob.close().await?;
-            assert_eq!(total_written, file_len);
 
             conn.commit().await?;
 
@@ -702,19 +629,16 @@ mod nonblocking {
         // Note that 24 supplemental symbols in `oci.rs` are encoded as 2 "characters" by Oracle.
         let expected_lob_char_len = text_char_len + 24;
 
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             let oracle = sibyl::env()?;
             let conn = connect(&oracle).await?;
             check_or_create_test_table(&conn).await?;
 
-            // make 4 clobs - one for "one piece" writing, another for piece-wise writing
-            // and the last 2 for appending and piece-wise appending.
+            // make 2 clobs - one for writing and another for appending
             let stmt = conn.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID").await?;
-            let mut ids = [0usize; 4];
+            let mut ids = [0usize; 2];
             stmt.execute_into((), &mut ids[0]).await?;
             stmt.execute_into((), &mut ids[1]).await?;
-            stmt.execute_into((), &mut ids[2]).await?;
-            stmt.execute_into((), &mut ids[3]).await?;
 
             let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
             let rows = stmt.query(ids[0]).await?;
@@ -731,47 +655,9 @@ mod nonblocking {
             let lob : CLOB = row.get(0)?.expect("CLOB for writing");
 
             lob.open().await?;
-            let mut lines = text.split_inclusive('\n');
-            let mut total_written = 0usize;
-            if let Some(line) = lines.next() {
-                let written = lob.write_first(0, line).await?;
-                total_written += written;
-                while let Some(line) = lines.next() {
-                    let written = lob.write_next(line).await?;
-                    total_written += written;
-                }
-                lob.write_last("").await?;
-            }
-            lob.close().await?;
-            assert_eq!(total_written, expected_lob_char_len);
-
-            let rows = stmt.query(ids[2]).await?;
-            let row = rows.next().await?.expect("one row");
-            let lob : CLOB = row.get(0)?.expect("CLOB for writing");
-
-            lob.open().await?;
             let written = lob.append(&text).await?;
             lob.close().await?;
             assert_eq!(written, expected_lob_char_len);
-
-            let rows = stmt.query(ids[3]).await?;
-            let row = rows.next().await?.expect("one row");
-            let lob : CLOB = row.get(0)?.expect("CLOB for writing");
-
-            lob.open().await?;
-            let mut lines = text.split_inclusive('\n');
-            let mut total_written = 0usize;
-            if let Some(line) = lines.next() {
-                let written = lob.append_first(line).await?;
-                total_written += written;
-                while let Some(line) = lines.next() {
-                    let written = lob.append_next(line).await?;
-                    total_written += written;
-                }
-                lob.append_last("").await?;
-            }
-            lob.close().await?;
-            assert_eq!(total_written, expected_lob_char_len);
 
             conn.commit().await?;
 
@@ -788,6 +674,31 @@ mod nonblocking {
                 assert_eq!(num_chars, expected_lob_char_len);
                 assert_eq!(lob_content, text);
             }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn temp_blob() -> Result<()> {
+        block_on(async {
+            let oracle = sibyl::env()?;
+            let conn = connect(&oracle).await?;
+            check_or_create_test_table(&conn).await?;
+
+            let lob = BLOB::temp(&conn, Cache::No).await?;
+
+            let is_temp = lob.is_temp().await?;
+            assert!(is_temp);
+
+            let mut lob = BLOB::empty(&conn)?;
+            let is_temp = lob.is_temp().await?;
+            assert!(!is_temp);
+
+            let stmt = conn.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE); END;").await?;
+            stmt.execute_into((), &mut lob).await?;
+            let is_temp = lob.is_temp().await?;
+            assert!(is_temp);
 
             Ok(())
         })

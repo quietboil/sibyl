@@ -173,6 +173,28 @@ impl ToSqlOut for &mut &mut [u8] {
     }
 }
 
+impl<T> ToSql for Descriptor<T> where T: DescriptorType, T::OCIType: OCIStruct {
+    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind(pos, T::sql_type(), self.as_ptr() as _, size_of::<*mut T::OCIType>(), stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
+impl<T> ToSql for &Descriptor<T> where T: DescriptorType, T::OCIType: OCIStruct {
+    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind(pos, T::sql_type(), (*self).as_ptr() as _, size_of::<*mut T::OCIType>(), stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
+impl<T> ToSqlOut for Descriptor<T> where T: DescriptorType, T::OCIType: OCIStruct {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = size_of::<*mut T::OCIType>();
+        params.bind_out(pos, T::sql_type(), self.as_mut_ptr() as _, len, len, stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
 impl<T> ToSql for (&str, T) where T: ToSql {
     fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let idx = params.index_of(self.0)?;

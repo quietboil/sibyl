@@ -145,30 +145,32 @@ pub struct OCIIntervalDayToSecond   {}
 pub trait DescriptorType : OCIStruct {
     type OCIType;
     fn get_type() -> u32;
+    fn sql_type() -> u16;
 }
 
 macro_rules! impl_descr_type {
-    ($($oci_desc:ident => $id:ident, $ret:ident),+) => {
+    ($($oci_desc:ident => $id:ident, $sqlt:ident, $ret:ident),+) => {
         $(
             impl DescriptorType for $oci_desc {
                 type OCIType = $ret;
                 fn get_type() -> u32 { $id }
+                fn sql_type() -> u16 { $sqlt }
             }
         )+
     };
 }
 
 impl_descr_type!{
-    OCICLobLocator          => OCI_DTYPE_LOB,           OCILobLocator,
-    OCIBLobLocator          => OCI_DTYPE_LOB,           OCILobLocator,
-    OCIBFileLocator         => OCI_DTYPE_FILE,          OCILobLocator,
-    OCIParam                => OCI_DTYPE_PARAM,         OCIParam,
-    OCIRowid                => OCI_DTYPE_ROWID,         OCIRowid,
-    OCITimestamp            => OCI_DTYPE_TIMESTAMP,     OCIDateTime,
-    OCITimestampTZ          => OCI_DTYPE_TIMESTAMP_TZ,  OCIDateTime,
-    OCITimestampLTZ         => OCI_DTYPE_TIMESTAMP_LTZ, OCIDateTime,
-    OCIIntervalYearToMonth  => OCI_DTYPE_INTERVAL_YM,   OCIInterval,
-    OCIIntervalDayToSecond  => OCI_DTYPE_INTERVAL_DS,   OCIInterval
+    OCICLobLocator          => OCI_DTYPE_LOB,           SQLT_CLOB,          OCILobLocator,
+    OCIBLobLocator          => OCI_DTYPE_LOB,           SQLT_BLOB,          OCILobLocator,
+    OCIBFileLocator         => OCI_DTYPE_FILE,          SQLT_BFILE,         OCILobLocator,
+    OCIParam                => OCI_DTYPE_PARAM,         SQLT_NON,           OCIParam,
+    OCIRowid                => OCI_DTYPE_ROWID,         SQLT_RDD,           OCIRowid,
+    OCITimestamp            => OCI_DTYPE_TIMESTAMP,     SQLT_TIMESTAMP,     OCIDateTime,
+    OCITimestampTZ          => OCI_DTYPE_TIMESTAMP_TZ,  SQLT_TIMESTAMP_TZ,  OCIDateTime,
+    OCITimestampLTZ         => OCI_DTYPE_TIMESTAMP_LTZ, SQLT_TIMESTAMP_LTZ, OCIDateTime,
+    OCIIntervalYearToMonth  => OCI_DTYPE_INTERVAL_YM,   SQLT_INTERVAL_YM,   OCIInterval,
+    OCIIntervalDayToSecond  => OCI_DTYPE_INTERVAL_DS,   SQLT_INTERVAL_DS,   OCIInterval
 }
 
 /// Marker trait for OCI handles and descriptors
@@ -515,7 +517,7 @@ extern "C" {
         recordno:   u32,
         sqlstate:   *const c_void,
         errcodep:   *const i32,
-        bufp:       *const u8,
+        bufp:       *mut u8,
         bufsiz:     u32,
         hnd_type:   u32,
     ) -> i32;
@@ -895,7 +897,7 @@ extern "C" {
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/lob-functions.html#GUID-40AFA7A3-3A24-4DF7-A719-AECA7C1F522A
-    fn OCILobFileClose(
+    pub(crate) fn OCILobFileClose(
         svchp:      *const OCISvcCtx,
         errhp:      *const OCIError,
         filep:      *const OCILobLocator,
@@ -1613,16 +1615,16 @@ extern "C" {
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-FA067559-D0F7-426D-940A-1D24F4C60C70
-    fn OCINumberSetPi(
+    pub(crate) fn OCINumberSetPi(
         err:      *const OCIError,
         result:   *mut OCINumber
-    ) -> i32;
+    );
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-8152D558-61D9-49F4-9113-DA1455BB5C72
-    fn OCINumberSetZero(
+    pub(crate) fn OCINumberSetZero(
         err:      *const OCIError,
         result:   *mut OCINumber
-    ) -> i32;
+    );
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/oci-NUMBER-functions.html#GUID-EA7D0DA0-A154-4A87-8215-E5B5A7D091E3
     fn OCINumberShift(
@@ -2011,10 +2013,10 @@ pub(crate) fn oci_trans_rollback(svchp: &OCISvcCtx, errhp: &OCIError) -> i32 {
 macro_rules! ok_or_env_err {
     ( |$env:ident| $stmt:stmt ) => {{
         let res = unsafe { $stmt };
-        if res == OCI_SUCCESS {
-            Ok(())
-        } else {
+        if res < 0 {
             Err(Error::env($env, res))
+        } else {
+            Ok(())
         }
     }};
 }
@@ -2040,16 +2042,18 @@ pub(crate) fn handle_alloc<T: HandleType>(
 macro_rules! ok_or_oci_err {
     ( |$err:ident| $stmt:stmt ) => {{
         let res = unsafe { $stmt };
-        match res {
-            OCI_ERROR | OCI_INVALID_HANDLE => { Err(Error::oci($err, res)) },
-            _ => { Ok(()) }
+        if res < 0 {
+            Err(Error::oci($err, res))
+        } else {
+            Ok(())
         }
     }};
     ( |$err:ident| $block:block ) => {{
         let res = unsafe { $block };
-        match res {
-            OCI_ERROR | OCI_INVALID_HANDLE => { Err(Error::oci($err, res)) },
-            _ => { Ok(()) }
+        if res < 0 {
+            Err(Error::oci($err, res))
+        } else {
+            Ok(())
         }
     }};
 }
@@ -2602,9 +2606,10 @@ pub(crate) fn lob_read(
     let res = unsafe {
         OCILobRead2(svchp, errhp, loc, byte_cnt, char_cnt, offset, buf, buf_len, piece, std::ptr::null_mut::<c_void>(), std::ptr::null::<c_void>(), csid, csfrm)
     };
-    match res {
-        OCI_ERROR | OCI_INVALID_HANDLE => { Err(Error::oci(errhp, res)) },
-        _ => { Ok(res) }
+    if res < 0 {
+        Err(Error::oci(errhp, res))
+    } else {
+        Ok(res)
     }
 }
 
@@ -3560,24 +3565,6 @@ pub(crate) fn number_round(
 ) -> Result<()> {
     ok_or_oci_err!(|err|
         OCINumberRound(err, number, num_dig, result)
-    )
-}
-
-pub(crate) fn number_set_pi(
-    err:      &OCIError,
-    result:   *mut OCINumber
-) -> Result<()> {
-    ok_or_oci_err!(|err|
-        OCINumberSetPi(err, result)
-    )
-}
-
-pub(crate) fn number_set_zero(
-    err:      &OCIError,
-    result:   *mut OCINumber
-) -> Result<()> {
-    ok_or_oci_err!(|err|
-        OCINumberSetZero(err, result)
     )
 }
 

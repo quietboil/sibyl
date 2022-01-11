@@ -5,10 +5,6 @@ use sibyl::*;
     threads (or async tasks). It creates a connection pool which threads (or
     tasks) then use to establish their own private sessions with the database,
     which share a small number of physical connections.
-
-    Note that `multi_thread_block_on` used in nonblocking version of this example
-    abstracts `block_on` for various executors and is intended to execute async tests
-    and examples.
 */
 fn main() -> Result<()> {
     example()

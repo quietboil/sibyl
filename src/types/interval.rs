@@ -30,6 +30,7 @@ pub(crate) fn from_interval<'a,T>(int: &Descriptor<T>, ctx: &'a dyn Ctx) -> Resu
     Ok( Interval { ctx, interval } )
 }
 
+/// Represents interval data types
 pub struct Interval<'a, T> where T: DescriptorType<OCIType=OCIInterval> {
     interval: Descriptor<T>,
     ctx: &'a dyn Ctx,
@@ -163,7 +164,7 @@ impl<'a, T> Interval<'a, T> where T: DescriptorType<OCIType=OCIInterval> {
         - `fsprec` is a fractional second precision of the interval: the number of digits used to represent the fractional seconds.
 
         The interval literal is output as 'year' or 'year-month' for INTERVAL YEAR TO MONTH intervals
-        and as 'seconds' or 'minutes[:seconds]' or 'hours[:minutes[:seconds]]' or 'days[ hours[:minutes[:seconds]]]'
+        and as 'seconds' or 'minutes\[:seconds\]' or 'hours\[:minutes\[:seconds\]\]' or 'days\[ hours\[:minutes\[:seconds\]\]\]'
         for INTERVAL DAY TO SECOND intervals (where optional fields are surrounded by brackets)
 
         # Example
@@ -316,7 +317,7 @@ impl<'a> Interval<'a, OCIIntervalDayToSecond> {
         in the input string) and the current absolute offset, or an absolute
         offset with the region ID set to 0
 
-        The input string must be of the form [+/-]TZH:TZM or 'TZR [TZD]'
+        The input string must be of the form `\[+/-\]TZH:TZM` or `TZR \[TZD\]`
 
         # Example
         ```

@@ -1,111 +1,152 @@
 //! Futures for OCI functions that might return `OCI_STILL_EXECUTING`
 
-use crate::conn::SvcCtx;
+use crate::{conn::SvcCtx, lob::{LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP}};
 use super::{*, ptr::Ptr};
 use std::{future::Future, pin::Pin, task::{Context, Poll}, sync::Arc};
 
-
 macro_rules! wait {
-    (|$ctx:ident| $oci_call:expr) => {{
+    (|$this:ident, $ctx:ident| $oci_call:expr) => {{
+        let id = $this as *mut Self as usize;
+        if !$this.ctx.lock(id) {
+            $ctx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
         let res = unsafe { $oci_call };
         if res == OCI_STILL_EXECUTING {
             $ctx.waker().wake_by_ref();
             Poll::Pending
         } else {
+            $this.ctx.unlock();
             Poll::Ready(())
         }
     }};
 }
 
+/// Some OCI calls "hide" OCI_STILL_EXECUTING behind OCI_INVALID_HANDLE
+macro_rules! check_invalid_handle {
+    ($err:expr, $res:ident) => {
+        if $res == OCI_INVALID_HANDLE {
+            let mut errcode = $res;
+            let err: &OCIError = &$err;
+            unsafe {
+                OCIErrorGet(err as *const OCIError as _, 1, std::ptr::null(), &mut errcode, std::ptr::null_mut(), 0, OCI_HTYPE_ERROR);
+            }
+            -errcode
+        } else {
+            $res
+        }
+    };
+}
+
 macro_rules! wait_result {
-    (|$this:ident, $ctx:ident| $oci_call:expr) => {{
+    (|$this:ident, $err:expr, $ctx:ident| $oci_call:expr) => {{
+        let id = $this as *mut Self as usize;
+        if !$this.ctx.lock(id) {
+            $ctx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
         let res = unsafe { $oci_call };
+        let res = check_invalid_handle!($err, res);
         if res == OCI_STILL_EXECUTING {
             $ctx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci($this.err, res)))
         } else {
-            Poll::Ready(Ok(()))
+            $this.ctx.unlock();
+            if res < 0 {
+                Poll::Ready(Err(Error::oci($err, res)))
+            } else {
+                Poll::Ready(Ok(()))
+            }
         }
     }};
 }
 
 macro_rules! wait_oci_result {
-    (|$this:ident, $ctx:ident| $oci_call:expr) => {{
+    (|$this:ident, $err:expr, $ctx:ident| $oci_call:expr) => {{
+        let id = $this as *mut Self as usize;
+        if !$this.ctx.lock(id) {
+            $ctx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
         let res = unsafe { $oci_call };
+        let res = check_invalid_handle!($err, res);
         if res == OCI_STILL_EXECUTING {
             $ctx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci($this.err, res)))
         } else {
-            Poll::Ready(Ok(res))
+            $this.ctx.unlock();
+            if res < 0 {
+                Poll::Ready(Err(Error::oci($err, res)))
+            } else {
+                Poll::Ready(Ok(res))
+            }
         }
     }};
 }
 
 macro_rules! wait_val {
-    (|$this:ident, $ctx:ident, $field:ident| $oci_call:expr) => {{
+    (|$this:ident, $err:expr, $field:expr, $ctx:ident| $oci_call:expr) => {{
+        let id = $this as *mut Self as usize;
+        if !$this.ctx.lock(id) {
+            $ctx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
         let res = unsafe { $oci_call };
+        let res = check_invalid_handle!($err, res);
         if res == OCI_STILL_EXECUTING {
             $ctx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci($this.err, res)))
         } else {
-            Poll::Ready(Ok($this.$field))
+            $this.ctx.unlock();
+            if res == OCI_SUCCESS {
+                $this.ctx.unlock();
+                Poll::Ready(Ok($field))
+            } else {
+                Poll::Ready(Err(Error::oci($err, res)))
+            }
         }
     }};
 }
 
 macro_rules! wait_bool_flag {
-    (|$this:ident, $ctx:ident, $field:ident| $oci_call:expr) => {{
-        let res = unsafe { $oci_call };
+    (|$this:ident, $err:expr, $field:expr, $ctx:ident| $oci_call:expr) => {{
+        let id = $this as *mut Self as usize;
+        if !$this.ctx.lock(id) {
+            $ctx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+        let rc = unsafe { $oci_call };
+        let res = check_invalid_handle!($err, rc);
         if res == OCI_STILL_EXECUTING {
             $ctx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci($this.err, res)))
         } else {
-            Poll::Ready(Ok($this.$field != 0))
+            $this.ctx.unlock();
+            if res == OCI_SUCCESS {
+                Poll::Ready(Ok($field != 0))
+            } else {
+                Poll::Ready(Err(Error::oci($err, res)))
+            }
         }
     }};
 }
 
 
-pub(crate) struct SessionPoolDestroy {
-    pool: Handle<OCISPool>,
-    err:  Handle<OCIError>,
-    env:  Arc<Handle<OCIEnv>>,
+enum SessionReleaseSteps {
+    TransRollback,
+    SessionRelease,
 }
-
-impl SessionPoolDestroy {
-    pub(crate) fn new(pool: Handle<OCISPool>, err:  Handle<OCIError>, env: Arc<Handle<OCIEnv>>) -> Self {
-        Self { pool, err, env }
-    }
-}
-
-impl Future for SessionPoolDestroy {
-    type Output = ();
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let pool: &OCISPool = &self.pool;
-        let err:  &OCIError = &self.err;
-        wait!(|cx| OCISessionPoolDestroy(pool, err, OCI_SPD_FORCE))
-    }
-}
-
 
 pub(crate) struct SessionRelease {
-    env: Arc<Handle<OCIEnv>>,
-    err: Handle<OCIError>,
     svc: Ptr<OCISvcCtx>,
+    err: Handle<OCIError>,
+    env: Arc<Handle<OCIEnv>>,
+    step: SessionReleaseSteps,
 }
 
 impl SessionRelease {
     pub(crate) fn new(svc: Ptr<OCISvcCtx>, err: Handle<OCIError>, env: Arc<Handle<OCIEnv>>) -> Self {
-        Self { svc, err, env }
+        Self { svc, err, env, step: SessionReleaseSteps::TransRollback }
     }
 }
 
@@ -113,17 +154,33 @@ impl Future for SessionRelease {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let svc: &OCISvcCtx = &self.svc;
-        let err: &OCIError  = &self.err;
-        wait!(|cx| OCISessionRelease(svc, err, std::ptr::null(), 0, OCI_DEFAULT))
+        let this = self.get_mut();
+        let svc: &OCISvcCtx = &this.svc;
+        let err: &OCIError  = &this.err;
+        let res = match this.step {
+            SessionReleaseSteps::TransRollback  => unsafe { OCITransRollback(svc, err, OCI_DEFAULT) },
+            SessionReleaseSteps::SessionRelease => unsafe { OCISessionRelease(svc, err, std::ptr::null(), 0, OCI_DEFAULT) },
+        };
+        if res == OCI_STILL_EXECUTING {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+        match this.step {
+            SessionReleaseSteps::TransRollback => {
+                this.step = SessionReleaseSteps::SessionRelease;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            },
+            _ => Poll::Ready(())
+        }
     }
 }
 
 
 pub(crate) struct StmtRelease {
-    ctx:  Arc<SvcCtx>,
     stmt: Ptr<OCIStmt>,
     err:  Handle<OCIError>,
+    ctx:  Arc<SvcCtx>,
 }
 
 impl StmtRelease {
@@ -136,83 +193,145 @@ impl Future for StmtRelease {
     type Output = ();
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let stmt: &OCIStmt  = &self.stmt;
-        let err:  &OCIError = &self.err;
-        wait!(|cx| OCIStmtRelease(stmt, err, std::ptr::null(), 0, OCI_DEFAULT))
+        let this = self.get_mut();
+        wait!(|this, cx| OCIStmtRelease(this.stmt.get(), this.err.as_ref(), std::ptr::null(), 0, OCI_DEFAULT))
     }
 }
 
 
-pub(crate) struct Ping<'a> {
-    svc: &'a OCISvcCtx,
-    err: &'a OCIError,
+pub(crate) struct LobDrop<T> where T: DescriptorType<OCIType=OCILobLocator> {
+    loc: Descriptor<T>,
+    ctx: Arc<SvcCtx>,
+    flags: u32,
 }
 
-impl<'a> Ping<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError) -> Self {
-        Self { svc, err }
+impl<T> LobDrop<T> where T: DescriptorType<OCIType=OCILobLocator> {
+    pub(crate) fn new(ctx: Arc<SvcCtx>, loc: Descriptor<T>, flags: u32) -> Self {
+        Self { ctx, loc, flags }
     }
 }
 
-impl<'a> Future for Ping<'a> {
+macro_rules! lob_drop_step {
+    ($this:ident, $flag:ident => $op:ident) => {{
+        let svc: Ptr<OCISvcCtx> = Ptr::from($this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from($this.ctx.as_ref().as_ref());
+        let loc: &OCILobLocator = $this.loc.as_ref();
+        if $this.flags & $flag != 0 {
+            let res = unsafe { $op(svc.get(), err.get(), loc) };
+            let res = check_invalid_handle!(err, res);
+            if res != OCI_STILL_EXECUTING {
+                $this.flags &= !$flag;
+                if $this.flags == 0 {
+                    $this.ctx.unlock();
+                    return Poll::Ready(());
+                }
+            }
+        }
+    }};
+}
+
+impl<T> Future for LobDrop<T> where T: DescriptorType<OCIType=OCILobLocator> {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+
+        if this.flags == 0 {
+            return Poll::Ready(());
+        }
+
+        let id = this as *mut Self as usize;
+        if !this.ctx.lock(id) {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
+        lob_drop_step!(this, LOB_FILE_IS_OPEN => OCILobFileClose);
+        lob_drop_step!(this, LOB_IS_OPEN => OCILobClose);
+        lob_drop_step!(this, LOB_IS_TEMP => OCILobFreeTemporary);
+
+        cx.waker().wake_by_ref();
+        Poll::Pending
+    }
+}
+
+
+pub(crate) struct Ping {
+    ctx: Arc<SvcCtx>,
+}
+
+impl Ping {
+    pub(crate) fn new(ctx: Arc<SvcCtx>) -> Self {
+        Self { ctx }
+    }
+}
+
+impl Future for Ping {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCIPing(self.svc, self.err, OCI_DEFAULT))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCIPing(svc.get(), err.get(), OCI_DEFAULT))
     }
 }
 
 
-pub(crate) struct TransCommit<'a> {
-    svc: &'a OCISvcCtx,
-    err: &'a OCIError,
+pub(crate) struct TransCommit {
+    ctx: Arc<SvcCtx>,
 }
 
-impl<'a> TransCommit<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError) -> Self {
-        Self { svc, err }
+impl TransCommit {
+    pub(crate) fn new(ctx: Arc<SvcCtx>) -> Self {
+        Self { ctx }
     }
 }
 
-impl<'a> Future for TransCommit<'a> {
+impl Future for TransCommit {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCITransCommit(self.svc, self.err, OCI_DEFAULT))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCITransCommit(svc.get(), err.get(), OCI_DEFAULT))
     }
 }
 
 
-pub(crate) struct TransRollback<'a> {
-    svc: &'a OCISvcCtx,
-    err: &'a OCIError,
+pub(crate) struct TransRollback {
+    ctx: Arc<SvcCtx>,
 }
 
-impl<'a> TransRollback<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError) -> Self {
-        Self { svc, err }
+impl TransRollback {
+    pub(crate) fn new(ctx: Arc<SvcCtx>) -> Self {
+        Self { ctx }
     }
 }
 
-impl<'a> Future for TransRollback<'a> {
+impl Future for TransRollback {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCITransRollback(self.svc, self.err, OCI_DEFAULT))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCITransRollback(svc.get(), err.get(), OCI_DEFAULT))
     }
 }
 
 
 pub(crate) struct StmtPrepare<'a> {
-    svc:  &'a OCISvcCtx,
+    ctx: Arc<SvcCtx>,
     err:  &'a OCIError,
     sql:  &'a str,
     stmt: Ptr<OCIStmt>,
 }
 
 impl<'a> StmtPrepare<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, sql: &'a str) -> Self {
-        Self { svc, err, sql, stmt: Ptr::null() }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, err: &'a OCIError, sql: &'a str) -> Self {
+        Self { ctx, err, sql, stmt: Ptr::null() }
     }
 }
 
@@ -221,28 +340,29 @@ impl<'a> Future for StmtPrepare<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_val!(|this, cx, stmt|
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_val!(|this, this.err, this.stmt, cx|
             OCIStmtPrepare2(
-                this.svc, this.stmt.as_mut_ptr(), this.err, 
-                this.sql.as_ptr(), this.sql.len() as u32, 
+                svc.get(), this.stmt.as_mut_ptr(), this.err,
+                this.sql.as_ptr(), this.sql.len() as u32,
                 std::ptr::null(), 0, OCI_NTV_SYNTAX, OCI_DEFAULT
-            ) 
+            )
         )
     }
 }
 
 
 pub(crate) struct StmtExecute<'a> {
-    svc:  &'a OCISvcCtx,
+    ctx: Arc<SvcCtx>,
     err:  &'a OCIError,
     stmt: &'a OCIStmt,
     iter: u32,
 }
 
 impl<'a> StmtExecute<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, stmt: &'a OCIStmt, typ: u16) -> Self {
+    pub(crate) fn new(ctx: Arc<SvcCtx>, err: &'a OCIError, stmt: &'a OCIStmt, typ: u16) -> Self {
         let iter: u32 = if typ == OCI_STMT_SELECT { 0 } else { 1 };
-        Self { svc, err , stmt, iter}
+        Self { ctx, err, stmt, iter}
     }
 }
 
@@ -250,21 +370,24 @@ impl<'a> Future for StmtExecute<'a> {
     type Output = Result<i32>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_oci_result!( |self, cx| 
-            OCIStmtExecute(self.svc, self.stmt, self.err, self.iter, 0, std::ptr::null(), std::ptr::null(), OCI_DEFAULT)
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_oci_result!(|this, this.err, cx|
+            OCIStmtExecute(svc.get(), this.stmt, this.err, this.iter, 0, std::ptr::null(), std::ptr::null(), OCI_DEFAULT)
         )
     }
 }
 
 
 pub(crate) struct StmtFetch<'a> {
+    ctx:  Arc<SvcCtx>,
     stmt: &'a OCIStmt,
     err:  &'a OCIError,
 }
 
 impl<'a> StmtFetch<'a> {
-    pub(crate) fn new(stmt: &'a OCIStmt, err: &'a OCIError) -> Self {
-        Self { stmt, err }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, stmt: &'a OCIStmt, err: &'a OCIError) -> Self {
+        Self { ctx, stmt, err }
     }
 }
 
@@ -272,23 +395,25 @@ impl<'a> Future for StmtFetch<'a> {
     type Output = Result<i32>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_oci_result!( |self, cx|
-            OCIStmtFetch2(self.stmt, self.err, 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
+        let this = self.get_mut();
+        wait_oci_result!(|this, this.err, cx|
+            OCIStmtFetch2(this.stmt, this.err, 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
         )
     }
 }
 
 
 pub(crate) struct StmtGetNextResult<'a> {
-    stmt:       &'a OCIStmt,
-    err:        &'a OCIError,
-    cursor:     Ptr<OCIStmt>,
+    ctx:    Arc<SvcCtx>,
+    stmt:   &'a OCIStmt,
+    err:    &'a OCIError,
+    cursor: Ptr<OCIStmt>,
     stmt_type:  u32,
 }
 
 impl<'a> StmtGetNextResult<'a> {
-    pub(crate) fn new(stmt: &'a OCIStmt, err: &'a OCIError) -> Self {
-        Self { stmt, err, cursor: Ptr::null(), stmt_type: 0 }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, stmt: &'a OCIStmt, err: &'a OCIError) -> Self {
+        Self { ctx, stmt, err, cursor: Ptr::null(), stmt_type: 0 }
     }
 }
 
@@ -297,33 +422,43 @@ impl<'a> Future for StmtGetNextResult<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
+
+        let id = this as *mut Self as usize;
+        if !this.ctx.lock(id) {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
         let res = unsafe {
             OCIStmtGetNextResult(this.stmt, this.err, this.cursor.as_mut_ptr(), &mut this.stmt_type, OCI_DEFAULT)
         };
+        let res = check_invalid_handle!(this.err, res);
         if res == OCI_STILL_EXECUTING {
             cx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci(this.err, res)))
-        } else if res == OCI_NO_DATA {
-            Poll::Ready(Ok(None))
         } else {
-            Poll::Ready(Ok(Some(this.cursor)))
+            this.ctx.unlock();
+            if res < 0 {
+                Poll::Ready(Err(Error::oci(this.err, res)))
+            } else if res == OCI_NO_DATA {
+                Poll::Ready(Ok(None))
+            } else {
+                Poll::Ready(Ok(Some(this.cursor)))
+            }
         }
     }
 }
 
 
 pub(crate) struct LobIsOpen<'a> {
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
+    ctx:  Arc<SvcCtx>,
     lob:  &'a OCILobLocator,
     flag: u8,
 }
 
 impl<'a> LobIsOpen<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob, flag: 0 }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob, flag: 0 }
     }
 }
 
@@ -332,21 +467,22 @@ impl<'a> Future for LobIsOpen<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_bool_flag!(|this, cx, flag| OCILobIsOpen(this.svc, this.err, this.lob, &mut this.flag))
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_bool_flag!(|this, &err, this.flag, cx| OCILobIsOpen(svc.get(), err.get(), this.lob, &mut this.flag))
     }
 }
 
 
 pub(crate) struct LobIsTemporary<'a> {
+    ctx:  Arc<SvcCtx>,
     lob:  &'a OCILobLocator,
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
     flag: u8,
 }
 
 impl<'a> LobIsTemporary<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob, flag: 0 }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob, flag: 0 }
     }
 }
 
@@ -355,20 +491,21 @@ impl<'a> Future for LobIsTemporary<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_bool_flag!(|this, cx, flag| OCILobIsTemporary(this.svc, this.err, this.lob, &mut this.flag))
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_bool_flag!(|this, &err, this.flag, cx| OCILobIsTemporary(svc.get(), err.get(), this.lob, &mut this.flag))
     }
 }
 
 
 pub(crate) struct LobClose<'a> {
+    ctx:  Arc<SvcCtx>,
     lob:  &'a OCILobLocator,
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
 }
 
 impl<'a> LobClose<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob }
     }
 }
 
@@ -376,20 +513,45 @@ impl<'a> Future for LobClose<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobClose(self.svc, self.err, self.lob))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobClose(svc.get(), err.get(), this.lob))
+    }
+}
+
+
+pub(crate) struct LobFileClose<'a> {
+    ctx:  Arc<SvcCtx>,
+    lob:  &'a OCILobLocator,
+}
+
+impl<'a> LobFileClose<'a> {
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob }
+    }
+}
+
+impl<'a> Future for LobFileClose<'a> {
+    type Output = Result<()>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobFileClose(svc.get(), err.get(), this.lob))
     }
 }
 
 
 pub(crate) struct LobFreeTemporary<'a> {
+    ctx:  Arc<SvcCtx>,
     lob:  &'a OCILobLocator,
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
 }
 
 impl<'a> LobFreeTemporary<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob }
     }
 }
 
@@ -397,21 +559,23 @@ impl<'a> Future for LobFreeTemporary<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobFreeTemporary(self.svc, self.err, self.lob))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobFreeTemporary(svc.get(), err.get(), this.lob))
     }
 }
 
 
 pub(crate) struct LobLocatorAssign<'a> {
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
+    ctx:  Arc<SvcCtx>,
     src:  &'a OCILobLocator,
     dst:  Ptr<OCILobLocator>,
 }
 
 impl<'a> LobLocatorAssign<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, src: &'a OCILobLocator, dst: &'a OCILobLocator) -> Self {
-        Self { svc, err, src, dst: Ptr::from(dst) }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, src: &'a OCILobLocator, dst: &'a OCILobLocator) -> Self {
+        Self { ctx, src, dst: Ptr::from(dst) }
     }
 }
 
@@ -420,20 +584,21 @@ impl<'a> Future for LobLocatorAssign<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_val!(|this, cx, dst| OCILobLocatorAssign(this.svc, this.err, this.src, this.dst.as_mut_ptr()))
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_val!(|this, &err, this.dst, cx| OCILobLocatorAssign(svc.get(), err.get(), this.src, this.dst.as_mut_ptr()))
     }
 }
 
 pub(crate) struct LobGetLength<'a> {
+    ctx:  Arc<SvcCtx>,
     lob:  &'a OCILobLocator,
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
     len:  u64,
 }
 
 impl<'a> LobGetLength<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob, len: 0 }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob, len: 0 }
     }
 }
 
@@ -442,20 +607,21 @@ impl<'a> Future for LobGetLength<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_val!(|this, cx, len| OCILobGetLength2(this.svc, this.err, this.lob, &mut this.len))
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_val!(|this, &err, this.len, cx| OCILobGetLength2(svc.get(), err.get(), this.lob, &mut this.len))
     }
 }
 
 pub(crate) struct LobOpen<'a> {
+    ctx:  Arc<SvcCtx>,
     lob:  &'a OCILobLocator,
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
     mode: u8,
 }
 
 impl<'a> LobOpen<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator, mode: u8) -> Self {
-        Self { lob, svc, err, mode }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator, mode: u8) -> Self {
+        Self { ctx, lob, mode }
     }
 }
 
@@ -463,15 +629,17 @@ impl<'a> Future for LobOpen<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobOpen(self.svc, self.err, self.lob, self.mode))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobOpen(svc.get(), err.get(), this.lob, this.mode))
     }
 }
 
 pub(crate) struct LobRead<'a> {
-    lob:        &'a OCILobLocator,
-    svc:        &'a OCISvcCtx,
-    err:        &'a OCIError,
-    buf:        &'a mut Vec<u8>,
+    ctx:  Arc<SvcCtx>,
+    lob:  &'a OCILobLocator,
+    buf:  &'a mut Vec<u8>,
     buf_ptr:    *mut u8,
     buf_len:    u64,
     offset:     u64,
@@ -482,11 +650,11 @@ pub(crate) struct LobRead<'a> {
 }
 
 impl<'a> LobRead<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator, piece: u8, piece_size: usize, offset: usize, byte_len: usize, char_len: usize, char_form: u8, buf: &'a mut Vec<u8>) -> Self {
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator, piece: u8, piece_size: usize, offset: usize, byte_len: usize, char_len: usize, char_form: u8, buf: &'a mut Vec<u8>) -> Self {
         let buf_ptr = unsafe { buf.as_mut_ptr().add(buf.len()) };
         let buf_len = std::cmp::min(piece_size, buf.capacity() - buf.len()) as u64;
-        Self { 
-            lob, svc, err, buf, buf_ptr, buf_len, offset: (offset + 1) as u64, num_bytes: byte_len as u64, num_chars: char_len as u64, char_form, piece,
+        Self {
+            ctx, lob, buf, buf_ptr, buf_len, offset: (offset + 1) as u64, num_bytes: byte_len as u64, num_chars: char_len as u64, char_form, piece,
         }
     }
 }
@@ -496,32 +664,44 @@ impl<'a> Future for LobRead<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
+
+        let id = this as *mut Self as usize;
+        if !this.ctx.lock(id) {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
         let res = unsafe {
             OCILobRead2(
-                this.svc, this.err, this.lob,
+                svc.get(), err.get(), this.lob,
                 &mut this.num_bytes, &mut this.num_chars, this.offset,
                 this.buf_ptr, this.buf_len, this.piece,
                 std::ptr::null_mut(), std::ptr::null(),
                 AL32UTF8, this.char_form
             )
-        };        
+        };
+        let res = check_invalid_handle!(err, res);
         if res == OCI_STILL_EXECUTING {
             cx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci(this.err, res)))
         } else {
-            Poll::Ready(Ok((res, this.num_bytes as usize, this.num_chars as usize)))
+            this.ctx.unlock();
+            if res < 0 {
+                Poll::Ready(Err(Error::oci(&err, res)))
+            } else {
+                Poll::Ready(Ok((res, this.num_bytes as usize, this.num_chars as usize)))
+            }
         }
     }
 }
 
 
 pub(crate) struct LobWrite<'a> {
-    lob:        &'a OCILobLocator,
-    svc:        &'a OCISvcCtx,
-    err:        &'a OCIError,
-    data:       &'a [u8],
+    ctx:  Arc<SvcCtx>,
+    lob:  &'a OCILobLocator,
+    data: &'a [u8],
     offset:     u64,
     num_bytes:  u64,
     num_chars:  u64,
@@ -530,9 +710,9 @@ pub(crate) struct LobWrite<'a> {
 }
 
 impl<'a> LobWrite<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator, piece: u8, char_form: u8, offset: usize, data: &'a [u8]) -> Self {
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator, piece: u8, char_form: u8, offset: usize, data: &'a [u8]) -> Self {
         let num_bytes = if piece == OCI_ONE_PIECE { data.len() as u64 } else { 0u64 };
-        Self { lob, svc, err, data, offset: (offset + 1) as u64, char_form, piece, num_chars: 0, num_bytes }
+        Self { ctx, lob, data, offset: (offset + 1) as u64, char_form, piece, num_chars: 0, num_bytes }
     }
 }
 
@@ -541,31 +721,43 @@ impl<'a> Future for LobWrite<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
+
+        let id = this as *mut Self as usize;
+        if !this.ctx.lock(id) {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
         let res = unsafe {
             OCILobWrite2(
-                this.svc, this.err, this.lob,
+                svc.get(), err.get(), this.lob,
                 &mut this.num_bytes, &mut this.num_chars, this.offset,
                 this.data.as_ptr(), this.data.len() as u64, this.piece,
                 std::ptr::null(), std::ptr::null(),
                 AL32UTF8, this.char_form
             )
-        };        
+        };
+        let res = check_invalid_handle!(err, res);
         if res == OCI_STILL_EXECUTING {
             cx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci(this.err, res)))
         } else {
-            Poll::Ready(Ok((this.num_bytes as usize, this.num_chars as usize)))
+            this.ctx.unlock();
+            if res < 0 {
+                Poll::Ready(Err(Error::oci(&err, res)))
+            } else {
+                Poll::Ready(Ok((this.num_bytes as usize, this.num_chars as usize)))
+            }
         }
     }
 }
 
 pub(crate) struct LobWriteAppend<'a> {
-    lob:        &'a OCILobLocator,
-    svc:        &'a OCISvcCtx,
-    err:        &'a OCIError,
-    data:       &'a [u8],
+    ctx:  Arc<SvcCtx>,
+    lob:  &'a OCILobLocator,
+    data: &'a [u8],
     num_bytes:  u64,
     num_chars:  u64,
     char_form:  u8,
@@ -573,9 +765,9 @@ pub(crate) struct LobWriteAppend<'a> {
 }
 
 impl<'a> LobWriteAppend<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator, piece: u8, char_form: u8, data: &'a [u8]) -> Self {
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator, piece: u8, char_form: u8, data: &'a [u8]) -> Self {
         let num_bytes = if piece == OCI_ONE_PIECE { data.len() as u64 } else { 0u64 };
-        Self { lob, svc, err, data, char_form, piece, num_chars: 0, num_bytes }
+        Self { ctx, lob, data, char_form, piece, num_chars: 0, num_bytes }
     }
 }
 
@@ -584,37 +776,49 @@ impl<'a> Future for LobWriteAppend<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
+
+        let id = this as *mut Self as usize;
+        if !this.ctx.lock(id) {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
         let res = unsafe {
             OCILobWriteAppend2(
-                this.svc, this.err, this.lob,
+                svc.get(), err.get(), this.lob,
                 &mut this.num_bytes, &mut this.num_chars,
                 this.data.as_ptr(), this.data.len() as u64, this.piece,
                 std::ptr::null(), std::ptr::null(),
                 AL32UTF8, this.char_form
             )
-        };        
+        };
+        let res = check_invalid_handle!(err, res);
         if res == OCI_STILL_EXECUTING {
             cx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci(this.err, res)))
         } else {
-            Poll::Ready(Ok((this.num_bytes as usize, this.num_chars as usize)))
+            this.ctx.unlock();
+            if res < 0 {
+                Poll::Ready(Err(Error::oci(&err, res)))
+            } else {
+                Poll::Ready(Ok((this.num_bytes as usize, this.num_chars as usize)))
+            }
         }
     }
 }
 
 
 pub(crate) struct LobAppend<'a> {
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
-    lob:  &'a OCILobLocator,
+    ctx:  Arc<SvcCtx>,
+    dst:  &'a OCILobLocator,
     src:  &'a OCILobLocator,
 }
 
 impl<'a> LobAppend<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator, src: &'a OCILobLocator) -> Self {
-        Self { lob, src, svc, err }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, dst: &'a OCILobLocator, src: &'a OCILobLocator) -> Self {
+        Self { ctx, dst, src }
     }
 }
 
@@ -622,14 +826,16 @@ impl<'a> Future for LobAppend<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobAppend(self.svc, self.err, self.lob, self.src))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobAppend(svc.get(), err.get(), this.dst, this.src))
     }
 }
 
 
 pub(crate) struct LobCopy<'a> {
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
+    ctx:  Arc<SvcCtx>,
     dst:  &'a OCILobLocator,
     src:  &'a OCILobLocator,
     dst_off: u64,
@@ -638,8 +844,8 @@ pub(crate) struct LobCopy<'a> {
 }
 
 impl<'a> LobCopy<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, dst: &'a OCILobLocator, dst_off: usize, src: &'a OCILobLocator, src_off: usize, amount: usize) -> Self {
-        Self { svc, err, dst, dst_off: (dst_off + 1) as u64, src, src_off: (src_off + 1) as u64, amount: amount as u64 }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, dst: &'a OCILobLocator, dst_off: usize, src: &'a OCILobLocator, src_off: usize, amount: usize) -> Self {
+        Self { ctx, dst, dst_off: (dst_off + 1) as u64, src, src_off: (src_off + 1) as u64, amount: amount as u64 }
     }
 }
 
@@ -647,14 +853,16 @@ impl<'a> Future for LobCopy<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobCopy2(self.svc, self.err, self.dst, self.src, self.amount, self.dst_off, self.src_off))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobCopy2(svc.get(), err.get(), this.dst, this.src, this.amount, this.dst_off, this.src_off))
     }
 }
 
 
 pub(crate) struct LobLoadFromFile<'a> {
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
+    ctx:  Arc<SvcCtx>,
     dst:  &'a OCILobLocator,
     src:  &'a OCILobLocator,
     dst_off: u64,
@@ -663,8 +871,8 @@ pub(crate) struct LobLoadFromFile<'a> {
 }
 
 impl<'a> LobLoadFromFile<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, dst: &'a OCILobLocator, dst_off: usize, src: &'a OCILobLocator, src_off: usize, amount: usize) -> Self {
-        Self { svc, err, dst, dst_off: (dst_off + 1) as u64 , src, src_off: (src_off + 1) as u64, amount: amount as u64}
+    pub(crate) fn new(ctx: Arc<SvcCtx>, dst: &'a OCILobLocator, dst_off: usize, src: &'a OCILobLocator, src_off: usize, amount: usize) -> Self {
+        Self { ctx, dst, dst_off: (dst_off + 1) as u64 , src, src_off: (src_off + 1) as u64, amount: amount as u64}
     }
 }
 
@@ -672,22 +880,24 @@ impl<'a> Future for LobLoadFromFile<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobLoadFromFile2(self.svc, self.err, self.dst, self.src, self.amount, self.dst_off, self.src_off))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobLoadFromFile2(svc.get(), err.get(), this.dst, this.src, this.amount, this.dst_off, this.src_off))
     }
 }
 
 
 pub(crate) struct LobErase<'a> {
-    svc: &'a OCISvcCtx,
-    err: &'a OCIError,
+    ctx:  Arc<SvcCtx>,
     lob: &'a OCILobLocator,
     off: u64,
     len: u64,
 }
 
 impl<'a> LobErase<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator, off: usize, len: usize) -> Self {
-        Self { lob, off: (off + 1) as u64, len: len as u64, svc, err }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator, off: usize, len: usize) -> Self {
+        Self { ctx, lob, off: (off + 1) as u64, len: len as u64 }
     }
 }
 
@@ -696,21 +906,22 @@ impl<'a> Future for LobErase<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_val!(|this, cx, len| OCILobErase2(this.svc, this.err, this.lob, &mut this.len, this.off))
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_val!(|this, &err, this.len, cx| OCILobErase2(svc.get(), err.get(), this.lob, &mut this.len, this.off))
     }
 }
 
 
 pub(crate) struct LobGetChunkSize<'a> {
+    ctx: Arc<SvcCtx>,
     lob: &'a OCILobLocator,
-    svc: &'a OCISvcCtx,
-    err: &'a OCIError,
     len: u32,
 }
 
 impl<'a> LobGetChunkSize<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob, len: 0 }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob, len: 0 }
     }
 }
 
@@ -719,24 +930,24 @@ impl<'a> Future for LobGetChunkSize<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_val!(|this, cx, len| OCILobGetChunkSize(this.svc, this.err, this.lob, &mut this.len))
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_val!(|this, &err, this.len, cx| OCILobGetChunkSize(svc.get(), err.get(), this.lob, &mut this.len))
     }
 }
 
 
 pub(crate) struct LobGetContentType<'a> {
-    svc: &'a OCISvcCtx,
-    err: &'a OCIError,
-    env: &'a OCIEnv,
+    ctx: Arc<SvcCtx>,
     lob: &'a OCILobLocator,
     buf: Vec<u8>,
     len: u32,
 }
 
 impl<'a> LobGetContentType<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, env: &'a OCIEnv, lob: &'a OCILobLocator) -> Self {
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
         let buf = Vec::with_capacity(OCI_LOB_CONTENTTYPE_MAXSIZE);
-        Self { lob, env, svc, err, len: buf.capacity() as u32, buf }
+        Self { ctx, lob, len: buf.capacity() as u32, buf }
     }
 }
 
@@ -745,36 +956,48 @@ impl<'a> Future for LobGetContentType<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
+
+        let id = this as *mut Self as usize;
+        if !this.ctx.lock(id) {
+            cx.waker().wake_by_ref();
+            return Poll::Pending;
+        }
+
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        let env: Ptr<OCIEnv>    = Ptr::from(this.ctx.as_ref().as_ref());
         let res = unsafe {
-            OCILobGetContentType(this.env, this.svc, this.err, this.lob, this.buf.as_mut_ptr(), &mut this.len, 0)
+            OCILobGetContentType(env.get(), svc.get(), err.get(), this.lob, this.buf.as_mut_ptr(), &mut this.len, 0)
         };
+        let res = check_invalid_handle!(err, res);
         if res == OCI_STILL_EXECUTING {
             cx.waker().wake_by_ref();
             Poll::Pending
-        } else if res < 0 {
-            Poll::Ready(Err(Error::oci(this.err, res)))
         } else {
-            let txt = unsafe { 
-                this.buf.set_len(this.len as usize);
-                String::from_utf8_unchecked(this.buf.as_slice().to_vec())
-            };
-            Poll::Ready(Ok(txt))
+            this.ctx.unlock();
+            if res < 0 {
+                Poll::Ready(Err(Error::oci(&err, res)))
+            } else {
+                let txt = unsafe {
+                    this.buf.set_len(this.len as usize);
+                    String::from_utf8_unchecked(this.buf.as_slice().to_vec())
+                };
+                Poll::Ready(Ok(txt))
+            }
         }
     }
 }
 
 
 pub(crate) struct LobSetContentType<'a> {
-    svc: &'a OCISvcCtx,
-    err: &'a OCIError,
-    env: &'a OCIEnv,
+    ctx: Arc<SvcCtx>,
     lob: &'a OCILobLocator,
     ctx_type: &'a str,
 }
 
 impl<'a> LobSetContentType<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, env: &'a OCIEnv, lob: &'a OCILobLocator, ctx_type: &'a str) -> Self {
-        Self { lob, ctx_type, env, svc, err }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator, ctx_type: &'a str) -> Self {
+        Self { ctx, lob, ctx_type }
     }
 }
 
@@ -782,21 +1005,24 @@ impl<'a> Future for LobSetContentType<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobSetContentType(self.env, self.svc, self.err, self.lob, self.ctx_type.as_ptr(), self.ctx_type.len() as u32, 0))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        let env: Ptr<OCIEnv>    = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobSetContentType(env.get(), svc.get(), err.get(), this.lob, this.ctx_type.as_ptr(), this.ctx_type.len() as u32, 0))
     }
 }
 
 
 pub(crate) struct LobTrim<'a> {
-    svc: &'a OCISvcCtx,
-    err: &'a OCIError,
+    ctx: Arc<SvcCtx>,
     lob: &'a OCILobLocator,
     len: u64,
 }
 
 impl<'a> LobTrim<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator, len: usize) -> Self {
-        Self { lob, len: len as u64, svc, err }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator, len: usize) -> Self {
+        Self { ctx, lob, len: len as u64 }
     }
 }
 
@@ -804,23 +1030,25 @@ impl<'a> Future for LobTrim<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobTrim2(self.svc, self.err, self.lob, self.len))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobTrim2(svc.get(), err.get(), this.lob, this.len))
     }
 }
 
 
 pub(crate) struct LobCreateTemporary<'a> {
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
-    lob:  &'a OCILobLocator,
+    ctx: Arc<SvcCtx>,
+    lob: &'a OCILobLocator,
     lobtype: u8,
     csform:  u8,
     cache:   u8,
 }
 
 impl<'a> LobCreateTemporary<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator, lobtype: u8, csform: u8, cache: u8) -> Self {
-        Self { svc, err, lob, lobtype, csform, cache}
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator, lobtype: u8, csform: u8, cache: u8) -> Self {
+        Self { ctx, lob, lobtype, csform, cache}
     }
 }
 
@@ -828,26 +1056,25 @@ impl<'a> Future for LobCreateTemporary<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx|
-            OCILobCreateTemporary(
-                self.svc, self.err, self.lob,
-                OCI_DEFAULT as u16, self.csform, self.lobtype, self.cache, OCI_DURATION_SESSION
-            )
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx|
+            OCILobCreateTemporary(svc.get(), err.get(), this.lob, OCI_DEFAULT as u16, this.csform, this.lobtype, this.cache, OCI_DURATION_SESSION)
         )
     }
 }
 
 
 pub(crate) struct LobFileExists<'a> {
-    lob:  &'a OCILobLocator,
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
+    ctx: Arc<SvcCtx>,
+    lob: &'a OCILobLocator,
     flag: u8,
 }
 
 impl<'a> LobFileExists<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob, flag: 0 }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob, flag: 0 }
     }
 }
 
@@ -856,21 +1083,22 @@ impl<'a> Future for LobFileExists<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_bool_flag!(|this, cx, flag| OCILobFileExists(this.svc, this.err, this.lob, &mut this.flag))
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_bool_flag!(|this, &err, this.flag, cx| OCILobFileExists(svc.get(), err.get(), this.lob, &mut this.flag))
     }
 }
 
 
 pub(crate) struct LobFileIsOpen<'a> {
+    ctx:  Arc<SvcCtx>,
     lob:  &'a OCILobLocator,
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
     flag: u8,
 }
 
 impl<'a> LobFileIsOpen<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob, flag: 0 }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob, flag: 0 }
     }
 }
 
@@ -879,20 +1107,21 @@ impl<'a> Future for LobFileIsOpen<'a> {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.get_mut();
-        wait_bool_flag!(|this, cx, flag| OCILobFileIsOpen(this.svc, this.err, this.lob, &mut this.flag))
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_bool_flag!(|this, &err, this.flag, cx| OCILobFileIsOpen(svc.get(), err.get(), this.lob, &mut this.flag))
     }
 }
 
 
 pub(crate) struct LobFileOpen<'a> {
-    lob:  &'a OCILobLocator,
-    svc:  &'a OCISvcCtx,
-    err:  &'a OCIError,
+    ctx: Arc<SvcCtx>,
+    lob: &'a OCILobLocator,
 }
 
 impl<'a> LobFileOpen<'a> {
-    pub(crate) fn new(svc: &'a OCISvcCtx, err: &'a OCIError, lob: &'a OCILobLocator) -> Self {
-        Self { svc, err, lob }
+    pub(crate) fn new(ctx: Arc<SvcCtx>, lob: &'a OCILobLocator) -> Self {
+        Self { ctx, lob }
     }
 }
 
@@ -900,6 +1129,9 @@ impl<'a> Future for LobFileOpen<'a> {
     type Output = Result<()>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        wait_result!(|self, cx| OCILobFileOpen(self.svc, self.err, self.lob, OCI_FILE_READONLY))
+        let this = self.get_mut();
+        let svc: Ptr<OCISvcCtx> = Ptr::from(this.ctx.as_ref().as_ref());
+        let err: Ptr<OCIError>  = Ptr::from(this.ctx.as_ref().as_ref());
+        wait_result!(|this, &err, cx| OCILobFileOpen(svc.get(), err.get(), this.lob, OCI_FILE_READONLY))
     }
 }

@@ -94,11 +94,11 @@ impl CursorSource<'_> {
     }
 }
 
-/// Cursors - implicit results and REF CURSOR - from an executed PL/SQL statement
+/// `REF CURSOR`s or implicit results (from `DBMS_SQL.RETURN_RESULT`) of an executed PL/SQL statement.
 pub struct Cursor<'a> {
-    source: CursorSource<'a>,
-    cursor: RefCursor,
     cols:   OnceCell<RwLock<Columns>>,
+    cursor: RefCursor,
+    source: CursorSource<'a>,
     max_long: u32,
 }
 
@@ -259,7 +259,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
+        # sibyl::block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -415,7 +415,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
+        # sibyl::block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -443,8 +443,16 @@ impl<'a> Cursor<'a> {
     }
 
     /**
-        Returns `pos` column meta data handler. `pos` is 0-based. Returns None if
-        `pos` is greater than the number of columns in the query or if the prepared
+        Returns meta data of the specified column.
+        
+        # Parameters
+        
+        - `pos` - 0-based column index
+        
+        # Returns
+        
+        - Column metadata or
+        - None if `pos` is greater than the number of columns in the query or if the prepared
         statement is not a SELECT and has no columns.
 
         # Example
@@ -487,7 +495,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
+        # sibyl::block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -579,7 +587,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
+        # sibyl::block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -652,7 +660,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
+        # sibyl::block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -745,7 +753,7 @@ impl<'a> Cursor<'a> {
         # }
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
-        # sibyl::current_thread_block_on(async {
+        # sibyl::block_on(async {
         # let oracle = sibyl::env()?;
         # let dbname = std::env::var("DBNAME").expect("database name");
         # let dbuser = std::env::var("DBUSER").expect("user name");

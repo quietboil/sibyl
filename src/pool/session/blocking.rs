@@ -47,11 +47,10 @@ impl<'a> SessionPool<'a> {
 
         ```
         use sibyl::{Environment, Connection, Date, Result};
+        use once_cell::sync::OnceCell;
+        use std::{env, thread, sync::Arc};
 
         fn main() -> Result<()> {
-            use std::{env, thread, sync::Arc};
-            use once_cell::sync::OnceCell;
-
             static ORACLE : OnceCell<Environment> = OnceCell::new();
             let oracle = ORACLE.get_or_try_init(|| {
                 Environment::new()

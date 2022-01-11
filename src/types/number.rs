@@ -143,17 +143,19 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::zero(&env)?;
+        let num = Number::zero(&env);
 
         assert!(num.is_zero()?);
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn zero(ctx: &'a dyn Ctx) -> Result<Self> {
+    pub fn zero(ctx: &'a dyn Ctx) -> Self {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        oci::number_set_zero(ctx.as_ref(), num.as_mut_ptr())?;
+        unsafe {
+            OCINumberSetZero(ctx.as_ref(), num.as_mut_ptr());
+        }
         let num = unsafe { num.assume_init() };
-        Ok(Self { ctx, num })
+        Self { ctx, num }
     }
 
     /**
@@ -164,17 +166,19 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
 
         assert_eq!(num.to_string("TM")?, "3.1415926535897932384626433832795028842");
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn pi(ctx: &'a dyn Ctx) -> Result<Self> {
+    pub fn pi(ctx: &'a dyn Ctx) -> Self {
         let mut num = mem::MaybeUninit::<OCINumber>::uninit();
-        oci::number_set_pi(ctx.as_ref(), num.as_mut_ptr())?;
+        unsafe {
+            OCINumberSetPi(ctx.as_ref(), num.as_mut_ptr());
+        }
         let num = unsafe { num.assume_init() };
-        Ok(Self { ctx, num })
+        Self { ctx, num }
     }
 
     /**
@@ -275,7 +279,7 @@ impl<'a> Number<'a> {
         let env = oracle::env()?;
 
         let src = Number::from_int(33550336, &env)?;
-        let mut dst = Number::zero(&env)?;
+        let mut dst = Number::zero(&env);
         assert_eq!(dst.to_int::<i32>()?, 0);
 
         dst.assign(&src)?;
@@ -314,7 +318,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let val = num.to_int::<i32>()?;
 
         assert_eq!(val, 3);
@@ -333,7 +337,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let val = num.to_real::<f64>()?;
 
         assert!(3.14159265358978 < val && val < 3.14159265358980);
@@ -352,7 +356,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let mut num = Number::zero(&env)?;
+        let mut num = Number::zero(&env);
 
         assert!(num.is_zero()?);
 
@@ -374,11 +378,11 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::zero(&env)?;
+        let num = Number::zero(&env);
 
         assert!(num.is_int()?);
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
 
         assert!(!num.is_int()?);
         # Ok::<(),oracle::Error>(())
@@ -400,7 +404,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let mut num = Number::zero(&env)?;
+        let mut num = Number::zero(&env);
         num.inc()?;
 
         assert_eq!(num.to_int::<i32>()?, 1);
@@ -451,7 +455,7 @@ impl<'a> Number<'a> {
 
         assert_eq!(num.sign()?, Ordering::Less);
 
-        let num = Number::zero(&env)?;
+        let num = Number::zero(&env);
 
         assert_eq!(num.sign()?, Ordering::Equal);
         # Ok::<(),oracle::Error>(())
@@ -479,7 +483,7 @@ impl<'a> Number<'a> {
         use std::cmp::Ordering;
         let env = oracle::env()?;
 
-        let pi = Number::pi(&env)?;
+        let pi = Number::pi(&env);
         let e = Number::from_real(2.71828182845905, &env)?;
 
         assert_eq!(pi.compare(&e)?, Ordering::Greater);
@@ -666,7 +670,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let res = num.trunc(7)?;
         assert_eq!(res.to_string("TM")?, "3.1415926");
 
@@ -692,7 +696,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let res = num.round(7)?;
 
         assert_eq!(res.to_string("TM")?, "3.1415927");
@@ -714,7 +718,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let res = num.prec(10)?;
 
         assert_eq!(res.to_string("TM")?, "3.141592654");
@@ -771,7 +775,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let res = num.ceil()?;
 
         assert!(res.is_int()?);
@@ -791,7 +795,7 @@ impl<'a> Number<'a> {
         use sibyl::{ self as oracle, Number };
         let env = oracle::env()?;
 
-        let num = Number::pi(&env)?;
+        let num = Number::pi(&env);
         let res = num.floor()?;
 
         assert!(res.is_int()?);
@@ -1084,7 +1088,7 @@ impl<'a> Number<'a> {
         let ctx = self.ctx;
         let mut res = mem::MaybeUninit::<OCINumber>::uninit();
         oci::number_log(ctx.as_ref(), &num.num, &self.num, res.as_mut_ptr())?;
-        let num = unsafe { res.assume_init() }; 
+        let num = unsafe { res.assume_init() };
         Ok(Number {num, ctx})
     }
 

@@ -8,7 +8,7 @@
     SQL in this example finds the first person that
     was hired after the New Year of 2005.
 
-    Note that `current_thread_block_on` used in nonblocking version of this example
+    Note that `block_on` used in nonblocking version of this example
     abstracts `block_on` for various executors and is intended to execute async tests
     and examples.
 */
@@ -65,7 +65,7 @@ fn main() -> oracle::Result<()> {
 
 #[cfg(feature="nonblocking")]
 fn main() -> oracle::Result<()> {
-    sibyl::current_thread_block_on(async {
+    sibyl::block_on(async {
         let oracle = oracle::env()?;
 
         let dbname = std::env::var("DBNAME").expect("database name");

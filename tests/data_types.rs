@@ -817,7 +817,7 @@ mod nonblocking {
 
     #[test]
     fn character_datatypes() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -935,7 +935,7 @@ mod nonblocking {
 
     #[test]
     fn datetime_datatypes() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use std::cmp::Ordering::Equal;
             use once_cell::sync::OnceCell;
 
@@ -1076,7 +1076,7 @@ mod nonblocking {
 
     #[test]
     fn long_and_raw_datatypes() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -1140,7 +1140,7 @@ mod nonblocking {
 
     #[test]
     fn long_raw_datatype() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -1193,7 +1193,7 @@ mod nonblocking {
 
     #[test]
     fn numeric_datatypes() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use std::cmp::Ordering::Equal;
             use once_cell::sync::OnceCell;
 
@@ -1267,7 +1267,7 @@ mod nonblocking {
 
     #[test]
     fn rowid_datatype() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -1318,7 +1318,7 @@ mod nonblocking {
 
     #[test]
     fn ref_cursor() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use std::cmp::Ordering::Equal;
             use once_cell::sync::OnceCell;
 
@@ -1421,7 +1421,7 @@ mod nonblocking {
 
     #[test]
     fn ref_cursor_result() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use std::cmp::Ordering::Equal;
             use once_cell::sync::OnceCell;
 
@@ -1529,7 +1529,7 @@ mod nonblocking {
 
     #[test]
     fn ref_cursor_column() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();
@@ -1585,7 +1585,7 @@ mod nonblocking {
 
     #[test]
     fn large_object_datatypes() -> Result<()> {
-        sibyl::current_thread_block_on(async {
+        block_on(async {
             use once_cell::sync::OnceCell;
 
             static ORACLE : OnceCell<Environment> = OnceCell::new();

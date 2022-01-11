@@ -2,7 +2,7 @@
 
 use std::sync::atomic::Ordering;
 
-use crate::{Result, Error, Rows, Row, oci::{self, *}};
+use crate::{Result, Error, Rows, Row, oci::*};
 
 impl<'a> Rows<'a> {
     /**
@@ -11,7 +11,7 @@ impl<'a> Rows<'a> {
     # Example
 
     ```
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -48,11 +48,13 @@ impl<'a> Rows<'a> {
     ```
     */
     pub async fn next(&'a self) -> Result<Option<Row<'a>>> {
-        if self.last_result.load(Ordering::Relaxed) == OCI_NO_DATA {
+        if self.last_result.load(Ordering::Acquire) == OCI_NO_DATA {
             Ok( None )
         } else {
-            let res = oci::futures::StmtFetch::new(self.rset.as_ref(), self.rset.as_ref()).await?;
-            self.last_result.store(res, Ordering::Relaxed);
+            let stmt: &OCIStmt  = self.rset.as_ref();
+            let err:  &OCIError = self.rset.as_ref();
+            let res = futures::StmtFetch::new(self.rset.conn().get_svc(), stmt, err).await?;
+            self.last_result.store(res, Ordering::Release);
             match res {
                 OCI_NO_DATA => Ok( None ),
                 OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::new(self)) ),

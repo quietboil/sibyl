@@ -26,7 +26,7 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{Result, conn::SvcCtx, oci::*, Connection, types::Ctx};
 #[cfg(feature="nonblocking")]
-use crate::{oci, task};
+use crate::task;
 
 use std::sync::Arc;
 
@@ -52,11 +52,11 @@ impl Position for &str {
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
     conn:     &'a Connection<'a>,
-    svc:      Arc<SvcCtx>,
     stmt:     Ptr<OCIStmt>,
     params:   Option<RwLock<Params>>,
     cols:     OnceCell<RwLock<Columns>>,
     err:      Handle<OCIError>,
+    svc:      Arc<SvcCtx>,
     max_long: u32,
 }
 
@@ -74,7 +74,7 @@ impl Drop for Statement<'_> {
             stmt.swap(&mut self.stmt);
             let err = Handle::take_over(&mut self.err);
             let svc = self.svc.clone();
-            task::spawn(oci::futures::StmtRelease::new(stmt, err, svc));
+            task::spawn(futures::StmtRelease::new(stmt, err, svc));
         }
     }
 }
@@ -161,7 +161,7 @@ impl<'a> Statement<'a> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -243,7 +243,7 @@ impl<'a> Statement<'a> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -318,7 +318,7 @@ impl<'a> Statement<'a> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -386,7 +386,7 @@ impl<'a> Statement<'a> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -469,7 +469,7 @@ impl<'a> Statement<'a> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -544,7 +544,7 @@ impl<'a> Statement<'a> {
     # }
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
-    # sibyl::current_thread_block_on(async {
+    # sibyl::block_on(async {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
