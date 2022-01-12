@@ -250,23 +250,17 @@ mod blocking {
         let mut start_index = 0usize;
         let mut end_index = chunk_size;
         let written = lob.write_first(0, &data[start_index..end_index])?;
-        // let res = lob.write_first(0, &data[start_index..end_index]); println!("write_first={:?}", res); let written = res.unwrap();
-
         assert!(written > 0, "first written chunk is not empty");
         let mut total_written = written;
         start_index += written;
         end_index += written;
         while end_index < file_len {
             let written = lob.write_next(&data[start_index..end_index])?;
-            // let res = lob.write_next(&data[start_index..end_index]); println!("write_next={:?}", res); let written = res.unwrap();
-
             start_index += written;
             end_index += written;
             total_written += written;
         }
         let written = lob.write_last(&data[start_index..])?;
-        // let res = lob.write_last(&data[start_index..]); println!("write_last={:?}", res); let written = res.unwrap();
-
         total_written += written;
         lob.close()?;
         assert_eq!(total_written, file_len);
