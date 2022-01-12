@@ -47,9 +47,9 @@ fn example() -> Result<()> {
             let rows = stmt.query(())?;
             if let Some( row ) = rows.next()? {
                 let first_name : Option<&str> = row.get(0)?;
-                let last_name : &str = row.get(1)?.unwrap();
+                let last_name : &str = row.get_not_null(1)?;
                 let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-                let hire_date : Date = row.get(2)?.unwrap();
+                let hire_date : Date = row.get_not_null(2)?;
                 let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
                 Ok(Some((name, hire_date)))
@@ -107,9 +107,9 @@ fn example() -> Result<()> {
                 let rows = stmt.query(()).await?;
                 if let Some( row ) = rows.next().await? {
                     let first_name : Option<&str> = row.get(0)?;
-                    let last_name : &str = row.get(1)?.unwrap();
+                    let last_name : &str = row.get_not_null(1)?;
                     let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-                    let hire_date : Date = row.get(2)?.unwrap();
+                    let hire_date : Date = row.get_not_null(2)?;
                     let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
                     Ok::<_,Error>(Some((name, hire_date)))

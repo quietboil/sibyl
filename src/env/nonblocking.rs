@@ -73,7 +73,7 @@ impl Environment {
     ").await?;
     let rows = stmt.query(()).await?;
     let row = rows.next().await?.unwrap();
-    let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
+    let client_driver : &str = row.get_not_null(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```

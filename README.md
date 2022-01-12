@@ -1,6 +1,6 @@
 # Sibyl
 
-Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databases.
+Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databases. Sibyl supports both sync (blocking) and async (nonblocking) API.
 
 [![crates.io](https://img.shields.io/crates/v/sibyl)](https://crates.io/crates/sibyl)
 [![Documentation](https://docs.rs/sibyl/badge.svg)](https://docs.rs/sibyl)
@@ -32,13 +32,23 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
     let rows = stmt.query(&date)?;
+
+    // The SELECT above will return either 1 or 0 rows, thus `if let` is sufficient.
+    // When more than one row is expected, `while let` is used to process rows.
     if let Some( row ) = rows.next()? {
         let first_name : Option<&str> = row.get("FIRST_NAME")?;
-        let last_name : &str = row.get("LAST_NAME")?.unwrap();
+        let last_name  : &str         = row.get_not_null("LAST_NAME")?;
+        let hire_date  : oracle::Date = row.get_not_null("HIRE_DATE")?;
+
+        // Note that the type of `last_name` is `&str`. Similarly, `first_name` is
+        // `Option<&str>`. This makes them borrow directly from the internal row
+        // buffer. This also restricts their lifetime to the lifetime of the `row`.
+        // If the returned value is intended to be used beyond the lifetime of the
+        // current row it should be retrieved as a `String`.
+
         let name = first_name.map_or(last_name.to_string(),
             |first_name| format!("{}, {}", last_name, first_name)
         );
-        let hire_date : oracle::Date = row.get("HIRE_DATE")?.unwrap();
         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
         println!("{} was hired on {}", name, hire_date);
@@ -76,11 +86,12 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
     let rows = stmt.query(&date).await?;
     if let Some( row ) = rows.next().await? {
         let first_name : Option<&str> = row.get("FIRST_NAME")?;
-        let last_name : &str = row.get("LAST_NAME")?.unwrap();
+        let last_name  : &str         = row.get_not_null("LAST_NAME")?;
+        let hire_date  : oracle::Date = row.get_not_null("HIRE_DATE")?;
+
         let name = first_name.map_or(last_name.to_string(),
             |first_name| format!("{}, {}", last_name, first_name)
         );
-        let hire_date : oracle::Date = row.get("HIRE_DATE")?.unwrap();
         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
         println!("{} was hired on {}", name, hire_date);
@@ -250,8 +261,8 @@ let stmt = session.prepare("
 ")?;
 let rows = stmt.query(103)?;
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get(0)?.unwrap();
-    let last_name : &str  = row.get(1)?.unwrap();
+    let employee_id : u32 = row.get_not_null(0)?;
+    let last_name : &str  = row.get_not_null(1)?;
     let first_name : Option<&str> = row.get(2)?;
     let name = first_name.map_or(last_name.to_string(),
         |first_name| format!("{}, {}", last_name, first_name)
@@ -262,15 +273,14 @@ while let Some( row ) = rows.next()? {
 
 There are a few notable points of interest in the last example:
 - Sibyl uses 0-based column indexing in a projection.
-- Column value is returned as an `Option`. However, if a column is declared as `NOT NULL`, like `EMPLOYEE_ID` and `LAST_NAME`, the result will always be `Some` and therefore can be safely unwrapped.
-- `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they are borrowed directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
+- `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they borrow directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
 
 > Note that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:
 
 ```rust
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get("EMPLOYEE_ID")?.unwrap();
-    let last_name : &str  = row.get("LAST_NAME")?.unwrap();
+    let employee_id : u32 = row.get_not_null("EMPLOYEE_ID")?;
+    let last_name : &str  = row.get_not_null("LAST_NAME")?;
     let first_name : Option<&str> = row.get("FIRST_NAME")?;
     let name = first_name.map_or(last_name.to_string(),
         |first_name| format!("{}, {}", last_name, first_name)
@@ -278,6 +288,47 @@ while let Some( row ) = rows.next()? {
     employees.insert(employee_id, name);
 }
 ```
+
+**Note** that all examples use all upper case column and parameter names. This is not really necessary as Sibyl treat them as case-insensitive. However, using all upper case gives Sibyl a chance to locate a column (or a parameter placeholder) without converting the name to upper case first (to match the Oracle reported names), thus avoiding temporary string allocation and upper case conversion. Of course, you can always maintain an `enum` for a select list, thus using indexes, which are the speediest way to get to the data anyway.
+
+```rust
+enum Col { EmployeeId, LastName, FirstName }
+
+while let Some( row ) = rows.next()? {
+    let employee_id : u32 = row.get_not_null(Col::EmployeeId as usize)?;
+    let last_name : &str  = row.get_not_null(Col::LastName as usize)?;
+    let first_name : Option<&str> = row.get(Col::FirstName as usize)?;
+    // ...
+}
+```
+
+Or to be extra fancy:
+
+```rust
+#[derive(Clone,Copy)]
+enum Col { EmployeeId, LastName, FirstName }
+
+impl sibyl::Position for Col {
+    fn index(&self) -> Option<usize> { Some(*self as _) }
+}
+
+impl std::fmt::Display for Col {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        static COLS : [&str;3] = ["EMPLOYEE_ID", "LAST_NAME", "FIRST_NAME"];
+        let i = *self as usize;
+        f.write_str(COLS[i])
+    }
+}
+
+while let Some( row ) = rows.next()? {
+    let employee_id : u32 = row.get_not_null(Col::EmployeeId)?;
+    let last_name : &str  = row.get_not_null(Col::LastName)?;
+    let first_name : Option<&str> = row.get(Col::FirstName)?;
+    // ...
+}
+```
+
+Of couse, that's a lot of boilerplate, which would benefit from a derive macro. Maybe we'll get to that eventually :-)
 
 ## Oracle Data Types
 
@@ -362,7 +413,7 @@ let rows = stmt.query(107)?;
 let row = rows.next()?.unwrap();
 let rowid = row.rowid()?;
 
-let manager_id: u32 = row.get(0)?.unwrap();
+let manager_id: u32 = row.get_not_null(0)?;
 assert_eq!(manager_id, 103);
 
 let stmt = session.prepare("

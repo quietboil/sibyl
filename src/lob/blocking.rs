@@ -72,7 +72,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     ")?;
     let rows = stmt.query(&rowid)?;
     let row = rows.next()?.expect("a single row");
-    let mut lob : CLOB = row.get(0)?.expect("CLOB for writing");
+    let mut lob : CLOB = row.get_not_null(0)?;
 
     let text = [
         "Love seeketh not itself to please,\n",
@@ -1163,7 +1163,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ")?;
     let rows = stmt.query(&rowid)?;
     let row = rows.next()?.expect("a single row");
-    let mut lob : BLOB = row.get(0)?.expect("BLOB for writing");
+    let mut lob : BLOB = row.get_not_null(0)?;
 
     lob.open()?;
     let chunk_size = lob.chunk_size()?;

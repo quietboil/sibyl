@@ -215,10 +215,10 @@ impl<'a> Cursor<'a> {
         let rows = lowest_payed_employee.rows()?;
         let row = rows.next()?.unwrap();
 
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
+        let department_name : &str = row.get_not_null(0)?;
+        let first_name : &str = row.get_not_null(1)?;
+        let last_name : &str = row.get_not_null(2)?;
+        let salary : Number = row.get_not_null(3)?;
 
         assert_eq!(department_name, "Shipping");
         assert_eq!(first_name, "TJ");
@@ -231,10 +231,10 @@ impl<'a> Cursor<'a> {
         let rows = median_salary_employees.rows()?;
 
         let row = rows.next()?.unwrap();
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
+        let department_name : &str = row.get_not_null(0)?;
+        let first_name : &str = row.get_not_null(1)?;
+        let last_name : &str = row.get_not_null(2)?;
+        let salary : Number = row.get_not_null(3)?;
 
         assert_eq!(department_name, "Sales");
         assert_eq!(first_name, "Amit");
@@ -243,10 +243,10 @@ impl<'a> Cursor<'a> {
 
         let row = rows.next()?.unwrap();
 
-        let department_name : &str = row.get(0)?.unwrap();
-        let first_name : &str = row.get(1)?.unwrap();
-        let last_name : &str = row.get(2)?.unwrap();
-        let salary : Number = row.get(3)?.unwrap();
+        let department_name : &str = row.get_not_null(0)?;
+        let first_name : &str = row.get_not_null(1)?;
+        let last_name : &str = row.get_not_null(2)?;
+        let salary : Number = row.get_not_null(3)?;
 
         assert_eq!(department_name, "Sales");
         assert_eq!(first_name, "Charles");
@@ -302,10 +302,10 @@ impl<'a> Cursor<'a> {
         # let expected_median_salary = Number::from_int(6200, &session)?;
         # let rows = lowest_payed_employee.rows().await?;
         # let row = rows.next().await?.unwrap();
-        # let department_name : &str = row.get(0)?.unwrap();
-        # let first_name : &str = row.get(1)?.unwrap();
-        # let last_name : &str = row.get(2)?.unwrap();
-        # let salary : Number = row.get(3)?.unwrap();
+        # let department_name : &str = row.get_not_null(0)?;
+        # let first_name : &str = row.get_not_null(1)?;
+        # let last_name : &str = row.get_not_null(2)?;
+        # let salary : Number = row.get_not_null(3)?;
         # assert_eq!(department_name, "Shipping");
         # assert_eq!(first_name, "TJ");
         # assert_eq!(last_name, "Olson");
@@ -314,19 +314,19 @@ impl<'a> Cursor<'a> {
         # assert!(row.is_none());
         # let rows = median_salary_employees.rows().await?;
         # let row = rows.next().await?.unwrap();
-        # let department_name : &str = row.get(0)?.unwrap();
-        # let first_name : &str = row.get(1)?.unwrap();
-        # let last_name : &str = row.get(2)?.unwrap();
-        # let salary : Number = row.get(3)?.unwrap();
+        # let department_name : &str = row.get_not_null(0)?;
+        # let first_name : &str = row.get_not_null(1)?;
+        # let last_name : &str = row.get_not_null(2)?;
+        # let salary : Number = row.get_not_null(3)?;
         # assert_eq!(department_name, "Sales");
         # assert_eq!(first_name, "Amit");
         # assert_eq!(last_name, "Banda");
         # assert_eq!(salary.compare(&expected_median_salary)?, Equal);
         # let row = rows.next().await?.unwrap();
-        # let department_name : &str = row.get(0)?.unwrap();
-        # let first_name : &str = row.get(1)?.unwrap();
-        # let last_name : &str = row.get(2)?.unwrap();
-        # let salary : Number = row.get(3)?.unwrap();
+        # let department_name : &str = row.get_not_null(0)?;
+        # let first_name : &str = row.get_not_null(1)?;
+        # let last_name : &str = row.get_not_null(2)?;
+        # let salary : Number = row.get_not_null(3)?;
         # assert_eq!(department_name, "Sales");
         # assert_eq!(first_name, "Charles");
         # assert_eq!(last_name, "Johnson");
@@ -577,7 +577,7 @@ impl<'a> Cursor<'a> {
         let mut ids = Vec::new();
         while let Some( row ) = rows.next()? {
             // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-            let id : usize = row.get(0)?.unwrap();
+            let id : usize = row.get_not_null(0)?;
             ids.push(id);
         }
         assert_eq!(subordinates.row_count()?, 4);
@@ -609,7 +609,7 @@ impl<'a> Cursor<'a> {
         # let mut rows = subordinates.rows().await?;
         # let mut ids = Vec::new();
         # while let Some( row ) = rows.next().await? {
-        #     let id : usize = row.get(0)?.unwrap();
+        #     let id : usize = row.get_not_null(0)?;
         #     ids.push(id);
         # }
         # assert_eq!(subordinates.row_count()?, 4);
@@ -747,7 +747,7 @@ impl<'a> Cursor<'a> {
         long_texts.set_max_long_size(100_000);
         let rows = long_texts.rows()?;
         let row = rows.next()?.expect("first (and only) row");
-        let txt : &str = row.get(0)?.expect("long text");
+        let txt : &str = row.get_not_null(0)?;
         # assert_eq!(txt, text);
         # Ok(())
         # }
@@ -796,7 +796,7 @@ impl<'a> Cursor<'a> {
         # long_texts.set_max_long_size(100_000);
         # let rows = long_texts.rows().await?;
         # let row = rows.next().await?.expect("first (and only) row");
-        # let txt : &str = row.get(0)?.expect("long text");
+        # let txt : &str = row.get_not_null(0)?;
         # assert_eq!(txt, text);
         # Ok(()) })
         # }

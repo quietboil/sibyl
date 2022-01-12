@@ -28,20 +28,19 @@ use crate::{Result, session::SvcCtx, oci::*, Session, types::Ctx};
 #[cfg(feature="nonblocking")]
 use crate::task;
 
-use std::sync::Arc;
+use std::{sync::Arc, fmt::Display};
 
 use cols::{Columns, ColumnInfo};
 
 /// Allows column or output variable identification by either
 /// its numeric position or its name.
-pub trait Position {
+pub trait Position: Display {
     fn index(&self) -> Option<usize>;
-    fn name(&self)  -> Option<&str>;
+    fn name(&self)  -> Option<&str>  { None }
 }
 
 impl Position for usize {
     fn index(&self) -> Option<usize> { Some(*self) }
-    fn name(&self)  -> Option<&str>  { None }
 }
 
 impl Position for &str {
@@ -237,7 +236,7 @@ impl<'a> Statement<'a> {
     stmt.set_max_long_size(100_000);
     let rows = stmt.query(&id)?;
     let row = rows.next()?.expect("first (and only) row");
-    let txt : &str = row.get(0)?.expect("long text");
+    let txt : &str = row.get_not_null(0)?;
     # assert_eq!(txt, TEXT);
     # Ok(())
     # }
@@ -279,7 +278,7 @@ impl<'a> Statement<'a> {
     # stmt.set_max_long_size(100_000);
     # let rows = stmt.query(&id).await?;
     # let row = rows.next().await?.expect("first (and only) row");
-    # let txt : &str = row.get(0)?.expect("long text");
+    # let txt : &str = row.get_not_null(0)?;
     # assert_eq!(txt, TEXT);
     # Ok(()) })
     # }
@@ -376,7 +375,7 @@ impl<'a> Statement<'a> {
     let mut ids = Vec::new();
     while let Some( row ) = rows.next()? {
         // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-        let id : u32 = row.get(0)?.unwrap();
+        let id : u32 = row.get_not_null(0)?;
         ids.push(id);
     }
     assert_eq!(stmt.row_count()?, 4);
@@ -402,7 +401,7 @@ impl<'a> Statement<'a> {
     # let rows = stmt.query(103).await?;
     # let mut ids = Vec::new();
     # while let Some( row ) = rows.next().await? {
-    #     let id : u32 = row.get(0)?.unwrap();
+    #     let id : u32 = row.get_not_null(0)?;
     #     ids.push(id);
     # }
     # assert_eq!(stmt.row_count()?, 4);

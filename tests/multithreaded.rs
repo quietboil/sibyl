@@ -45,9 +45,9 @@ mod tests {
         let rows = stmt.query(())?;
         if let Some( row ) = rows.next()? {
             let first_name : Option<&str> = row.get(0)?;
-            let last_name : &str = row.get(1)?.expect("last_name");
+            let last_name : &str = row.get_not_null(1)?;
             let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-            let hire_date : oracle::Date = row.get(2)?.expect("hire_date");
+            let hire_date : oracle::Date = row.get_not_null(2)?;
             let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
             Ok(format!("{} was hired on {}", name, hire_date))
@@ -258,9 +258,9 @@ mod tests {
         let rows = stmt.query(()).await?;
         if let Some( row ) = rows.next().await? {
             let first_name : Option<&str> = row.get(0)?;
-            let last_name : &str = row.get(1)?.expect("last_name");
+            let last_name : &str = row.get_not_null(1)?;
             let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-            let hire_date : Date = row.get(2)?.expect("hire_date");
+            let hire_date : Date = row.get_not_null(2)?;
             let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
             Ok(format!("{} was hired on {}", name, hire_date))

@@ -107,7 +107,7 @@ impl<'a> Session<'a> {
     let rows = stmt.query(())?;
     let row = rows.next()?.expect("first (and only) row");
     // EMPLOYEE_ID is NOT NULL, so it can be unwrapped safely
-    let id : u32 = row.get(0)?.unwrap();
+    let id : u32 = row.get_not_null(0)?;
     assert_eq!(id, 102);
     assert!(rows.next()?.is_none(), "only one row was expected");
     # Ok::<(),Box<dyn std::error::Error>>(())

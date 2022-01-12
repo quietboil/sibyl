@@ -39,25 +39,24 @@ fn main() -> oracle::Result<()> {
     ")?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &session)?;
     let rows = stmt.query(&date)?;
+
     // The SELECT above will return either 1 or 0 rows, thus `if let` is sufficient.
-    // When more than one row is expected, `while let` should be used to process rows
+    // When more than one row is expected, `while let` is used to process rows
     if let Some( row ) = rows.next()? {
-        // All column values are returned as Options. A not NULL value is returned as Some
-        // and NULLs are returned as None. Here, FIRST_NAME is NULL-able and thus we have
-        // to retrieve it as an Option and then explcitly check the returned value.
-        let first_name : Option<&str> = row.get(0)?;
+        // FIRST_NAME is NULL-able and thus we have to retrieve it as an Option and then
+        // explcitly check the returned value.
+        let first_name : Option<&str> = row.get("FIRST_NAME")?;
+        // LAST_NAME is NOT NULL, thus we can avoid getting an `Option`
+        let last_name : &str = row.get_not_null("LAST_NAME")?;
+        let hire_date : oracle::Date = row.get_not_null(2)?;
 
-        // Unlike FIRST_NAME, LAST_NAME is NOT NULL and thus it will never ever be None.
-        // NOT NULL column values can be safely unwrapped without checking.
-        //
-        // Note also that the type of `last_name` is `&str`. This makes it borrow from the
-        // internal row buffer. This also restricts its lifetime to the lifetime of the `row`.
-        // If the returned value is intended to be used beyond the lifetime of the current
-        // row it should be retrieved as a `String`.
-        let last_name : &str = row.get(1)?.unwrap();
+        // Note that the type of `last_name` is `&str`. Similarly, `first_name` is
+        // `Option<&str>`. This makes them borrow directly from the internal row
+        // buffer. This also restricts their lifetime to the lifetime of the `row`.
+        // If the returned value is intended to be used beyond the lifetime of the
+        // current row it should be retrieved as a `String`.
+
         let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-
-        let hire_date : oracle::Date = row.get(2)?.unwrap();
         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
         println!("{} was hired on {}", name, hire_date);
@@ -91,11 +90,11 @@ fn main() -> oracle::Result<()> {
         let rows = stmt.query(&date).await?;
         if let Some( row ) = rows.next().await? {
             let first_name : Option<&str> = row.get("FIRST_NAME")?;
-            let last_name : &str = row.get("LAST_NAME")?.unwrap();
+            let last_name : &str = row.get_not_null("LAST_NAME")?;
             let name = first_name.map_or(last_name.to_string(),
                 |first_name| format!("{}, {}", last_name, first_name)
             );
-            let hire_date : oracle::Date = row.get("HIRE_DATE")?.unwrap();
+            let hire_date : oracle::Date = row.get_not_null("HIRE_DATE")?;
             let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
             println!("{} was hired on {}", name, hire_date);

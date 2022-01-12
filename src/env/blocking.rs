@@ -33,7 +33,7 @@ impl Environment {
     ")?;
     let rows = stmt.query(())?;
     let row = rows.next()?.expect("one row");
-    let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
+    let client_driver : &str = row.get_not_null(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
@@ -81,7 +81,7 @@ impl Environment {
     ")?;
     let rows = stmt.query(())?;
     let row = rows.next()?.expect("one row");
-    let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
+    let client_driver : &str = row.get_not_null(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
@@ -126,7 +126,7 @@ impl Environment {
     ")?;
     let rows = stmt.query(())?;
     let row = rows.next()?.expect("one row");
-    let client_driver : &str = row.get(0)?.expect("non-NULL client_driver");
+    let client_driver : &str = row.get_not_null(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```

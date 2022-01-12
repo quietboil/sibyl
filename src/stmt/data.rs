@@ -309,7 +309,7 @@ mod tests {
         let rows = stmt.query(((":ID1", &hw_id), (":ID2", &hs_id)))?;
 
         if let Some(row) = rows.next()? {
-            let lob : BFile = row.get(0)?.expect("first row BFILE locator");
+            let lob : BFile = row.get_not_null(0)?;
             assert!(lob.file_exists()?);
             let (dir, name) = lob.file_name()?;
             assert_eq!(dir, "MEDIA_DIR");
@@ -318,7 +318,7 @@ mod tests {
         }
 
         if let Some(row) = rows.next()? {
-            let lob : BFile = row.get(0)?.expect("second row BFILE locator");
+            let lob : BFile = row.get_not_null(0)?;
             assert!(lob.file_exists()?);
             let (dir, name) = lob.file_name()?;
             assert_eq!(dir, "MEDIA_DIR");
@@ -336,7 +336,7 @@ mod tests {
     }
 
     fn get_bfile<'a>(row: &'a Row<'a>) -> Result<BFile<'a>> {
-        let lob : BFile = row.get(0)?.unwrap();
+        let lob : BFile = row.get_not_null(0)?;
         Ok(lob)
     }
 
@@ -355,10 +355,10 @@ mod tests {
         let rows = stmt.query((":ID", 107))?;
 
         if let Some(row) = rows.next()? {
-            let strid : String = row.get(0)?.expect("ROWID as text");
-            let rowid : RowID = row.get(0)?.expect("ROWID");
+            let strid : String = row.get_not_null(0)?;
+            let rowid : RowID = row.get_not_null(0)?;
             assert_eq!(rowid.to_string(&session)?, strid);
-            let manager_id: u32 = row.get(1)?.expect("manager ID");
+            let manager_id: u32 = row.get_not_null(1)?;
             assert_eq!(manager_id, 103, "employee ID of Alexander Hunold");
 
             match get_rowid(&row) {
@@ -372,7 +372,7 @@ mod tests {
     }
 
     fn get_rowid<'a>(row: &'a Row<'a>) -> Result<RowID> {
-        let rowid : RowID = row.get(0)?.expect("ROWID pseudo-column");
+        let rowid : RowID = row.get_not_null(0)?;
         Ok(rowid)
     }
 }

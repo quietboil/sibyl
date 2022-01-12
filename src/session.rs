@@ -380,7 +380,7 @@ impl Session<'_> {
     ")?;
     let rows = stmt.query(())?;
     let row = rows.next()?.unwrap();
-    let module : &str = row.get(0)?.unwrap();
+    let module : &str = row.get_not_null(0)?;
     assert_eq!(module, "Sibyl DocTest");
     # Ok(())
     # }
@@ -401,7 +401,7 @@ impl Session<'_> {
     # ").await?;
     # let rows = stmt.query(()).await?;
     # let row = rows.next().await?.unwrap();
-    # let module : &str = row.get(0)?.unwrap();
+    # let module : &str = row.get_not_null(0)?;
     # assert_eq!(module, "Sibyl DocTest");
     # Ok(()) })
     # }
@@ -443,7 +443,7 @@ impl Session<'_> {
     ")?;
     let rows = stmt.query(())?;
     let row = rows.next()?.unwrap();
-    let action : &str = row.get(0)?.unwrap();
+    let action : &str = row.get_not_null(0)?;
     assert_eq!(action, "Action Name Test");
     # Ok(())
     # }
@@ -464,7 +464,7 @@ impl Session<'_> {
     # ").await?;
     # let rows = stmt.query(()).await?;
     # let row = rows.next().await?.unwrap();
-    # let action : &str = row.get(0)?.unwrap();
+    # let action : &str = row.get_not_null(0)?;
     # assert_eq!(action, "Action Name Test");
     # Ok(()) })
     # }
@@ -505,7 +505,7 @@ impl Session<'_> {
     ")?;
     let rows = stmt.query(())?;
     let row = rows.next()?.unwrap();
-    let client_identifier : &str = row.get(0)?.unwrap();
+    let client_identifier : &str = row.get_not_null(0)?;
     assert_eq!(client_identifier, "Test Wielder");
     # Ok(())
     # }
@@ -525,7 +525,7 @@ impl Session<'_> {
     # ").await?;
     # let rows = stmt.query(()).await?;
     # let row = rows.next().await?.unwrap();
-    # let client_identifier : &str = row.get(0)?.unwrap();
+    # let client_identifier : &str = row.get_not_null(0)?;
     # assert_eq!(client_identifier, "Test Wielder");
     # Ok(()) })
     # }
@@ -566,7 +566,7 @@ impl Session<'_> {
     ")?;
     let rows = stmt.query(())?;
     let row = rows.next()?.unwrap();
-    let client_info : &str = row.get(0)?.unwrap();
+    let client_info : &str = row.get_not_null(0)?;
     assert_eq!(client_info, "Nothing to see here, move along folks");
     # Ok(())
     # }
@@ -586,7 +586,7 @@ impl Session<'_> {
     # ").await?;
     # let rows = stmt.query(()).await?;
     # let row = rows.next().await?.unwrap();
-    # let client_info : &str = row.get(0)?.unwrap();
+    # let client_info : &str = row.get_not_null(0)?;
     # assert_eq!(client_info, "Nothing to see here, move along folks");
     # Ok(()) })
     # }
@@ -681,7 +681,7 @@ impl Session<'_> {
     ")?;
     let rows = stmt.query(())?;
     let row = rows.next()?.unwrap();
-    let schema_name : &str = row.get(0)?.unwrap();
+    let schema_name : &str = row.get_not_null(0)?;
     assert_eq!(schema_name, "HR");
 
     session.set_current_schema(orig_name)?;
@@ -706,7 +706,7 @@ impl Session<'_> {
     # ").await?;
     # let rows = stmt.query(()).await?;
     # let row = rows.next().await?.unwrap();
-    # let schema_name : &str = row.get(0)?.unwrap();
+    # let schema_name : &str = row.get_not_null(0)?;
     # assert_eq!(schema_name, "HR");
     # session.set_current_schema(orig_name)?;
     # assert_eq!(session.current_schema()?, orig_name);

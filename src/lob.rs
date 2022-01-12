@@ -252,7 +252,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     ")?;
     let rows = stmt.query(&id)?;
     let row = rows.next()?.expect("one row");
-    let lob : CLOB = row.get(0)?.expect("CLOB locator for writing");
+    let lob : CLOB = row.get_not_null(0)?;
 
     let text = "
         To Mercy, Pity, Peace, and Love
@@ -271,11 +271,11 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     ")?;
     let rows = stmt.query(&id)?;
     let row = rows.next()?.expect("one row");
-    let lob1 : CLOB = row.get(0)?.expect("CLOB locator for reading");
+    let lob1 : CLOB = row.get_not_null(0)?;
 
     let rows = stmt.query(&id)?;
     let row = rows.next()?.expect("one row");
-    let lob2 : CLOB = row.get(0)?.expect("CLOB locator for reading");
+    let lob2 : CLOB = row.get_not_null(0)?;
 
     // Even though locators are different, they point to
     // the same LOB which makes them "equal"
@@ -314,7 +314,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE").await?;
     # let rows = stmt.query(&id).await?;
     # let row = rows.next().await?.expect("one row");
-    # let lob : CLOB = row.get(0)?.expect("CLOB locator for writing");
+    # let lob : CLOB = row.get_not_null(0)?;
     # let text = "
     #     To Mercy, Pity, Peace, and Love
     #     All pray in their distress;
@@ -328,10 +328,10 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :id").await?;
     # let rows = stmt.query(&id).await?;
     # let row = rows.next().await?.expect("one row");
-    # let lob1 : CLOB = row.get(0)?.expect("CLOB locator for reading");
+    # let lob1 : CLOB = row.get_not_null(0)?;
     # let rows = stmt.query(&id).await?;
     # let row = rows.next().await?.expect("one row");
-    # let lob2 : CLOB = row.get(0)?.expect("CLOB locator for reading");
+    # let lob2 : CLOB = row.get_not_null(0)?;
     # assert!(lob1.is_equal(&lob2)?, "CLOB1 == CLOB2");
     # assert!(lob2.is_equal(&lob1)?, "CLOB2 == CLOB1");
     # Ok(()) })
