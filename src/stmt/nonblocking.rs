@@ -1,17 +1,17 @@
 //! Nonblocking SQL statement methods
 
 use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}};
-use crate::{Result, oci::*, Connection, Error, Rows, Cursor, ToSql, ToSqlOut};
+use crate::{Result, oci::*, Session, Error, Rows, Cursor, ToSql, ToSqlOut};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
 impl<'a> Statement<'a> {
     /// Creates a new statement
-    pub(crate) async fn new(sql: &str, conn: &'a Connection<'a>) -> Result<Statement<'a>> {
-        let err = Handle::<OCIError>::new(conn)?;
-        let stmt = futures::StmtPrepare::new(conn.get_svc(), &err, sql).await?;
+    pub(crate) async fn new(sql: &str, session: &'a Session<'a>) -> Result<Statement<'a>> {
+        let err = Handle::<OCIError>::new(session)?;
+        let stmt = futures::StmtPrepare::new(session.get_svc(), &err, sql).await?;
         let params = Params::new(&stmt, &err)?.map(|params| RwLock::new(params));
-        Ok(Self {conn, svc: conn.get_svc(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
+        Ok(Self {session, svc: session.get_svc(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
     }
 
     /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
@@ -51,8 +51,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         UPDATE hr.departments
             SET manager_id = :manager_id
             WHERE department_id = :department_id
@@ -66,7 +66,7 @@ impl<'a> Statement<'a> {
     ).await?;
 
     assert_eq!(num_updated_rows, 1);
-    # conn.rollback().await?;
+    # session.rollback().await?;
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
@@ -112,8 +112,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         INSERT INTO hr.departments
             ( department_id, department_name, manager_id, location_id )
         VALUES
@@ -142,7 +142,7 @@ impl<'a> Statement<'a> {
     assert_eq!(num_rows, 1);
     assert!(!stmt.is_null(":DEPARTMENT_ID")?);
     assert!(department_id > 0);
-    # conn.rollback().await?;
+    # session.rollback().await?;
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
@@ -181,8 +181,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
           FROM hr.employees
          WHERE manager_id = :id
@@ -262,8 +262,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         DECLARE
             c1 SYS_REFCURSOR;
             c2 SYS_REFCURSOR;
@@ -296,8 +296,8 @@ impl<'a> Statement<'a> {
             DBMS_SQL.RETURN_RESULT (c2);
         END;
     ").await?;
-    let expected_lowest_salary = Number::from_int(2100, &conn)?;
-    let expected_median_salary = Number::from_int(6200, &conn)?;
+    let expected_lowest_salary = Number::from_int(2100, &session)?;
+    let expected_median_salary = Number::from_int(6200, &session)?;
 
     stmt.execute(()).await?;
 
@@ -378,8 +378,8 @@ mod tests {
             let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
 
-            let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-            let stmt = conn.prepare("
+            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let stmt = session.prepare("
                 SELECT employee_id
                   FROM (
                         SELECT employee_id

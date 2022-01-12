@@ -24,7 +24,7 @@ pub use cols::ColumnType;
 use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::{Result, conn::SvcCtx, oci::*, Connection, types::Ctx};
+use crate::{Result, session::SvcCtx, oci::*, Session, types::Ctx};
 #[cfg(feature="nonblocking")]
 use crate::task;
 
@@ -51,7 +51,7 @@ impl Position for &str {
 
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
-    conn:     &'a Connection<'a>,
+    session:     &'a Session<'a>,
     stmt:     Ptr<OCIStmt>,
     params:   Option<RwLock<Params>>,
     cols:     OnceCell<RwLock<Columns>>,
@@ -81,19 +81,19 @@ impl Drop for Statement<'_> {
 
 impl AsRef<OCIEnv> for Statement<'_> {
     fn as_ref(&self) -> &OCIEnv {
-        self.conn.as_ref()
+        self.session.as_ref()
     }
 }
 
 impl AsRef<OCIError> for Statement<'_> {
     fn as_ref(&self) -> &OCIError {
-        self.conn.as_ref()
+        self.session.as_ref()
     }
 }
 
 impl AsRef<OCISvcCtx> for Statement<'_> {
     fn as_ref(&self) -> &OCISvcCtx {
-        self.conn.as_ref()
+        self.session.as_ref()
     }
 }
 
@@ -105,7 +105,7 @@ impl AsRef<OCIStmt> for Statement<'_> {
 
 impl Ctx for Statement<'_> {
     fn try_as_session(&self) -> Option<&OCISession> {
-        self.conn.try_as_session()
+        self.session.try_as_session()
     }
 }
 
@@ -126,8 +126,8 @@ impl<'a> Statement<'a> {
         self.cols.get().expect("locked columns").write()
     }
 
-    pub(crate) fn conn(&self) -> &Connection {
-        self.conn
+    pub(crate) fn session(&self) -> &Session {
+        self.session
     }
 
     /**
@@ -150,8 +150,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT employee_id, first_name, last_name
           FROM hr.employees
          WHERE manager_id = :id
@@ -166,8 +166,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     SELECT employee_id, first_name, last_name
     #       FROM hr.employees
     #      WHERE manager_id = :id
@@ -206,8 +206,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let stmt = session.prepare("
     #     DECLARE
     #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
     #     BEGIN
@@ -223,13 +223,13 @@ impl<'a> Statement<'a> {
     #     END;
     # ")?;
     # stmt.execute(())?;
-    # let stmt = conn.prepare("
+    # let stmt = session.prepare("
     #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT)
     #     RETURNING id INTO :ID
     # ")?;
     # let mut id = 0;
     # let count = stmt.execute_into((":TEXT", &TEXT), (":ID", &mut id))?;
-    let mut stmt = conn.prepare("
+    let mut stmt = session.prepare("
         SELECT text
           FROM long_and_raw_test_data
          WHERE id = :id
@@ -248,8 +248,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     DECLARE
     #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
     #     BEGIN
@@ -265,13 +265,13 @@ impl<'a> Statement<'a> {
     #     END;
     # ").await?;
     # stmt.execute(()).await?;
-    # let stmt = conn.prepare("
+    # let stmt = session.prepare("
     #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT)
     #     RETURNING id INTO :ID
     # ").await?;
     # let mut id = 0;
     # let count = stmt.execute_into((":TEXT", &TEXT), (":ID", &mut id)).await?;
-    # let mut stmt = conn.prepare("
+    # let mut stmt = session.prepare("
     #     SELECT text
     #       FROM long_and_raw_test_data
     #      WHERE id = :id
@@ -305,8 +305,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
           FROM hr.employees
          WHERE manager_id = :id
@@ -323,8 +323,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     SELECT employee_id, last_name, first_name
     #       FROM hr.employees
     #      WHERE manager_id = :id
@@ -364,8 +364,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT employee_id, first_name, last_name
           FROM hr.employees
          WHERE manager_id = :id
@@ -391,8 +391,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     SELECT employee_id, first_name, last_name
     #       FROM hr.employees
     #      WHERE manager_id = :id
@@ -447,8 +447,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         UPDATE hr.employees
            SET manager_id = :new_manager_id
          WHERE employee_id = :employee_id
@@ -464,7 +464,7 @@ impl<'a> Statement<'a> {
     )?;
     let commission_pct_is_null = stmt.is_null(":COMMISSION_PCT")?;
     assert!(commission_pct_is_null);
-    # conn.rollback()?;
+    # session.rollback()?;
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
@@ -474,8 +474,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     UPDATE hr.employees
     #        SET manager_id = :new_manager_id
     #      WHERE employee_id = :employee_id
@@ -491,7 +491,7 @@ impl<'a> Statement<'a> {
     # ).await?;
     # let commission_pct_is_null = stmt.is_null(":COMMISSION_PCT")?;
     # assert!(commission_pct_is_null);
-    # conn.rollback().await?;
+    # session.rollback().await?;
     # Ok(()) })
     # }
     ```
@@ -525,8 +525,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
           FROM hr.employees
          WHERE manager_id = :id
@@ -549,8 +549,8 @@ impl<'a> Statement<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     SELECT employee_id, last_name, first_name
     #       FROM hr.employees
     #      WHERE manager_id = :id

@@ -19,8 +19,8 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let dbpass = std::env::var("DBPASS")?;
 
     let oracle = oracle::env()?;
-    let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT first_name, last_name, hire_date
           FROM (
                 SELECT first_name, last_name, hire_date
@@ -61,8 +61,8 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
     let dbpass = std::env::var("DBPASS")?;
 
     let oracle = oracle::env()?;
-    let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         SELECT first_name, last_name, hire_date
           FROM (
                 SELECT first_name, last_name, hire_date
@@ -165,7 +165,7 @@ Use `Environment::connect` method to connect to a database:
 ```rust
 fn main() -> sibyl::Result<()> {
     let oracle = sibyl::env()?;
-    let conn = oracle.connect("dbname", "username", "password")?;
+    let session = oracle.connect("dbname", "username", "password")?;
     // ...
     Ok(())
 }
@@ -178,7 +178,7 @@ Where `dbname` can be any name that is acceptable to Oracle clients - from local
 All SQL or PL/SQL statements must be prepared before they can be executed:
 
 ```rust
-let stmt = conn.prepare("
+let stmt = session.prepare("
     SELECT employee_id, last_name, first_name
       FROM hr.employees
      WHERE manager_id = :id
@@ -208,7 +208,7 @@ In most cases which binding style to use is a matter of convenience and/or perso
 > Note one caveat - until [min_specialization][5] is stabilized Sibyl has no way to distinguish whether a 2-item tuple is used to pass a named argument or 2 positional arguments. At the moment you'll have to use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is treated as "nothing", so effectively only first 2 arguments are used. For example:
 
 ```rust
-let stmt = conn.prepare("
+let stmt = session.prepare("
     SELECT department_id, manager_id
       FROM hr.departments
      WHERE department_name = :DEPARTMENT_NAME
@@ -220,7 +220,7 @@ let rows = stmt.query(("Security", 1700, ()))?;
 `execute_into` allows execution of statements with OUT (or INOUT) parameters. For example:
 
 ```rust
-let stmt = conn.prepare("
+let stmt = session.prepare("
     INSERT INTO hr.departments
            ( department_id, department_name, manager_id, location_id )
     VALUES ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
@@ -242,7 +242,7 @@ let num_inserted = stmt.execute(
 
 ```rust
 let mut employees = HashMap::new();
-let stmt = conn.prepare("
+let stmt = session.prepare("
     SELECT employee_id, last_name, first_name
         FROM hr.employees
     WHERE manager_id = :id
@@ -352,7 +352,7 @@ assert_eq!("+8 03:18:35.000", duration.to_string(1,3)?);
 Oracle ROWID can be selected and retrieved explicitly into an instance of the `RowID`. However, one interesting case is SELECT FOR UPDATE queries where Oracle returns ROWIDs implicitly. Those can be retrieved using `Row::get_rowid` method.
 
 ```rust
-let stmt = conn.prepare("
+let stmt = session.prepare("
     SELECT manager_id
       FROM hr.employees
      WHERE employee_id = :id
@@ -365,7 +365,7 @@ let rowid = row.rowid()?;
 let manager_id: u32 = row.get(0)?.unwrap();
 assert_eq!(manager_id, 103);
 
-let stmt = conn.prepare("
+let stmt = session.prepare("
     UPDATE hr.employees
        SET manager_id = :manager_id
      WHERE rowid = :row_id
@@ -382,7 +382,7 @@ assert_eq!(1, num_updated);
 Cursors can be returned explicitly:
 
 ```rust
-let stmt = conn.prepare("
+let stmt = session.prepare("
     BEGIN
         OPEN :emp FOR
             SELECT department_name, first_name, last_name, salary
@@ -400,7 +400,7 @@ let rows = cursor.rows()?;
 Or, beginning with Oracle 12.1, implicitly:
 
 ```rust
-let stmt = conn.prepare("
+let stmt = session.prepare("
     DECLARE
         emp SYS_REFCURSOR;
     BEGIN
@@ -436,7 +436,7 @@ We can then create and write data into that LOB as:
 ```rust
 // ... create OCI environment, connect to the database, etc.
 
-let file = BFile::new(&conn)?;
+let file = BFile::new(&session)?;
 file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
 let file_len = file.len().await?;
 
@@ -448,7 +448,7 @@ file.close_file().await?;
 // automatically when `file` goes out of scope
 
 // Insert new BLOB and lock its row
-let stmt = conn.prepare("
+let stmt = session.prepare("
     DECLARE
         row_id ROWID;
     BEGIN
@@ -456,21 +456,21 @@ let stmt = conn.prepare("
         SELECT bin INTO :NEW_BLOB FROM lob_example WHERE rowid = row_id FOR UPDATE;
     END;
 ").await?;
-let mut lob = BLOB::new(&conn)?;
+let mut lob = BLOB::new(&session)?;
 stmt.execute_into((), &mut lob).await?;
 
 lob.open().await?;
 let num_bytes_written = lob.write(0, &data).await?;
 lob.close().await?;
 
-conn.commit().await?;
+session.commit().await?;
 ```
 
 And then later it could be read as:
 
 ```rust
 let id: usize = 1234; // assume it was retrieved from somewhere...
-let stmt = conn.prepare("SELECT bin FROM lob_example WHERE id = :ID").await?;
+let stmt = session.prepare("SELECT bin FROM lob_example WHERE id = :ID").await?;
 let rows = stmt.query(&id).await?;
 if let Some(row) = rows.next().await? {
     if let Some(lob) = row.get(0)? {
@@ -525,7 +525,7 @@ CREATE TABLE table_with_lob (
 and if an SQL parameter name is the same as the LOB column name (as in this example):
 
 ```rust
-let stmt = conn.prepare("
+let stmt = session.prepare("
     INSERT INTO table_with_lob (txt) VALUES (:TXT) RETURNING id INTO :ID
 ")?;
 ```
@@ -533,7 +533,7 @@ let stmt = conn.prepare("
 Then 21.4 client will fail executing this SQL with `ORA-03120: two-task conversion routine: integer overflow`. Renaming the parameter placeholder resolves this:
 
 ```rust
-let stmt = conn.prepare("
+let stmt = session.prepare("
     INSERT INTO table_with_lob (txt) VALUES (:NEW_TXT) RETURNING id INTO :ID
 ")?;
 ```

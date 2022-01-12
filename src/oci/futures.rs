@@ -1,6 +1,6 @@
 //! Futures for OCI functions that might return `OCI_STILL_EXECUTING`
 
-use crate::{conn::SvcCtx, lob::{LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP}};
+use crate::{session::SvcCtx, lob::{LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP}};
 use super::{*, ptr::Ptr};
 use std::{future::Future, pin::Pin, task::{Context, Poll}, sync::Arc};
 

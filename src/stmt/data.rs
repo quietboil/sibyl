@@ -224,7 +224,7 @@ macro_rules! impl_from_lob {
                         if lob::is_initialized(row_loc, row.as_ref(), row.as_ref())? {
                             let mut loc : Descriptor<$t> = Descriptor::new(row)?;
                             loc.swap(row_loc);
-                            Ok( LOB::<$t>::make(loc, row.conn()) )
+                            Ok( LOB::<$t>::make(loc, row.session()) )
                         } else {
                             Err(Error::new("already consumed"))
                         }
@@ -274,8 +274,8 @@ mod tests {
         let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
-        let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
+        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
             BEGIN
@@ -294,7 +294,7 @@ mod tests {
         ")?;
         stmt.execute(())?;
 
-        let stmt = conn.prepare("
+        let stmt = session.prepare("
             INSERT INTO test_large_object_data (fbin) VALUES (BFileName('MEDIA_DIR',:NAME))
             RETURNING id INTO :ID
         ")?;
@@ -305,7 +305,7 @@ mod tests {
         let count = stmt.execute_into((":NAME", "hello_supplemental.txt"), (":ID", &mut hs_id))?;
         assert_eq!(count, 1);
 
-        let stmt = conn.prepare("SELECT fbin FROM test_large_object_data WHERE id IN (:ID1, :ID2) ORDER BY id")?;
+        let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id IN (:ID1, :ID2) ORDER BY id")?;
         let rows = stmt.query(((":ID1", &hw_id), (":ID2", &hs_id)))?;
 
         if let Some(row) = rows.next()? {
@@ -346,8 +346,8 @@ mod tests {
         let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         let oracle = env()?;
-        let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let stmt = conn.prepare("
+        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let stmt = session.prepare("
             SELECT ROWID, manager_id
               FROM hr.employees
              WHERE employee_id = :ID
@@ -357,7 +357,7 @@ mod tests {
         if let Some(row) = rows.next()? {
             let strid : String = row.get(0)?.expect("ROWID as text");
             let rowid : RowID = row.get(0)?.expect("ROWID");
-            assert_eq!(rowid.to_string(&conn)?, strid);
+            assert_eq!(rowid.to_string(&session)?, strid);
             let manager_id: u32 = row.get(1)?.expect("manager ID");
             assert_eq!(manager_id, 103, "employee ID of Alexander Hunold");
 

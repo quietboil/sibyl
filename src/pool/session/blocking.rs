@@ -1,7 +1,7 @@
 //! Session pool blocking mode implementation
 
 use super::SessionPool;
-use crate::{Result, oci::{self, *}, Environment, Connection};
+use crate::{Result, oci::{self, *}, Environment, Session};
 use std::{ptr, marker::PhantomData};
 
 impl<'a> SessionPool<'a> {
@@ -46,7 +46,7 @@ impl<'a> SessionPool<'a> {
         # Example
 
         ```
-        use sibyl::{Environment, Connection, Date, Result};
+        use sibyl::{Environment, Session, Date, Result};
         use once_cell::sync::OnceCell;
         use std::{env, thread, sync::Arc};
 
@@ -68,9 +68,9 @@ impl<'a> SessionPool<'a> {
                 let pool = pool.clone();
                 let handle = thread::spawn(move || -> String {
 
-                    let conn = pool.get_session().expect("database session");
+                    let session = pool.get_session().expect("database session");
 
-                    select_latest_hire(&conn).expect("selected employee name")
+                    select_latest_hire(&session).expect("selected employee name")
                 });
                 workers.push(handle);
             }
@@ -80,8 +80,8 @@ impl<'a> SessionPool<'a> {
             }
             Ok(())
         }
-        # fn select_latest_hire(conn: &Connection) -> Result<String> {
-        #     let stmt = conn.prepare("
+        # fn select_latest_hire(session: &Session) -> Result<String> {
+        #     let stmt = session.prepare("
         #         SELECT first_name, last_name, hire_date
         #           FROM (
         #                 SELECT first_name, last_name, hire_date
@@ -104,7 +104,7 @@ impl<'a> SessionPool<'a> {
         # }
         ```
     */
-    pub fn get_session(&self) -> Result<Connection> {
-        Connection::from_session_pool(self)
+    pub fn get_session(&self) -> Result<Session> {
+        Session::from_session_pool(self)
     }
 }

@@ -4,9 +4,17 @@ use sibyl::*;
     threads (or async tasks) where each thread (or task) establishes its own
     connection and then uses it to execute queries.
 
-    Note that `block_on` used in nonblocking version of this example abstracts
-    `block_on` for various executors and is intended to execute async tests
-    and examples.
+    While this approch might work for some use cases, usually you are better
+    off with either a session pool or a connection pool. You would use the
+    latter if your work need stateful sessions, but you can allow only so many
+    actual database connections.
+
+    *Note* that connection pooling is only available in `blocking` mode.
+
+    *Note* also that `block_on` used in nonblocking version of this example
+    abstracts `block_on` for various async executors and is only intended to
+    execute Sibyl's async tests and examples. While you can certainly use it,
+    most likely you'd want to create your own version of it.
 */
 fn main() -> Result<()> {
     example()
@@ -28,8 +36,8 @@ fn example() -> Result<()> {
             let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
 
-            let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-            let stmt = conn.prepare("
+            let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+            let stmt = session.prepare("
                 SELECT first_name, last_name, hire_date
                   FROM (
                         SELECT first_name, last_name, hire_date
@@ -81,8 +89,8 @@ fn example() -> Result<()> {
                 let dbuser = env::var("DBUSER").expect("user name");
                 let dbpass = env::var("DBPASS").expect("password");
 
-                let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-                let stmt = conn.prepare("
+                let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+                let stmt = session.prepare("
                     SELECT first_name, last_name, hire_date
                       FROM (
                             SELECT first_name, last_name, hire_date

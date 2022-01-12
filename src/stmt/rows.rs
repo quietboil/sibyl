@@ -11,7 +11,7 @@ mod nonblocking;
 use std::sync::atomic::AtomicI32;
 
 use super::{cols::Columns, data::FromSql, Position};
-use crate::{Cursor, Error, Result, RowID, Statement, oci::{*, attr}, types::Ctx, Connection};
+use crate::{Cursor, Error, Result, RowID, Statement, oci::{*, attr}, types::Ctx, Session};
 use parking_lot::{RwLockReadGuard, RwLockWriteGuard};
 
 pub(crate) enum DataSource<'a> {
@@ -79,10 +79,10 @@ impl DataSource<'_> {
         }
     }
 
-    pub(crate) fn conn(&self) -> &Connection {
+    pub(crate) fn session(&self) -> &Session {
         match self {
-            &Self::Statement(stmt) => stmt.conn(),
-            &Self::Cursor(cursor)  => cursor.conn(),
+            &Self::Statement(stmt) => stmt.session(),
+            &Self::Cursor(cursor)  => cursor.session(),
         }
     }
 }
@@ -143,8 +143,8 @@ impl<'a> Row<'a> {
         Self { rset: &rows.rset }
     }
 
-    pub(crate) fn conn(&self) -> &Connection {
-        self.rset.conn()
+    pub(crate) fn session(&self) -> &Session {
+        self.rset.session()
     }
 
     // `get` helper to ensure that the read lock is released when we have the index
@@ -174,8 +174,8 @@ impl<'a> Row<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT MAX(commission_pct)
           FROM hr.employees
          WHERE manager_id = :id
@@ -194,8 +194,8 @@ impl<'a> Row<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     SELECT MAX(commission_pct)
     #       FROM hr.employees
     #      WHERE manager_id = :id
@@ -240,8 +240,8 @@ impl<'a> Row<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT manager_id
           FROM hr.employees
          WHERE employee_id = :id
@@ -267,8 +267,8 @@ impl<'a> Row<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     SELECT manager_id
     #       FROM hr.employees
     #      WHERE employee_id = :id
@@ -320,8 +320,8 @@ impl<'a> Row<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT manager_id
           FROM hr.employees
          WHERE employee_id = :id
@@ -334,7 +334,7 @@ impl<'a> Row<'a> {
 
     let rowid = row.rowid()?;
 
-    let stmt = conn.prepare("
+    let stmt = session.prepare("
         UPDATE hr.employees
            SET manager_id = :mgr_id
          WHERE rowid = :row_id
@@ -344,7 +344,7 @@ impl<'a> Row<'a> {
         (":ROW_ID", &rowid),
     ))?;
     assert_eq!(num_updated, 1);
-    # conn.rollback()?;
+    # session.rollback()?;
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
@@ -354,8 +354,8 @@ impl<'a> Row<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     SELECT manager_id
     #       FROM hr.employees
     #      WHERE employee_id = :id
@@ -366,7 +366,7 @@ impl<'a> Row<'a> {
     # let manager_id: u32 = row.get(0)?.unwrap();
     # assert_eq!(manager_id, 103);
     # let rowid = row.rowid()?;
-    # let stmt = conn.prepare("
+    # let stmt = session.prepare("
     #     UPDATE hr.employees
     #        SET manager_id = :mgr_id
     #      WHERE rowid = :row_id
@@ -376,7 +376,7 @@ impl<'a> Row<'a> {
     #     (":ROW_ID", &rowid),
     # )).await?;
     # assert_eq!(num_updated, 1);
-    # conn.rollback().await?;
+    # session.rollback().await?;
     # Ok(()) })
     # }
     ```

@@ -2,11 +2,12 @@ use sibyl::*;
 /**
     This example is a variant of `readme` that executes its work in multiple
     threads (or async tasks). It creates a session pool which threads (or
-    tasks) then use to "borrow" sessions to execute queries.
+    tasks) then use to "borrow" stateless sessions to execute queries.
 
-    Note that `block_on` used in nonblocking version of this example
-    abstracts `block_on` for various executors and is intended to execute async tests
-    and examples.
+    *Note* that `block_on` used in nonblocking version of this example
+    abstracts `block_on` for various async executors and is only intended to
+    execute Sibyl's async tests and examples. While you can certainly
+    use it, most likely you'd want to create your own version of it.
 */
 fn main() -> Result<()> {
     example()
@@ -33,8 +34,8 @@ fn example() -> Result<()> {
     for _i in 0..workers.capacity() {
         let pool = pool.clone();
         let handle = thread::spawn(move || -> Result<Option<(String,String)>> {
-            let conn = pool.get_session()?;
-            let stmt = conn.prepare("
+            let session = pool.get_session()?;
+            let stmt = session.prepare("
                 SELECT first_name, last_name, hire_date
                   FROM (
                         SELECT first_name, last_name, hire_date
@@ -93,8 +94,8 @@ fn example() -> Result<()> {
         for _i in 0..workers.capacity() {
             let pool = pool.clone();
             let handle = spawn(async move {
-                let conn = pool.get_session().await?;
-                let stmt = conn.prepare("
+                let session = pool.get_session().await?;
+                let stmt = session.prepare("
                     SELECT first_name, last_name, hire_date
                       FROM (
                             SELECT first_name, last_name, hire_date

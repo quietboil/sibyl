@@ -18,8 +18,8 @@ impl<'a> Cursor<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         SELECT last_name
              , CURSOR(
                     SELECT department_name

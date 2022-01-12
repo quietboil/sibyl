@@ -15,8 +15,8 @@ impl<'a> Rows<'a> {
     # let dbuser = std::env::var("DBUSER")?;
     # let dbpass = std::env::var("DBPASS")?;
     # let oracle = sibyl::env()?;
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT street_address, postal_code, city, state_province
           FROM hr.locations
          WHERE country_id = :id

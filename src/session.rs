@@ -14,7 +14,7 @@ use crate::{Result, Environment, oci::*, types::Ctx};
 use crate::task;
 
 /// Representation of the service context.
-/// It will be behinfd `Arc` as it needs to survive the `Connection`
+/// It will be behinfd `Arc` as it needs to survive the `Session`
 /// drop to allow statements and cursors to be dropped asynchronously.
 pub(crate) struct SvcCtx {
     svc: Ptr<OCISvcCtx>,
@@ -62,37 +62,37 @@ impl AsRef<OCISvcCtx> for SvcCtx {
 }
 
 /// Represents a user session
-pub struct Connection<'a> {
+pub struct Session<'a> {
     usr: Ptr<OCISession>,
     ctx: Arc<SvcCtx>,
     phantom_env:  PhantomData<&'a Environment>
 }
 
-impl AsRef<OCIEnv> for Connection<'_> {
+impl AsRef<OCIEnv> for Session<'_> {
     fn as_ref(&self) -> &OCIEnv {
         self.ctx.as_ref().as_ref()
     }
 }
 
-impl AsRef<OCIError> for Connection<'_> {
+impl AsRef<OCIError> for Session<'_> {
     fn as_ref(&self) -> &OCIError {
         self.ctx.as_ref().as_ref()
     }
 }
 
-impl AsRef<OCISvcCtx> for Connection<'_> {
+impl AsRef<OCISvcCtx> for Session<'_> {
     fn as_ref(&self) -> &OCISvcCtx {
         self.ctx.as_ref().as_ref()
     }
 }
 
-impl Ctx for Connection<'_> {
+impl Ctx for Session<'_> {
     fn try_as_session(&self) -> Option<&OCISession> {
         Some(&self.usr)
     }
 }
 
-impl Connection<'_> {
+impl Session<'_> {
     fn set_attr<T: attr::AttrSet>(&self, attr_type: u32, attr_val: T) -> Result<()> {
         attr::set(attr_type, attr_val, OCI_HTYPE_SESSION, self.usr.as_ref(), self.as_ref())
     }
@@ -141,9 +141,9 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    conn.set_stmt_cache_size(100)?;
-    # let size = conn.stmt_cache_size()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    session.set_stmt_cache_size(100)?;
+    # let size = session.stmt_cache_size()?;
     # assert_eq!(size, 100);
     # Ok(())
     # }
@@ -154,9 +154,9 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.set_stmt_cache_size(100)?;
-    # let size = conn.stmt_cache_size()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.set_stmt_cache_size(100)?;
+    # let size = session.stmt_cache_size()?;
     # assert_eq!(size, 100);
     # Ok(()) })
     # }
@@ -178,8 +178,8 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let size = conn.stmt_cache_size()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let size = session.stmt_cache_size()?;
     assert_eq!(size, 20);
     # Ok(())
     # }
@@ -190,8 +190,8 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let size = conn.stmt_cache_size()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let size = session.stmt_cache_size()?;
     # assert_eq!(size, 20);
     # Ok(()) })
     # }
@@ -226,9 +226,9 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    conn.set_call_timeout(5000)?;
-    # let time = conn.call_timeout()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    session.set_call_timeout(5000)?;
+    # let time = session.call_timeout()?;
     # assert_eq!(time, 5000);
     # Ok(())
     # }
@@ -239,9 +239,9 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.set_call_timeout(5000)?;
-    # let time = conn.call_timeout()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.set_call_timeout(5000)?;
+    # let time = session.call_timeout()?;
     # assert_eq!(time, 5000);
     # Ok(()) })
     # }
@@ -264,10 +264,10 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    conn.set_call_timeout(1000)?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    session.set_call_timeout(1000)?;
 
-    let time = conn.call_timeout()?;
+    let time = session.call_timeout()?;
 
     assert_eq!(time, 1000);
     # Ok(())
@@ -279,9 +279,9 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.set_call_timeout(1000)?;
-    # let time = conn.call_timeout()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.set_call_timeout(1000)?;
+    # let time = session.call_timeout()?;
     # assert_eq!(time, 1000);
     # Ok(()) })
     # }
@@ -314,11 +314,11 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    conn.start_call_time_measurements()?;
-    conn.ping()?;
-    let dt = conn.call_time()?;
-    conn.stop_call_time_measurements()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    session.start_call_time_measurements()?;
+    session.ping()?;
+    let dt = session.call_time()?;
+    session.stop_call_time_measurements()?;
     assert!(dt > 0);
     # Ok(())
     # }
@@ -329,11 +329,11 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.start_call_time_measurements()?;
-    # conn.ping().await?;
-    # let dt = conn.call_time()?;
-    # conn.stop_call_time_measurements()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.start_call_time_measurements()?;
+    # session.ping().await?;
+    # let dt = session.call_time()?;
+    # session.stop_call_time_measurements()?;
     # assert!(dt > 0);
     # Ok(()) })
     # }
@@ -370,10 +370,10 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    conn.set_module("Sibyl DocTest");
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    session.set_module("Sibyl DocTest");
 
-    let stmt = conn.prepare("
+    let stmt = session.prepare("
         SELECT module
           FROM v$session
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -392,9 +392,9 @@ impl Connection<'_> {
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
     # let oracle = sibyl::env()?;
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.set_module("Sibyl DocTest");
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.set_module("Sibyl DocTest");
+    # let stmt = session.prepare("
     #     SELECT module
     #       FROM v$session
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -433,10 +433,10 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    conn.set_action("Action Name Test");
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    session.set_action("Action Name Test");
 
-    let stmt = conn.prepare("
+    let stmt = session.prepare("
         SELECT action
           FROM v$session
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -455,9 +455,9 @@ impl Connection<'_> {
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
     # let oracle = sibyl::env()?;
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.set_action("Action Name Test");
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.set_action("Action Name Test");
+    # let stmt = session.prepare("
     #     SELECT action
     #       FROM v$session
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -495,10 +495,10 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    conn.set_client_identifier("Test Wielder");
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    session.set_client_identifier("Test Wielder");
 
-    let stmt = conn.prepare("
+    let stmt = session.prepare("
         SELECT client_identifier
             FROM v$session
             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -516,9 +516,9 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.set_client_identifier("Test Wielder");
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.set_client_identifier("Test Wielder");
+    # let stmt = session.prepare("
     #     SELECT client_identifier
     #       FROM v$session
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -556,10 +556,10 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    conn.set_client_info("Nothing to see here, move along folks");
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    session.set_client_info("Nothing to see here, move along folks");
 
-    let stmt = conn.prepare("
+    let stmt = session.prepare("
         SELECT client_info
           FROM v$session
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -577,9 +577,9 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.set_client_info("Nothing to see here, move along folks");
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.set_client_info("Nothing to see here, move along folks");
+    # let stmt = session.prepare("
     #     SELECT client_info
     #       FROM v$session
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -609,15 +609,15 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let orig_name = conn.current_schema()?;
-    conn.set_current_schema("HR")?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let orig_name = session.current_schema()?;
+    session.set_current_schema("HR")?;
 
-    let current_schema = conn.current_schema()?;
+    let current_schema = session.current_schema()?;
 
     assert_eq!(current_schema, "HR");
-    conn.set_current_schema(orig_name)?;
-    let current_schema = conn.current_schema()?;
+    session.set_current_schema(orig_name)?;
+    let current_schema = session.current_schema()?;
     assert_eq!(current_schema, orig_name);
     # Ok(())
     # }
@@ -628,13 +628,13 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let orig_name = conn.current_schema()?;
-    # conn.set_current_schema("HR")?;
-    # let current_schema = conn.current_schema()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let orig_name = session.current_schema()?;
+    # session.set_current_schema("HR")?;
+    # let current_schema = session.current_schema()?;
     # assert_eq!(current_schema, "HR");
-    # conn.set_current_schema(orig_name)?;
-    # let current_schema = conn.current_schema()?;
+    # session.set_current_schema(orig_name)?;
+    # let current_schema = session.current_schema()?;
     # assert_eq!(current_schema, orig_name);
     # Ok(()) })
     # }
@@ -668,13 +668,13 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let orig_name = conn.current_schema()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let orig_name = session.current_schema()?;
 
-    conn.set_current_schema("HR")?;
+    session.set_current_schema("HR")?;
 
-    assert_eq!(conn.current_schema()?, "HR");
-    let stmt = conn.prepare("
+    assert_eq!(session.current_schema()?, "HR");
+    let stmt = session.prepare("
         SELECT schemaname
           FROM v$session
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -684,8 +684,8 @@ impl Connection<'_> {
     let schema_name : &str = row.get(0)?.unwrap();
     assert_eq!(schema_name, "HR");
 
-    conn.set_current_schema(orig_name)?;
-    assert_eq!(conn.current_schema()?, orig_name);
+    session.set_current_schema(orig_name)?;
+    assert_eq!(session.current_schema()?, orig_name);
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
@@ -695,11 +695,11 @@ impl Connection<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let orig_name = conn.current_schema()?;
-    # conn.set_current_schema("HR")?;
-    # assert_eq!(conn.current_schema()?, "HR");
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let orig_name = session.current_schema()?;
+    # session.set_current_schema("HR")?;
+    # assert_eq!(session.current_schema()?, "HR");
+    # let stmt = session.prepare("
     #     SELECT schemaname
     #       FROM v$session
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -708,8 +708,8 @@ impl Connection<'_> {
     # let row = rows.next().await?.unwrap();
     # let schema_name : &str = row.get(0)?.unwrap();
     # assert_eq!(schema_name, "HR");
-    # conn.set_current_schema(orig_name)?;
-    # assert_eq!(conn.current_schema()?, orig_name);
+    # session.set_current_schema(orig_name)?;
+    # assert_eq!(session.current_schema()?, orig_name);
     # Ok(()) })
     # }
     ```

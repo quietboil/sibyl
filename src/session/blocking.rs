@@ -1,6 +1,6 @@
-//! Blocking mode User session (a.k.a. database connection) methods.
+//! Blocking mode database session methods.
 
-use super::{SvcCtx, Connection};
+use super::{SvcCtx, Session};
 use crate::{Result, Statement, oci::{self, *, attr}, Environment, SessionPool, ConnectionPool};
 use std::{marker::PhantomData, sync::Arc};
 
@@ -35,7 +35,7 @@ impl SvcCtx {
     }
 }
 
-impl<'a> Connection<'a> {
+impl<'a> Session<'a> {
     pub(crate) fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
         let ctx = SvcCtx::new(env, dblink, user, pass)?;
         let usr : Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
@@ -67,11 +67,11 @@ impl<'a> Connection<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    # conn.start_call_time_measurements()?;
-    conn.ping()?;
-    # let dt = conn.call_time()?;
-    # conn.stop_call_time_measurements()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # session.start_call_time_measurements()?;
+    session.ping()?;
+    # let dt = session.call_time()?;
+    # session.stop_call_time_measurements()?;
     # assert!(dt > 0);
     # Ok::<(),sibyl::Error>(())
     ```
@@ -94,8 +94,8 @@ impl<'a> Connection<'a> {
     # let dbname = std::env::var("DBNAME")?;
     # let dbuser = std::env::var("DBUSER")?;
     # let dbpass = std::env::var("DBPASS")?;
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT employee_id
           FROM (
                 SELECT employee_id
@@ -130,8 +130,8 @@ impl<'a> Connection<'a> {
     # let dbname = std::env::var("DBNAME")?;
     # let dbuser = std::env::var("DBUSER")?;
     # let dbpass = std::env::var("DBPASS")?;
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         UPDATE hr.employees
            SET salary = :new_salary
          WHERE employee_id = :emp_id
@@ -142,7 +142,7 @@ impl<'a> Connection<'a> {
     ))?;
     assert_eq!(num_updated_rows, 1);
 
-    conn.commit()?;
+    session.commit()?;
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
@@ -161,8 +161,8 @@ impl<'a> Connection<'a> {
     # let dbname = std::env::var("DBNAME")?;
     # let dbuser = std::env::var("DBUSER")?;
     # let dbpass = std::env::var("DBPASS")?;
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         UPDATE hr.employees
            SET salary = ROUND(salary * 1.1)
          WHERE employee_id = :emp_id
@@ -170,7 +170,7 @@ impl<'a> Connection<'a> {
     let num_updated_rows = stmt.execute(107)?;
     assert_eq!(num_updated_rows, 1);
 
-    conn.rollback()?;
+    session.rollback()?;
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */

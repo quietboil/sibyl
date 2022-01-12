@@ -1,10 +1,12 @@
 use sibyl::*;
-
 /**
     This example is a variant of `readme` that executes its work in multiple
-    threads (or async tasks). It creates a connection pool which threads (or
-    tasks) then use to establish their own private sessions with the database,
-    which share a small number of physical connections.
+    threads. It creates a connection pool which is then used by worker threads
+    that establish their own private (and most likely stateful) sessions with
+    the database, which share a small number of physical connections.
+
+    *Note* that connection pooling is only available in `blocking` mode and
+    thus there is no `nonblocking` example.
 */
 fn main() -> Result<()> {
     example()
@@ -34,8 +36,8 @@ fn example() -> Result<()> {
             let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
 
-            let conn = pool.get_session(&dbuser, &dbpass)?;
-            let stmt = conn.prepare("
+            let session = pool.get_session(&dbuser, &dbpass)?;
+            let stmt = session.prepare("
                 SELECT first_name, last_name, hire_date
                   FROM (
                         SELECT first_name, last_name, hire_date

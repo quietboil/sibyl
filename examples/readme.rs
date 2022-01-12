@@ -5,12 +5,16 @@
      - Executes the prepared statement,
      - Fetches the results.
 
-    SQL in this example finds the first person that
-    was hired after the New Year of 2005.
+    SQL in this example finds the first person that was hired after the New Year of 2005.
 
-    Note that `block_on` used in nonblocking version of this example
-    abstracts `block_on` for various executors and is intended to execute async tests
-    and examples.
+    *Note* that `nonblocking` version of this example is almost a verbatim
+    copy of the `blocking` one. The only visible difference - some (async)
+    calls are `await`-ed.
+
+    *Note* also that `block_on` used in nonblocking version of this example
+    abstracts `block_on` for various async executors and is only intended to
+    execute Sibyl's async tests and examples. While you can certainly
+    use it, most likely you'd want to create your own version of it.
 */
 use sibyl as oracle;
 
@@ -22,8 +26,8 @@ fn main() -> oracle::Result<()> {
     let dbuser = std::env::var("DBUSER").expect("user name");
     let dbpass = std::env::var("DBPASS").expect("password");
 
-    let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT first_name, last_name, hire_date
           FROM (
                 SELECT first_name, last_name, hire_date
@@ -33,7 +37,7 @@ fn main() -> oracle::Result<()> {
                )
          WHERE hire_date_rank = 1
     ")?;
-    let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &conn)?;
+    let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &session)?;
     let rows = stmt.query(&date)?;
     // The SELECT above will return either 1 or 0 rows, thus `if let` is sufficient.
     // When more than one row is expected, `while let` should be used to process rows
@@ -71,9 +75,9 @@ fn main() -> oracle::Result<()> {
         let dbname = std::env::var("DBNAME").expect("database name");
         let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
-    
-        let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-        let stmt = conn.prepare("
+
+        let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+        let stmt = session.prepare("
             SELECT first_name, last_name, hire_date
               FROM (
                     SELECT first_name, last_name, hire_date
@@ -93,11 +97,11 @@ fn main() -> oracle::Result<()> {
             );
             let hire_date : oracle::Date = row.get("HIRE_DATE")?.unwrap();
             let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
-    
+
             println!("{} was hired on {}", name, hire_date);
         } else {
             println!("No one was hired after {}", date.to_string("FMMonth DD, YYYY")?);
         }
         Ok(())
-    })    
+    })
 }

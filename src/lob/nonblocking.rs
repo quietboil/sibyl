@@ -6,7 +6,7 @@ and `write_first`, `write_next`, `write_last` methods - are not supported in non
 */
 
 use super::{LOB, InternalLob, LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP};
-use crate::{Result, BFile, oci::*, conn::{Connection, SvcCtx}, Error};
+use crate::{Result, BFile, oci::*, session::{Session, SvcCtx}, Error};
 use std::sync::{atomic::Ordering, Arc};
 
 impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
@@ -47,8 +47,8 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
     #     begin
@@ -65,7 +65,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     #     end;
     # ").await?;
     # stmt.execute(()).await?;
-    let stmt = conn.prepare("
+    let stmt = session.prepare("
         DECLARE
             row_id ROWID;
         BEGIN
@@ -73,7 +73,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
             SELECT text INTO :NEW_LOB FROM test_lobs WHERE rowid = row_id FOR UPDATE;
         END;
     ").await?;
-    let mut lob = CLOB::new(&conn)?;
+    let mut lob = CLOB::new(&session)?;
     stmt.execute_into((), &mut lob).await?;
 
     let text = [
@@ -183,14 +183,14 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 }
 
 impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalLob {
-    pub(crate) fn make(locator: Descriptor<T>, conn: &'a Connection) -> Self {
-        let this = Self::make_new(locator, conn);
+    pub(crate) fn make(locator: Descriptor<T>, session: &'a Session) -> Self {
+        let this = Self::make_new(locator, session);
         let _ = this.is_temp();
         this
     }
 
     pub async fn is_temp(&self) -> Result<bool> {
-        let stmt = self.conn.prepare("BEGIN :RES := DBMS_LOB.ISTEMPORARY(:LOC); END;").await?;
+        let stmt = self.session.prepare("BEGIN :RES := DBMS_LOB.ISTEMPORARY(:LOC); END;").await?;
         let mut flag = 0;
         stmt.execute_into((":LOC", &self.inner.locator), (":RES", &mut flag)).await?;
         let is_temp = flag != 0;
@@ -215,7 +215,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
     let text1 = "
         The sun does arise,
         And make happy the skies.
@@ -230,11 +230,11 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         While our sports shall be seen
         On the Ecchoing Green.
     ";
-    let lob1 = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
+    let lob1 = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     lob1.append(text1).await?;
     assert_eq!(lob1.len().await?, text1.len());
 
-    let lob2 = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
+    let lob2 = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     lob2.append(text2).await?;
     // Cannot use `len` shortcut with `text2` because of the `RIGHT SINGLE QUOTATION MARK` in it
     assert_eq!(lob2.len().await?, text2.chars().count());
@@ -289,7 +289,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
     let text = "
     O Nightingale, that on yon bloomy Spray
     Warbl'st at eeve, when all the Woods are still,
@@ -309,7 +309,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     Whether the Muse, or Love call thee his mate,
     Both them I serve, and of their train am I.
     ";
-    let lob1 = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
+    let lob1 = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     lob1.append(text).await?;
 
     let lost_text = "
@@ -317,7 +317,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     Foretell my hopeles doom, in som Grove ny:
     As thou from yeer to yeer hast sung too late
     ";
-    let lob2 = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
+    let lob2 = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     lob2.append(lost_text).await?;
 
     // Set source offset to 1 to skip leading \n:
@@ -405,8 +405,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
     #     begin
@@ -423,7 +423,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     #     end;
     # ").await?;
     # stmt.execute(()).await?;
-    let stmt = conn.prepare("
+    let stmt = session.prepare("
         DECLARE
             row_id ROWID;
         BEGIN
@@ -431,10 +431,10 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
             SELECT text INTO :NEW_LOB FROM test_lobs WHERE rowid = row_id FOR UPDATE;
         END;
     ").await?;
-    let mut lob = CLOB::new(&conn)?;
+    let mut lob = CLOB::new(&session)?;
     stmt.execute_into((), &mut lob).await?;
 
-    let file = BFile::new(&conn)?;
+    let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     let file_len = file.len().await?;
 
@@ -642,10 +642,10 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
     The temporary LOB is freed automatically either when a LOB goes out of scope or at the end of the session whichever comes first.
     */
-    pub async fn temp(conn: &'a Connection<'a>, csform: CharSetForm, cache: Cache) -> Result<LOB<'a,OCICLobLocator>> {
-        let locator = Descriptor::new(conn)?;
-        futures::LobCreateTemporary::new(conn.get_svc(), &locator, OCI_TEMP_CLOB, csform as u8, cache as u8).await?;
-        Ok(Self::make_temp(locator, conn))
+    pub async fn temp(session: &'a Session<'a>, csform: CharSetForm, cache: Cache) -> Result<LOB<'a,OCICLobLocator>> {
+        let locator = Descriptor::new(session)?;
+        futures::LobCreateTemporary::new(session.get_svc(), &locator, OCI_TEMP_CLOB, csform as u8, cache as u8).await?;
+        Ok(Self::make_temp(locator, session))
     }
 
     /**
@@ -670,8 +670,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let lob = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     let text = "tête-à-tête";
     assert_eq!(text.len(), 14); // byte count
 
@@ -718,8 +718,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let lob = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
 
     let written = lob.append("Hello, World!").await?;
 
@@ -755,8 +755,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let lob = CLOB::temp(&conn, CharSetForm::Implicit, Cache::No).await?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     lob.write(4, "tête-à-tête").await?;
 
     let mut lob_content = String::new();
@@ -774,7 +774,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     pub async fn read(&self, mut offset: usize, len: usize, out: &mut String) -> Result<usize> {
         offset += 1;
 
-        let stmt = self.conn.prepare("BEGIN DBMS_LOB.READ(:LOC, :AMT, :POS, :DATA); END;").await?;
+        let stmt = self.session.prepare("BEGIN DBMS_LOB.READ(:LOC, :AMT, :POS, :DATA); END;").await?;
 
         let mut buf = String::with_capacity(32768);
         let mut remainder = len;
@@ -813,10 +813,10 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
     The temporary LOB is freed automatically either when a LOB goes out of scope or at the end of the session whichever comes first.
     */
-    pub async fn temp(conn: &'a Connection<'a>, cache: Cache) -> Result<LOB<'a,OCIBLobLocator>> {
-        let locator = Descriptor::new(conn)?;
-       futures::LobCreateTemporary::new(conn.get_svc(), &locator, OCI_TEMP_BLOB, 0u8, cache as u8).await?;
-        Ok(Self::make_temp(locator, conn))
+    pub async fn temp(session: &'a Session<'a>, cache: Cache) -> Result<LOB<'a,OCIBLobLocator>> {
+        let locator = Descriptor::new(session)?;
+       futures::LobCreateTemporary::new(session.get_svc(), &locator, OCI_TEMP_BLOB, 0u8, cache as u8).await?;
+        Ok(Self::make_temp(locator, session))
     }
 
     /**
@@ -841,8 +841,8 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let lob = BLOB::temp(&conn, Cache::No).await?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let lob = BLOB::temp(&session, Cache::No).await?;
 
     let written = lob.write(3, "Hello, World!".as_bytes()).await?;
 
@@ -876,8 +876,8 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let lob = BLOB::temp(&conn, Cache::No).await?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let lob = BLOB::temp(&session, Cache::No).await?;
 
     let written = lob.append("Hello, World!".as_bytes()).await?;
 
@@ -913,13 +913,13 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let file = BFile::new(&conn)?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "modem.jpg")?;
     assert!(file.file_exists().await?);
     let file_len = file.len().await?;
     file.open_readonly().await?;
-    let lob = BLOB::temp(&conn, Cache::No).await?;
+    let lob = BLOB::temp(&session, Cache::No).await?;
     lob.load_from_file(&file, 0, file_len, 0).await?;
     assert_eq!(lob.len().await?, file_len);
 
@@ -940,7 +940,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         }
         let buf_ptr = out.as_mut_ptr();
 
-        let stmt = self.conn.prepare("BEGIN DBMS_LOB.READ(:LOC, :AMT, :POS, :DATA); END;").await?;
+        let stmt = self.session.prepare("BEGIN DBMS_LOB.READ(:LOC, :AMT, :POS, :DATA); END;").await?;
 
         let mut remainder = len;
         while remainder > 0 {
@@ -971,8 +971,8 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 }
 
 impl<'a> LOB<'a,OCIBFileLocator> {
-    pub(crate) fn make(locator: Descriptor<OCIBFileLocator>, conn: &'a Connection) -> Self {
-        Self::make_new(locator, conn)
+    pub(crate) fn make(locator: Descriptor<OCIBFileLocator>, session: &'a Session) -> Self {
+        Self::make_new(locator, session)
     }
 
     /**
@@ -1004,8 +1004,8 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let file = BFile::new(&conn)?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "formatted_doc.txt")?;
 
     assert!(file.file_exists().await?);
@@ -1032,8 +1032,8 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let file = BFile::new(&conn)?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     assert!(!file.is_file_open().await?);
 
@@ -1068,8 +1068,8 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let file = BFile::new(&conn)?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
 
     file.open_file().await?;
@@ -1108,8 +1108,8 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let file = BFile::new(&conn)?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     let file_len = file.len().await?;
     file.open_file().await?;

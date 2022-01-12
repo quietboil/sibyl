@@ -1,10 +1,10 @@
-//! Nonblocking mode Connection methods.
+//! Nonblocking mode database session methods.
 
 use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, marker::PhantomData};
 
 use crate::{oci::{self, *}, task, Environment, Result, pool::SessionPool, Statement};
 
-use super::{SvcCtx, Connection};
+use super::{SvcCtx, Session};
 
 impl SvcCtx {
     async fn new(env: &Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
@@ -55,8 +55,8 @@ impl SvcCtx {
     }
 }
 
-impl<'a> Connection<'a> {
-    pub(crate) async fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str) -> Result<Connection<'a>> {
+impl<'a> Session<'a> {
+    pub(crate) async fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str) -> Result<Session<'a>> {
         let ctx = SvcCtx::new(env, dblink, user, pass).await?;
         ctx.set_nonblocking_mode()?;
         let usr: Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
@@ -64,7 +64,7 @@ impl<'a> Connection<'a> {
         Ok(Self { ctx, usr, phantom_env: PhantomData })
     }
 
-    pub(crate) async fn from_session_pool(pool: &'a SessionPool<'_>) -> Result<Connection<'a>> {
+    pub(crate) async fn from_session_pool(pool: &'a SessionPool<'_>) -> Result<Session<'a>> {
         let ctx = SvcCtx::from_session_pool(pool).await?;
         ctx.set_nonblocking_mode()?;
         let usr: Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
@@ -83,11 +83,11 @@ impl<'a> Connection<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    # conn.start_call_time_measurements()?;
-    conn.ping().await?;
-    # let dt = conn.call_time()?;
-    # conn.stop_call_time_measurements()?;
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # session.start_call_time_measurements()?;
+    session.ping().await?;
+    # let dt = session.call_time()?;
+    # session.stop_call_time_measurements()?;
     # assert!(dt > 0);
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
@@ -110,8 +110,8 @@ impl<'a> Connection<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         UPDATE hr.employees
            SET salary = :new_salary
          WHERE employee_id = :emp_id
@@ -122,7 +122,7 @@ impl<'a> Connection<'a> {
     )).await?;
     assert_eq!(num_updated_rows, 1);
 
-    conn.commit().await?;
+    session.commit().await?;
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
@@ -142,8 +142,8 @@ impl<'a> Connection<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         UPDATE hr.employees
            SET salary = ROUND(salary * 1.1)
          WHERE employee_id = :emp_id
@@ -151,7 +151,7 @@ impl<'a> Connection<'a> {
     let num_updated_rows = stmt.execute(107).await?;
     assert_eq!(num_updated_rows, 1);
 
-    conn.rollback().await?;
+    session.rollback().await?;
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
@@ -174,8 +174,8 @@ impl<'a> Connection<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         SELECT employee_id
           FROM (
                 SELECT employee_id
@@ -217,15 +217,15 @@ mod tests {
             let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
 
-            let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-            conn.ping().await?;
+            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            session.ping().await?;
 
             Ok(())
         })
     }
 
     /// Tests that `OCIEnv` is kept beyond `Environment` drop to have it
-    /// available for `Connection`'s async drop
+    /// available for `Session`'s async drop
     #[test]
     fn async_connect_single_thread() -> Result<()> {
         crate::block_on(async {
@@ -237,11 +237,11 @@ mod tests {
             let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
 
-            let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-            conn.start_call_time_measurements()?;
-            conn.ping().await?;
-            let dt = conn.call_time()?;
-            conn.stop_call_time_measurements()?;
+            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            session.start_call_time_measurements()?;
+            session.ping().await?;
+            let dt = session.call_time()?;
+            session.stop_call_time_measurements()?;
 
             assert!(dt > 0);
             println!("dt={}", dt);
@@ -250,7 +250,7 @@ mod tests {
     }
 
     /// Tests that `OCIEnv` is kept beyond `Environment` drop to have it
-    /// available for `Connection`'s async drop
+    /// available for `Session`'s async drop
     #[test]
     fn async_connect_multi_thread_stack_env() -> Result<()> {
         crate::block_on(async {
@@ -262,8 +262,8 @@ mod tests {
             let dbuser = env::var("DBUSER").expect("user name");
             let dbpass = env::var("DBPASS").expect("password");
 
-            let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-            conn.ping().await?;
+            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            session.ping().await?;
 
             Ok(())
         })

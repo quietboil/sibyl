@@ -14,7 +14,7 @@ mod task;
 mod oci;
 mod err;
 mod env;
-mod conn;
+mod session;
 mod pool;
 mod types;
 mod stmt;
@@ -29,7 +29,7 @@ pub use task::{spawn, block_on};
 
 pub use err::Error;
 pub use env::Environment;
-pub use conn::Connection;
+pub use session::Session;
 pub use pool::{SessionPool, SessionPoolGetMode};
 pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ToSqlOut, ColumnType};
 pub use types::{Date, Raw, Number, Varchar, RowID, DateTime, Interval};

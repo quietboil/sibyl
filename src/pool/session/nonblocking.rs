@@ -1,7 +1,7 @@
 //! Session pool nonblocking mode implementation
 
 use super::SessionPool;
-use crate::{Connection, Result, oci::{self, *}, Environment, task};
+use crate::{Session, Result, oci::{self, *}, Environment, task};
 use std::{ptr, slice, str, marker::PhantomData};
 
 impl<'a> SessionPool<'a> {
@@ -69,7 +69,7 @@ impl<'a> SessionPool<'a> {
         # Example
 
         ```
-        use sibyl::{Environment, Connection, Date, Result};
+        use sibyl::{Environment, Session, Date, Result};
         use once_cell::sync::OnceCell;
         use std::{env, sync::Arc};
 
@@ -91,9 +91,9 @@ impl<'a> SessionPool<'a> {
                 for _i in 0..workers.capacity() {
                     let pool = pool.clone();
                     let handle = sibyl::spawn(async move {
-                        let conn = pool.get_session().await.expect("database session");
+                        let session = pool.get_session().await.expect("database session");
 
-                        select_latest_hire(&conn).await.expect("selected employee name")
+                        select_latest_hire(&session).await.expect("selected employee name")
                     });
                     workers.push(handle);
                 }
@@ -104,8 +104,8 @@ impl<'a> SessionPool<'a> {
                 Ok(())
             })
         }
-        # async fn select_latest_hire(conn: &Connection<'_>) -> Result<String> {
-        #     let stmt = conn.prepare("
+        # async fn select_latest_hire(session: &Session<'_>) -> Result<String> {
+        #     let stmt = session.prepare("
         #         SELECT first_name, last_name, hire_date
         #           FROM (
         #                 SELECT first_name, last_name, hire_date
@@ -129,8 +129,8 @@ impl<'a> SessionPool<'a> {
         ```
 
     */
-    pub async fn get_session(&self) -> Result<Connection<'_>> {
-        Connection::from_session_pool(self).await
+    pub async fn get_session(&self) -> Result<Session<'_>> {
+        Session::from_session_pool(self).await
     }
 }
 
@@ -160,11 +160,11 @@ mod tests {
             for _i in 0..workers.capacity() {
                 let pool = pool.clone();
                 let handle = spawn(async move {
-                    let conn = pool.get_session().await.expect("database session");
-                    conn.start_call_time_measurements()?;
-                    conn.ping().await?;
-                    let dt = conn.call_time()?;
-                    conn.stop_call_time_measurements()?;
+                    let session = pool.get_session().await.expect("database session");
+                    session.start_call_time_measurements()?;
+                    session.ping().await?;
+                    let dt = session.call_time()?;
+                    session.stop_call_time_measurements()?;
                     Ok::<_,Error>(dt)
                 });
                 workers.push(handle);

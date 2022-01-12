@@ -2,7 +2,7 @@
 
 use std::{ptr, sync::Arc, marker::PhantomData};
 
-use crate::{Error, Result, oci::{self, *}, Environment, Connection};
+use crate::{Error, Result, oci::{self, *}, Environment, Session};
 
 /**
 A shared pool of physical connections.
@@ -83,7 +83,7 @@ impl<'a> ConnectionPool<'a> {
         # Example
 
         ```
-        use sibyl::{Environment, Connection, Date, Result};
+        use sibyl::{Environment, Session, Date, Result};
 
         fn main() -> Result<()> {
             use std::{env, thread, sync::Arc};
@@ -108,9 +108,9 @@ impl<'a> ConnectionPool<'a> {
                 let pass = env::var("DBPASS").expect("password");
                 let handle = thread::spawn(move || -> String {
 
-                    let conn = pool.get_session(&user, &pass).expect("database session");
+                    let session = pool.get_session(&user, &pass).expect("database session");
 
-                    select_latest_hire(&conn).expect("selected employee name")
+                    select_latest_hire(&session).expect("selected employee name")
                 });
                 workers.push(handle);
             }
@@ -120,8 +120,8 @@ impl<'a> ConnectionPool<'a> {
             }
             Ok(())
         }
-        # fn select_latest_hire(conn: &Connection) -> Result<String> {
-        #     let stmt = conn.prepare("
+        # fn select_latest_hire(session: &Session) -> Result<String> {
+        #     let stmt = session.prepare("
         #         SELECT first_name, last_name, hire_date
         #           FROM (
         #                 SELECT first_name, last_name, hire_date
@@ -144,8 +144,8 @@ impl<'a> ConnectionPool<'a> {
         # }
         ```
     */
-    pub fn get_session(&self, user: &str, pass: &str) -> Result<Connection> {
-        Connection::from_connection_pool(self, user, pass)
+    pub fn get_session(&self, user: &str, pass: &str) -> Result<Session> {
+        Session::from_connection_pool(self, user, pass)
     }
 
     /**

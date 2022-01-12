@@ -14,15 +14,15 @@ mod blocking {
 
     use crate::read_text_file;
 
-    fn connect(oracle: &Environment) -> Result<Connection> {
+    fn connect(oracle: &Environment) -> Result<Session> {
         let dbname = std::env::var("DBNAME").expect("database name");
         let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         oracle.connect(&dbname, &dbuser, &dbpass)
     }
 
-    fn check_or_create_test_table(conn: &Connection) -> Result<()> {
-        let stmt = conn.prepare("
+    fn check_or_create_test_table(session: &Session) -> Result<()> {
+        let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
             BEGIN
@@ -146,17 +146,17 @@ mod blocking {
     #[test]
     fn read_file() -> Result<()> {
         let oracle = sibyl::env()?;
-        let conn = connect(&oracle)?;
-        check_or_create_test_table(&conn)?;
+        let session = connect(&oracle)?;
+        check_or_create_test_table(&session)?;
 
-        let stmt = conn.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIR,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE")?;
+        let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIR,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE")?;
         let mut id : usize = 0;
-        let mut lob : BFile = BFile::new(&conn)?;
+        let mut lob : BFile = BFile::new(&session)?;
         stmt.execute_into(("MEDIA_DIR", "mousepad_comp_ad.pdf", ()), (&mut id, &mut lob, ()))?;
 
         check_file(lob)?;
 
-        let lob : BFile = BFile::new(&conn)?;
+        let lob : BFile = BFile::new(&session)?;
         lob.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
 
         check_file(lob)?;
@@ -167,20 +167,20 @@ mod blocking {
     #[test]
     fn read_blob() -> Result<()> {
         let oracle = sibyl::env()?;
-        let conn = connect(&oracle)?;
-        check_or_create_test_table(&conn)?;
+        let session = connect(&oracle)?;
+        check_or_create_test_table(&session)?;
 
-        let stmt = conn.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
+        let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
         let mut id : usize = 0;
         stmt.execute_into((), &mut id)?;
 
         // retrieve BLOB and lock its row so we could write into it
-        let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
+        let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
         let rows = stmt.query(&id)?;
         let row = rows.next()?.expect("one row");
         let lob : BLOB = row.get(0)?.expect("BLOB for writing");
 
-        let file = BFile::new(&conn)?;
+        let file = BFile::new(&session)?;
         file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
         let file_len = file.len()?;
 
@@ -189,7 +189,7 @@ mod blocking {
         lob.load_from_file(&file, 0, file_len, 0)?;
         file.close_file()?;
         lob.close()?;
-        conn.commit()?;
+        session.commit()?;
 
         check_blob(lob)?;
 
@@ -199,11 +199,11 @@ mod blocking {
     #[test]
     fn write_blob() -> Result<()> {
         let oracle = sibyl::env()?;
-        let conn = connect(&oracle)?;
-        check_or_create_test_table(&conn)?;
+        let session = connect(&oracle)?;
+        check_or_create_test_table(&session)?;
 
         // load the data
-        let file = BFile::new(&conn)?;
+        let file = BFile::new(&session)?;
         file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
         let file_len = file.len()?;
 
@@ -220,7 +220,7 @@ mod blocking {
 
         // make 4 blobs - one for "one piece" writing, another for piece-wise writing
         // and the last 2 for appending and piece-wise appending.
-        let stmt = conn.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
+        let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
         let mut ids = [0usize; 4];
         stmt.execute_into((), &mut ids[0])?;
         stmt.execute_into((), &mut ids[1])?;
@@ -228,7 +228,7 @@ mod blocking {
         stmt.execute_into((), &mut ids[3])?;
 
         // retrieve BLOB and lock its row so we could write into it
-        let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
+        let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
         let rows = stmt.query(&ids[0])?;
         let row = rows.next()?.expect("one row");
         let lob : BLOB = row.get(0)?.expect("BLOB for writing");
@@ -303,10 +303,10 @@ mod blocking {
         lob.close()?;
         assert_eq!(total_written, file_len);
 
-        conn.commit()?;
+        session.commit()?;
 
         // read them back and check that they all match the source
-        let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
+        let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
         for id in ids {
             let rows = stmt.query(&id)?;
             let row = rows.next()?.expect("one row");
@@ -321,8 +321,8 @@ mod blocking {
     #[test]
     fn read_write_clob() -> Result<()> {
         let oracle = sibyl::env()?;
-        let conn = connect(&oracle)?;
-        check_or_create_test_table(&conn)?;
+        let session = connect(&oracle)?;
+        check_or_create_test_table(&session)?;
 
         // load the data
         let text = read_text_file("src/oci.rs");
@@ -331,14 +331,14 @@ mod blocking {
 
         // make 4 clobs - one for "one piece" writing, another for piece-wise writing
         // and the last 2 for appending and piece-wise appending.
-        let stmt = conn.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID")?;
+        let stmt = session.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID")?;
         let mut ids = [0usize; 4];
         stmt.execute_into((), &mut ids[0])?;
         stmt.execute_into((), &mut ids[1])?;
         stmt.execute_into((), &mut ids[2])?;
         stmt.execute_into((), &mut ids[3])?;
 
-        let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
+        let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
         let rows = stmt.query(&ids[0])?;
         let row = rows.next()?.expect("one row");
         let lob : CLOB = row.get(0)?.expect("CLOB for writing");
@@ -395,10 +395,10 @@ mod blocking {
         lob.close()?;
         assert_eq!(total_written, expected_lob_char_len);
 
-        conn.commit()?;
+        session.commit()?;
 
         // read them back and check that they all match the source
-        let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
+        let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
         for id in ids {
             let rows = stmt.query(&id)?;
             let row = rows.next()?.expect("one row");
@@ -420,15 +420,15 @@ mod nonblocking {
 
     use crate::read_text_file;
 
-    async fn connect<'a>(oracle: &'a Environment) -> Result<Connection<'a>> {
+    async fn connect<'a>(oracle: &'a Environment) -> Result<Session<'a>> {
         let dbname = std::env::var("DBNAME").expect("database name");
         let dbuser = std::env::var("DBUSER").expect("user name");
         let dbpass = std::env::var("DBPASS").expect("password");
         oracle.connect(&dbname, &dbuser, &dbpass).await
     }
 
-    async fn check_or_create_test_table(conn: &Connection<'_>) -> Result<()> {
-        let stmt = conn.prepare("
+    async fn check_or_create_test_table(session: &Session<'_>) -> Result<()> {
+        let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
             BEGIN
@@ -484,17 +484,17 @@ mod nonblocking {
     fn read_file() -> Result<()> {
         block_on(async {
             let oracle = sibyl::env()?;
-            let conn = connect(&oracle).await?;
-            check_or_create_test_table(&conn).await?;
+            let session = connect(&oracle).await?;
+            check_or_create_test_table(&session).await?;
 
-            let stmt = conn.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIRNAME,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE").await?;
+            let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIRNAME,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE").await?;
             let mut id : usize = 0;
-            let mut lob : BFile = BFile::new(&conn)?;
+            let mut lob : BFile = BFile::new(&session)?;
             stmt.execute_into(((":DIRNAME", "MEDIA_DIR"), (":FILENAME", "mousepad_comp_ad.pdf")), ((":ID", &mut id), (":NEW_BFILE", &mut lob))).await?;
 
             check_file(lob).await?;
 
-            let lob : BFile = BFile::new(&conn)?;
+            let lob : BFile = BFile::new(&session)?;
             lob.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
 
             check_file(lob).await?;
@@ -525,10 +525,10 @@ mod nonblocking {
     fn read_blob() -> Result<()> {
         block_on(async {
             let oracle = sibyl::env()?;
-            let conn = connect(&oracle).await?;
-            check_or_create_test_table(&conn).await?;
+            let session = connect(&oracle).await?;
+            check_or_create_test_table(&session).await?;
 
-            let stmt = conn.prepare("
+            let stmt = session.prepare("
                 DECLARE
                     row_id ROWID;
                 BEGIN
@@ -536,10 +536,10 @@ mod nonblocking {
                     SELECT bin INTO :NEW_BLOB FROM test_large_object_data WHERE rowid = row_id FOR UPDATE;
                 END;
             ").await?;
-            let mut lob = BLOB::new(&conn)?;
+            let mut lob = BLOB::new(&session)?;
             stmt.execute_into((), &mut lob).await?;
 
-            let file = BFile::new(&conn)?;
+            let file = BFile::new(&session)?;
             file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
             let file_len = file.len().await?;
 
@@ -548,7 +548,7 @@ mod nonblocking {
             lob.load_from_file(&file, 0, file_len, 0).await?;
             file.close_file().await?;
             lob.close().await?;
-            conn.commit().await?;
+            session.commit().await?;
 
             check_blob(lob).await?;
 
@@ -560,11 +560,11 @@ mod nonblocking {
     fn write_blob() -> Result<()> {
         block_on(async {
             let oracle = sibyl::env()?;
-            let conn = connect(&oracle).await?;
-            check_or_create_test_table(&conn).await?;
+            let session = connect(&oracle).await?;
+            check_or_create_test_table(&session).await?;
 
             // load the data
-            let file = BFile::new(&conn)?;
+            let file = BFile::new(&session)?;
             file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
             let file_len = file.len().await?;
 
@@ -580,13 +580,13 @@ mod nonblocking {
             assert!(!file.is_open().await?, "source file is closed");
 
             // make 2 blobs - one for writing and another for appending
-            let stmt = conn.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID").await?;
+            let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID").await?;
             let mut ids = [0usize; 2];
             stmt.execute_into((), &mut ids[0]).await?;
             stmt.execute_into((), &mut ids[1]).await?;
 
             // retrieve BLOB and lock its row so we could write into it
-            let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
+            let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
             let rows = stmt.query(ids[0]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : BLOB = row.get(0)?.expect("BLOB for writing");
@@ -605,10 +605,10 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(written, file_len);
 
-            conn.commit().await?;
+            session.commit().await?;
 
             // read them back and check that they all match the source
-            let stmt = conn.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
+            let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
             for id in ids {
                 if id > 0 {
                     let rows = stmt.query(&id).await?;
@@ -631,16 +631,16 @@ mod nonblocking {
 
         block_on(async {
             let oracle = sibyl::env()?;
-            let conn = connect(&oracle).await?;
-            check_or_create_test_table(&conn).await?;
+            let session = connect(&oracle).await?;
+            check_or_create_test_table(&session).await?;
 
             // make 2 clobs - one for writing and another for appending
-            let stmt = conn.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID").await?;
+            let stmt = session.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID").await?;
             let mut ids = [0usize; 2];
             stmt.execute_into((), &mut ids[0]).await?;
             stmt.execute_into((), &mut ids[1]).await?;
 
-            let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
+            let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
             let rows = stmt.query(ids[0]).await?;
             let row = rows.next().await?.expect("one row");
             let lob : CLOB = row.get(0)?.expect("CLOB for writing");
@@ -659,10 +659,10 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(written, expected_lob_char_len);
 
-            conn.commit().await?;
+            session.commit().await?;
 
             // read them back and check that they all match the source
-            let stmt = conn.prepare("SELECT text FROM test_large_object_data WHERE id = :ID").await?;
+            let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID").await?;
             for id in ids {
                 let rows = stmt.query(&id).await?;
                 let row = rows.next().await?.expect("one row");
@@ -683,19 +683,19 @@ mod nonblocking {
     fn temp_blob() -> Result<()> {
         block_on(async {
             let oracle = sibyl::env()?;
-            let conn = connect(&oracle).await?;
-            check_or_create_test_table(&conn).await?;
+            let session = connect(&oracle).await?;
+            check_or_create_test_table(&session).await?;
 
-            let lob = BLOB::temp(&conn, Cache::No).await?;
+            let lob = BLOB::temp(&session, Cache::No).await?;
 
             let is_temp = lob.is_temp().await?;
             assert!(is_temp);
 
-            let mut lob = BLOB::empty(&conn)?;
+            let mut lob = BLOB::empty(&session)?;
             let is_temp = lob.is_temp().await?;
             assert!(!is_temp);
 
-            let stmt = conn.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE); END;").await?;
+            let stmt = session.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE); END;").await?;
             stmt.execute_into((), &mut lob).await?;
             let is_temp = lob.is_temp().await?;
             assert!(is_temp);

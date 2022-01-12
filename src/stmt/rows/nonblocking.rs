@@ -16,8 +16,8 @@ impl<'a> Rows<'a> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = conn.prepare("
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
         SELECT street_address, postal_code, city, state_province
           FROM hr.locations
          WHERE country_id = :id
@@ -53,7 +53,7 @@ impl<'a> Rows<'a> {
         } else {
             let stmt: &OCIStmt  = self.rset.as_ref();
             let err:  &OCIError = self.rset.as_ref();
-            let res = futures::StmtFetch::new(self.rset.conn().get_svc(), stmt, err).await?;
+            let res = futures::StmtFetch::new(self.rset.session().get_svc(), stmt, err).await?;
             self.last_result.store(res, Ordering::Release);
             match res {
                 OCI_NO_DATA => Ok( None ),

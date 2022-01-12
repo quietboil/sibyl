@@ -1,7 +1,7 @@
 //! Blocking mode OCI environment methods.
 
 use super::Environment;
-use crate::{Connection, ConnectionPool, Result, SessionPool};
+use crate::{Session, ConnectionPool, Result, SessionPool};
 
 impl Environment {
     /**
@@ -20,13 +20,13 @@ impl Environment {
     let dbuser = std::env::var("DBUSER")?;
     let dbpass = std::env::var("DBPASS")?;
 
-    let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
 
-    assert!(!conn.is_async()?);
-    assert!(conn.is_connected()?);
-    assert!(conn.ping().is_ok());
+    assert!(!session.is_async()?);
+    assert!(session.is_connected()?);
+    assert!(session.ping().is_ok());
 
-    let stmt = conn.prepare("
+    let stmt = session.prepare("
         SELECT DISTINCT client_driver
           FROM v$session_connect_info
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -38,8 +38,8 @@ impl Environment {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Connection> {
-        Connection::new(self, dbname, username, password)
+    pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Session> {
+        Session::new(self, dbname, username, password)
     }
 
     /**
@@ -73,8 +73,8 @@ impl Environment {
     // and there are no idle sessions in the pool.
     let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)?;
 
-    let conn = pool.get_session()?;
-    let stmt = conn.prepare("
+    let session = pool.get_session()?;
+    let stmt = session.prepare("
         SELECT DISTINCT client_driver
           FROM v$session_connect_info
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
@@ -118,8 +118,8 @@ impl Environment {
 
     let pool = oracle.create_connection_pool(&dbname, &dbuser, &dbpass, 1, 1, 10)?;
 
-    let conn = pool.get_session(&dbuser, &dbpass)?;
-    let stmt = conn.prepare("
+    let session = pool.get_session(&dbuser, &dbpass)?;
+    let stmt = session.prepare("
         SELECT DISTINCT client_driver
           FROM v$session_connect_info
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')

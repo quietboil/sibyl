@@ -20,8 +20,8 @@ mod tests {
                 let dbuser = env::var("DBUSER").expect("user name");
                 let dbpass = env::var("DBPASS").expect("password");
 
-                let conn = oracle.connect(&dbname, &dbuser, &dbpass).expect("database connection");
-                let stmt = conn.prepare("
+                let session = oracle.connect(&dbname, &dbuser, &dbpass).expect("database connection");
+                let stmt = session.prepare("
                     SELECT first_name, last_name, hire_date
                       FROM (
                             SELECT first_name, last_name, hire_date
@@ -79,14 +79,14 @@ mod tests {
         let dbuser = env::var("DBUSER").expect("user name");
         let dbpass = env::var("DBPASS").expect("password");
 
-        let conn = oracle.connect(&dbname, &dbuser, &dbpass)?;
-        let conn = Arc::new(conn);
+        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = Arc::new(session);
 
         let mut workers = Vec::with_capacity(100);
         for _i in 0..workers.capacity() {
-            let conn = conn.clone();
+            let session = session.clone();
             let handle = thread::spawn(move || -> String {
-                let stmt = conn.prepare("
+                let stmt = session.prepare("
                     SELECT first_name, last_name, hire_date
                       FROM (
                             SELECT first_name, last_name, hire_date
@@ -109,7 +109,7 @@ mod tests {
 
     /**
         Creates a session pool in a multithreaded environment.
-        Threads get sessions (`Connection`s) from this pool.
+        Threads get sessions (`Session`s) from this pool.
     */
     #[test]
     fn pooled_sessions() -> Result<()> {
@@ -131,8 +131,8 @@ mod tests {
         for _i in 0..workers.capacity() {
             let pool = pool.clone();
             let handle = thread::spawn(move || -> String {
-                let conn = pool.get_session().expect("database session");
-                let stmt = conn.prepare("
+                let session = pool.get_session().expect("database session");
+                let stmt = session.prepare("
                     SELECT first_name, last_name, hire_date
                       FROM (
                             SELECT first_name, last_name, hire_date
@@ -182,8 +182,8 @@ mod tests {
             let user = user.clone();
             let pass = pass.clone();
             let handle = thread::spawn(move || -> String {
-                let conn = pool.get_session(user.as_str(), pass.as_str()).expect("database session");
-                let stmt = conn.prepare("
+                let session = pool.get_session(user.as_str(), pass.as_str()).expect("database session");
+                let stmt = session.prepare("
                     SELECT first_name, last_name, hire_date
                       FROM (
                             SELECT first_name, last_name, hire_date
@@ -231,8 +231,8 @@ mod tests {
             for _i in 0..workers.capacity() {
                 let pool = pool.clone();
                 let handle = spawn(async move {
-                    let conn = pool.get_session().await.expect("database session");
-                    let stmt = conn.prepare("
+                    let session = pool.get_session().await.expect("database session");
+                    let stmt = session.prepare("
                         SELECT first_name, last_name, hire_date
                           FROM (
                                 SELECT first_name, last_name, hire_date

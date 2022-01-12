@@ -1,7 +1,7 @@
 //! Nonblocking mode OCI environment methods.
 
 use super::Environment;
-use crate::{Result, Connection, SessionPool};
+use crate::{Result, Session, SessionPool};
 
 impl Environment {
     /**
@@ -23,14 +23,14 @@ impl Environment {
     let dbuser = std::env::var("DBUSER").expect("user name");
     let dbpass = std::env::var("DBPASS").expect("password");
 
-    let conn = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
 
-    conn.ping().await?;
+    session.ping().await?;
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
-    pub async fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Connection<'_>> {
-        Connection::new(self, dbname, username, password).await
+    pub async fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Session<'_>> {
+        Session::new(self, dbname, username, password).await
     }
 
     /**
@@ -65,8 +65,8 @@ impl Environment {
     // and there are no idle sessions in the pool.
     let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
 
-    let conn = pool.get_session().await?;
-    let stmt = conn.prepare("
+    let session = pool.get_session().await?;
+    let stmt = session.prepare("
         SELECT DISTINCT client_driver
           FROM v$session_connect_info
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
