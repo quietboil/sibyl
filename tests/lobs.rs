@@ -152,7 +152,7 @@ mod blocking {
         let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIR,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE")?;
         let mut id : usize = 0;
         let mut lob : BFile = BFile::new(&session)?;
-        stmt.execute_into(("MEDIA_DIR", "mousepad_comp_ad.pdf", ()), (&mut id, &mut lob, ()))?;
+        stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut id, &mut lob))?;
 
         check_file(lob)?;
 
@@ -172,7 +172,7 @@ mod blocking {
 
         let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
         let mut id : usize = 0;
-        stmt.execute_into((), &mut id)?;
+        stmt.execute(&mut id)?;
 
         // retrieve BLOB and lock its row so we could write into it
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
@@ -222,10 +222,10 @@ mod blocking {
         // and the last 2 for appending and piece-wise appending.
         let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
         let mut ids = [0usize; 4];
-        stmt.execute_into((), &mut ids[0])?;
-        stmt.execute_into((), &mut ids[1])?;
-        stmt.execute_into((), &mut ids[2])?;
-        stmt.execute_into((), &mut ids[3])?;
+        stmt.execute(&mut ids[0])?;
+        stmt.execute(&mut ids[1])?;
+        stmt.execute(&mut ids[2])?;
+        stmt.execute(&mut ids[3])?;
 
         // retrieve BLOB and lock its row so we could write into it
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
@@ -327,10 +327,10 @@ mod blocking {
         // and the last 2 for appending and piece-wise appending.
         let stmt = session.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID")?;
         let mut ids = [0usize; 4];
-        stmt.execute_into((), &mut ids[0])?;
-        stmt.execute_into((), &mut ids[1])?;
-        stmt.execute_into((), &mut ids[2])?;
-        stmt.execute_into((), &mut ids[3])?;
+        stmt.execute(&mut ids[0])?;
+        stmt.execute(&mut ids[1])?;
+        stmt.execute(&mut ids[2])?;
+        stmt.execute(&mut ids[3])?;
 
         let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
         let rows = stmt.query(&ids[0])?;
@@ -484,7 +484,7 @@ mod nonblocking {
             let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIRNAME,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE").await?;
             let mut id : usize = 0;
             let mut lob : BFile = BFile::new(&session)?;
-            stmt.execute_into(((":DIRNAME", "MEDIA_DIR"), (":FILENAME", "mousepad_comp_ad.pdf")), ((":ID", &mut id), (":NEW_BFILE", &mut lob))).await?;
+            stmt.execute(((":DIRNAME", "MEDIA_DIR"), (":FILENAME", "mousepad_comp_ad.pdf"), (":ID", &mut id), (":NEW_BFILE", &mut lob))).await?;
 
             check_file(lob).await?;
 
@@ -531,7 +531,7 @@ mod nonblocking {
                 END;
             ").await?;
             let mut lob = BLOB::new(&session)?;
-            stmt.execute_into((), &mut lob).await?;
+            stmt.execute(&mut lob).await?;
 
             let file = BFile::new(&session)?;
             file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
@@ -576,8 +576,8 @@ mod nonblocking {
             // make 2 blobs - one for writing and another for appending
             let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID").await?;
             let mut ids = [0usize; 2];
-            stmt.execute_into((), &mut ids[0]).await?;
-            stmt.execute_into((), &mut ids[1]).await?;
+            stmt.execute(&mut ids[0]).await?;
+            stmt.execute(&mut ids[1]).await?;
 
             // retrieve BLOB and lock its row so we could write into it
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
@@ -631,8 +631,8 @@ mod nonblocking {
             // make 2 clobs - one for writing and another for appending
             let stmt = session.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID").await?;
             let mut ids = [0usize; 2];
-            stmt.execute_into((), &mut ids[0]).await?;
-            stmt.execute_into((), &mut ids[1]).await?;
+            stmt.execute(&mut ids[0]).await?;
+            stmt.execute(&mut ids[1]).await?;
 
             let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
             let rows = stmt.query(ids[0]).await?;
@@ -690,7 +690,7 @@ mod nonblocking {
             assert!(!is_temp);
 
             let stmt = session.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE); END;").await?;
-            stmt.execute_into((), &mut lob).await?;
+            stmt.execute(&mut lob).await?;
             let is_temp = lob.is_temp().await?;
             assert!(is_temp);
 

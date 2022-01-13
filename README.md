@@ -34,7 +34,7 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let rows = stmt.query(&date)?;
 
     // The SELECT above will return either 1 or 0 rows, thus `if let` is sufficient.
-    // When more than one row is expected, `while let` is used to process rows.
+    // When more than one row is expected, `while let` would be used to process rows.
     if let Some( row ) = rows.next()? {
         let first_name : Option<&str> = row.get("FIRST_NAME")?;
         let last_name  : &str         = row.get_not_null("LAST_NAME")?;
@@ -105,12 +105,12 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
 > Note that:
 > - The nonblocking mode example is almost a verbatim copy of the blocking mode example (see above) with `await`s added.
 > - The example below uses and depends on [Tokio](https://crates.io/crates/tokio)
-> - For the moment, Sibyl can use only Tokio as an async runtime.
+> - For the moment, Sibyl can use only Tokio as an async executor.
 
 
 ## Notes on Building
 
-Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can supply that information via environment variable `OCI_LIB_DIR` on Windows or `LIBRARY_PATH` on Linux. On Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build Sibyl's example as:
+Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can provide that information via environment variable `OCI_LIB_DIR` on Windows or `LIBRARY_PATH` on Linux. On Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build Sibyl's example as:
 
 ```bash
 LIBRARY_PATH=/usr/lib/oracle/19.13/client64/lib cargo build --examples --features=blocking
@@ -141,7 +141,7 @@ sibyl = { version = "0.5", features = "blocking" }
 
 ### Environment
 
-The OCI environment handle must be created before any other OCI function can be called. While there can be many environments - for example, one can create an environment per connection - usually one is enought. Sibyl initializes it to be the most compatible with Rust requirements - thread-safe using UTF8 character encoding. That single environment handle can be created in `main` and then passed around:
+An OCI environment handle must be created before any other OCI function can be called. While there can be many environments - for example, they might be configured to have different languages and territories - usually one is sufficient. Sibyl initializes it to be the most compatible with Rust requirements - thread-safe using UTF8 (AL32UTF8) character encoding. That single environment handle can be created in `main` and then passed around:
 
 ```rust
 fn main() {
@@ -171,7 +171,7 @@ let current_timestamp = TimestampTZ::from_systimestamp(&ORACLE)?;
 
 ### Connections
 
-Use `Environment::connect` method to connect to a database:
+Use `Environment::connect` method to connect to a database and start a new user session:
 
 ```rust
 fn main() -> sibyl::Result<()> {
@@ -197,12 +197,11 @@ let stmt = session.prepare("
 ")?;
 ```
 
-A prepared statement can be executed either with the `query` or `execute` or `execute_into` methods:
+A prepared statement can be executed either with the `query` or `execute` methods:
 - `query` is used for `SELECT` statements. In fact, Sibyl will complain if you try to `query` any other statement.
-- `execute` is used for all other, non-SELECT, DML and DDL that do not have OUT parameters.
-- `execute_into` is used with DML that have OUT parameters.
+- `execute` is used for all other, non-SELECT, DML and DDL.
 
-`query` and `execute` take a tuple of IN arguments, which can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call `query` using a positional argument as:
+`query` and `execute` take a tuple of arguments. The latter can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call `query` using a positional argument as:
 
 ```rust
 let rows = stmt.query(103)?;
@@ -228,7 +227,7 @@ let stmt = session.prepare("
 let rows = stmt.query(("Security", 1700, ()))?;
 ```
 
-`execute_into` allows execution of statements with OUT (or INOUT) parameters. For example:
+`execute` also allows execution of statements with OUT (or INOUT) parameters. For example:
 
 ```rust
 let stmt = session.prepare("
@@ -241,23 +240,23 @@ let stmt = session.prepare("
 let mut department_id: u32 = 0;
 let num_inserted = stmt.execute(
     (
-        (":DEPARTMENT_NAME", "Security"),
-        (":MANAGER_ID",      ""        ),
-        (":LOCATION_ID",     1700      ),
-    ),
-        (":DEPARTMENT_ID",   &mut department_id)
+        (":DEPARTMENT_NAME", "Security"         ),
+        (":MANAGER_ID",      ""                 ),
+        (":LOCATION_ID",     1700               ),
+        (":DEPARTMENT_ID",   &mut department_id ),
+    )
 )?;
 ```
 
-`execute` and `execute_into` return the number of rows affected by the statement. `query` returns what is colloquially called a "streaming iterator" which is typically iterated using `while`. For example (continuing the SELECT example from above):
+`execute` returns the number of rows affected by the statement. `query` returns what is colloquially called a "streaming iterator" which is typically iterated using `while`. For example (continuing the SELECT example from above):
 
 ```rust
 let mut employees = HashMap::new();
 let stmt = session.prepare("
     SELECT employee_id, last_name, first_name
-        FROM hr.employees
-    WHERE manager_id = :id
-    ORDER BY employee_id
+      FROM hr.employees
+     WHERE manager_id = :id
+  ORDER BY employee_id
 ")?;
 let rows = stmt.query(103)?;
 while let Some( row ) = rows.next()? {
@@ -328,7 +327,7 @@ while let Some( row ) = rows.next()? {
 }
 ```
 
-Of couse, that's a lot of boilerplate, which would benefit from a derive macro. Maybe we'll get to that eventually :-)
+Of couse, that's a lot of boilerplate, which would benefit from a `derive` macro. Maybe we'll get to that eventually :-)
 
 ## Oracle Data Types
 
@@ -346,7 +345,10 @@ let two_pi = pi.mul(&two)?;
 let h = Number::from_string("6.62607004E-34", "9D999999999EEEE", &oracle)?;
 let hbar = h.div(&two_pi)?;
 
-assert_eq!(hbar.to_string("TME")?, "1.05457180013911265115394106872506677375E-34");
+assert_eq!(
+    hbar.to_string("TME")?,
+    "1.05457180013911265115394106872506677375E-34"
+);
 ```
 
 ### Date
@@ -395,12 +397,12 @@ let launch  = TimestampTZ::with_date_and_time(1969, 7, 16, 13, 32,  0, 0, "UTC",
 let landing = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 0, "UTC", &oracle)?;
 let duration : IntervalDS = landing.subtract(&launch)?;
 
-assert_eq!("+8 03:18:35.000", duration.to_string(1,3)?);
+assert_eq!(duration.to_string(1,3)?, "+8 03:18:35.000");
 ```
 
 ### RowID
 
-Oracle ROWID can be selected and retrieved explicitly into an instance of the `RowID`. However, one interesting case is SELECT FOR UPDATE queries where Oracle returns ROWIDs implicitly. Those can be retrieved using `Row::get_rowid` method.
+Oracle ROWID can be selected and retrieved explicitly into an instance of the `RowID`. However, one interesting case is SELECT FOR UPDATE queries where Oracle returns ROWIDs implicitly. Those can be retrieved using `Row::rowid` method.
 
 ```rust
 let stmt = session.prepare("
@@ -425,7 +427,7 @@ let num_updated = stmt.execute((
     ( ":MANAGER_ID", 102 ),
     ( ":ROW_ID",  &rowid ),
 ))?;
-assert_eq!(1, num_updated);
+assert_eq!(num_updated, 1);
 ```
 
 ### Cursors
@@ -443,7 +445,7 @@ let stmt = session.prepare("
     END;
 ")?;
 let mut cursor = Cursor::new(&stmt)?;
-stmt.execute_into((), &mut cursor)?;
+stmt.execute(&mut cursor)?;
 let rows = cursor.rows()?;
 // ...
 ```
@@ -508,7 +510,7 @@ let stmt = session.prepare("
     END;
 ").await?;
 let mut lob = BLOB::new(&session)?;
-stmt.execute_into((), &mut lob).await?;
+stmt.execute(&mut lob).await?;
 
 lob.open().await?;
 let num_bytes_written = lob.write(0, &data).await?;
@@ -562,7 +564,7 @@ Sibyl tests are routinely executed on x64 Linux with Instant Clients 12.2, 18.5,
 
 ### Known Issues with Some Clients
 
-`SessionPool::session_max_use_count` and `SessionPool::set_session_max_use_count` will fail on 12.2 client with `ORA-24315: illegal attribute type`.
+`SessionPool`'s `session_max_use_count` and `set_session_max_use_count` will fail on 12.2 client with `ORA-24315: illegal attribute type`.
 
 Client 21.4 (at least with 19.3 database) is strangely picky about names of parameter placeholders for LOB columns. For example, if a table was created with the following LOB column:
 

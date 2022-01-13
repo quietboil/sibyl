@@ -9,7 +9,7 @@ mod blocking;
 mod nonblocking;
 
 use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
-use crate::{Result, Session, oci::{self, *}, stmt::{ToSql, ToSqlOut, Params}, session::SvcCtx};
+use crate::{Result, Session, oci::{self, *}, stmt::{ToSql, Params}, session::SvcCtx};
 #[cfg(feature="nonblocking")]
 use crate::task;
 
@@ -244,7 +244,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         INSERT INTO test_lobs (text) VALUES (empty_clob()) RETURN id INTO :id
     ")?;
     let mut id : usize = 0;
-    stmt.execute_into((), &mut id)?;
+    stmt.execute(&mut id)?;
 
     // must lock LOB's row before writing into the LOB
     let stmt = session.prepare("
@@ -310,7 +310,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # stmt.execute(()).await?;
     # let stmt = session.prepare("INSERT INTO test_lobs (text) VALUES (empty_clob()) RETURN id INTO :id").await?;
     # let mut id : usize = 0;
-    # stmt.execute_into((), &mut id).await?;
+    # stmt.execute(&mut id).await?;
     # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE").await?;
     # let rows = stmt.query(&id).await?;
     # let row = rows.next().await?.expect("one row");
@@ -424,7 +424,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ")?;
     let mut id : usize = 0;
     let lob = CLOB::empty(&session)?;
-    stmt.execute_into(&lob, &mut id)?;
+    stmt.execute((&lob, &mut id, ()))?;
     # assert!(id > 0);
     # Ok(())
     # }
@@ -458,7 +458,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     # ").await?;
     # let mut id : usize = 0;
     # let lob = CLOB::empty(&session)?;
-    # stmt.execute_into(&lob, &mut id).await?;
+    # stmt.execute((&lob, &mut id, ())).await?;
     # assert!(id > 0);
     # Ok(()) })
     # }
@@ -647,24 +647,21 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     }
 }
 
-macro_rules! impl_lob_to_sql {
-    ($($ts:ty),+) => {
-        $(
-            impl ToSql for &LOB<'_, $ts> {
-                fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    self.inner.locator.bind_to(pos, params, stmt, err)
-                }
-            }
-            impl ToSqlOut for &mut LOB<'_, $ts> {
-                fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    self.inner.locator.bind_to(pos, params, stmt, err)
-                }
-            }
-        )+
-    };
+impl<T> ToSql for &LOB<'_, T> where T: DescriptorType<OCIType=OCILobLocator> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = std::mem::size_of::<*mut T::OCIType>();
+        params.bind(pos, T::sql_type(), self.inner.locator.as_ptr() as _, len, stmt, err)?;
+        Ok(pos + 1)
+    }
 }
 
-impl_lob_to_sql!{ OCICLobLocator, OCIBLobLocator, OCIBFileLocator }
+impl<T> ToSql for &mut LOB<'_, T> where T: DescriptorType<OCIType=OCILobLocator> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = std::mem::size_of::<*mut T::OCIType>();
+        params.bind_out(pos, T::sql_type(), self.inner.locator.as_mut_ptr() as _, len, len, stmt, err)?;
+        Ok(pos + 1)
+    }
+}
 
 impl LOB<'_,OCICLobLocator> {
     /// Debug helper that fetches first 50 (at most) bytes of CLOB content

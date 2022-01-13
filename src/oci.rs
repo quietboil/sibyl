@@ -729,7 +729,7 @@ extern "C" {
     //     mode:       u32
     // ) -> i32;
 
-    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-D28DF5A7-3C75-4E52-82F7-A5D6D5714E69
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/bind-define-describe-functions.html#GUID-5C505821-323D-473D-825B-448C8D9A6702
     fn OCIBindByPos2(
         stmtp:      *const OCIStmt,
         bindpp:     *mut *mut OCIBind,

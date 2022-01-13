@@ -34,9 +34,9 @@ mod blocking {
         let mut id = 0;
         let mut text_out = String::with_capacity(97);
         let mut ntxt_out = String::with_capacity(99);
-        let count = stmt.execute_into(
-            (":TEXT", "Two roads diverged in a yellow wood,"),
+        let count = stmt.execute(
             (
+                (":TEXT",     "Two roads diverged in a yellow wood,"),
                 (":ID",       &mut id),
                 (":TEXT_OUT", &mut text_out),
                 (":NTXT_OUT", &mut ntxt_out)
@@ -49,9 +49,9 @@ mod blocking {
         ids.push(id);
 
          let text = String::from("And sorry I could not travel both");
-        let count = stmt.execute_into(
-            (":TEXT", text.as_str()),
+        let count = stmt.execute(
             (
+                (":TEXT",     text.as_str()),
                 (":ID",       &mut id),
                 (":TEXT_OUT", &mut text_out),
                 (":NTXT_OUT", &mut ntxt_out)
@@ -68,9 +68,9 @@ mod blocking {
         let mut ntxt_out = Varchar::with_capacity(99, &session)?;
         assert!(ntxt_out.capacity()? >= 99, "Ntxt out capacity");
         let text = Varchar::from("And be one traveler, long I stood", &session)?;
-        let count = stmt.execute_into(
-            (":TEXT", text.as_str()),
+        let count = stmt.execute(
             (
+                (":TEXT",     text.as_str()),
                 (":ID",       &mut id),
                 (":TEXT_OUT", &mut text_out),
                 (":NTXT_OUT", &mut ntxt_out)
@@ -163,21 +163,20 @@ mod blocking {
         let mut iym_out = IntervalYM::new(&session)?;
         let mut ids_out = IntervalDS::new(&session)?;
 
-        let count = stmt.execute_into((
+        let count = stmt.execute((
             (":DT",  &dt),
             (":TS",  &ts),
             (":TSZ", &tsz),
             (":TSL", &tsl),
             (":IYM", &iym),
-            (":IDS", &ids)
-        ), (
+            (":IDS", &ids),
             (":ID",   &mut id),
             (":ODT",  &mut dt_out),
             (":OTS",  &mut ts_out),
             (":OTSZ", &mut tsz_out),
             (":OTSL", &mut tsl_out),
             (":OIYM", &mut iym_out),
-            (":OIDS", &mut ids_out)
+            (":OIDS", &mut ids_out),
         ))?;
         assert_eq!(count, 1);
         assert!(id > 0);
@@ -188,14 +187,13 @@ mod blocking {
         assert_eq!(iym_out.compare(&iym)?, Equal);
         assert_eq!(ids_out.compare(&ids)?, Equal);
 
-        let count = stmt.execute_into((
+        let count = stmt.execute((
             (":DT",  dt),
             (":TS",  ts),
             (":TSZ", tsz),
             (":TSL", tsl),
             (":IYM", iym),
-            (":IDS", ids)
-        ), (
+            (":IDS", ids),
             (":ID",   &mut id),
             (":ODT",  &mut dt_out),
             (":OTS",  &mut ts_out),
@@ -276,7 +274,7 @@ mod blocking {
             RETURNING id INTO :ID
         ")?;
         let mut id = 0;
-        let count = stmt.execute_into(("MEDIA_DIR", "hello_world.txt", ()), &mut id)?;
+        let count = stmt.execute(("MEDIA_DIR", "hello_world.txt", &mut id))?;
         assert_eq!(count, 1);
         assert!(id > 0);
 
@@ -408,7 +406,7 @@ mod blocking {
         let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         let mut id = 0;
         let mut data_out = Vec::with_capacity(30);
-        let count = stmt.execute_into((&data[..], text, ()), (&mut id, &mut data_out, ()))?;
+        let count = stmt.execute((&data[..], text, &mut id, &mut data_out))?;
         assert_eq!(count, 1);
         assert!(id > 0);
         assert_eq!(data_out.as_slice(), &data[..]);
@@ -454,7 +452,7 @@ mod blocking {
         ")?;
         let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
         let mut id = 0;
-        let count = stmt.execute_into(&data[..], &mut id)?;
+        let count = stmt.execute((&data[..], &mut id, ()))?;
         assert_eq!(count, 1);
         assert!(id > 0);
 
@@ -504,10 +502,10 @@ mod blocking {
         let mut num = Number::new(&session);
         let mut flt = 0f32;
         let mut dbl = 0f64;
-        let count = stmt.execute_into(
-            (":NUM", &src_num),
+        let count = stmt.execute(
             (
-                (":ID", &mut id),
+                (":NUM",  &src_num),
+                (":ID",   &mut id),
                 (":ONUM", &mut num),
                 (":OFLT", &mut flt),
                 (":ODBL", &mut dbl),
@@ -607,7 +605,7 @@ mod blocking {
         let mut lowest_payed_employee   = Cursor::new(&stmt)?;
         let mut median_salary_employees = Cursor::new(&stmt)?;
 
-        stmt.execute_into((), (
+        stmt.execute((
             (":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee  ),
             (":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees),
         ))?;
@@ -858,9 +856,9 @@ mod nonblocking {
 
             let mut text_out = String::with_capacity(97);
             let mut ntxt_out = String::with_capacity(99);
-            let count = stmt.execute_into(
-                (":TEXT", "Two roads diverged in a yellow wood,"),
+            let count = stmt.execute(
                 (
+                    (":TEXT", "Two roads diverged in a yellow wood,"),
                     (":ID", &mut id),
                     (":TEXT_OUT", &mut text_out),
                     (":NTXT_OUT", &mut ntxt_out)
@@ -873,9 +871,9 @@ mod nonblocking {
             ids.push(id);
 
             let text = String::from("And sorry I could not travel both");
-            let count = stmt.execute_into(
-                (":TEXT", text.as_str()),
+            let count = stmt.execute(
                 (
+                    (":TEXT", text.as_str()),
                     (":ID", &mut id),
                     (":TEXT_OUT", &mut text_out),
                     (":NTXT_OUT", &mut ntxt_out)
@@ -890,9 +888,9 @@ mod nonblocking {
             let text = Varchar::from("And be one traveler, long I stood", &session)?;
             let mut text_out = Varchar::with_capacity(97, &session)?;
             let mut ntxt_out = Varchar::with_capacity(99, &session)?;
-            let count = stmt.execute_into(
-                (":TEXT", text.as_str()),
+            let count = stmt.execute(
                 (
+                    (":TEXT", text.as_str()),
                     (":ID", &mut id),
                     (":TEXT_OUT", &mut text_out),
                     (":NTXT_OUT", &mut ntxt_out)
@@ -992,14 +990,13 @@ mod nonblocking {
             let mut iym_out = IntervalYM::new(&session)?;
             let mut ids_out = IntervalDS::new(&session)?;
 
-            let count = stmt.execute_into((
+            let count = stmt.execute((
                 (":DT",  &dt),
                 (":TS",  &ts),
                 (":TSZ", &tsz),
                 (":TSL", &tsl),
                 (":IYM", &iym),
-                (":IDS", &ids)
-            ), (
+                (":IDS", &ids),
                 (":ID",   &mut id),
                 (":ODT",  &mut dt_out),
                 (":OTS",  &mut ts_out),
@@ -1018,14 +1015,13 @@ mod nonblocking {
             assert_eq!(iym_out.compare(&iym)?, Equal);
             assert_eq!(ids_out.compare(&ids)?, Equal);
 
-            let count = stmt.execute_into((
+            let count = stmt.execute((
                 (":DT",  dt),
                 (":TS",  ts),
                 (":TSZ", tsz),
                 (":TSL", tsl),
                 (":IYM", iym),
-                (":IDS", ids)
-            ), (
+                (":IDS", ids),
                 (":ID",   &mut id),
                 (":ODT",  &mut dt_out),
                 (":OTS",  &mut ts_out),
@@ -1117,9 +1113,13 @@ mod nonblocking {
             let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
             let mut id = 0;
             let mut data_out = Vec::with_capacity(30);
-            let count = stmt.execute_into(
-                ((":BIN", &data[..]), (":TEXT", text)),
-                ((":ID", &mut id), (":OBIN", &mut data_out))
+            let count = stmt.execute(
+                (
+                    (":BIN", &data[..]),
+                    (":TEXT", text),
+                    (":ID", &mut id),
+                    (":OBIN", &mut data_out)
+                )
             ).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
@@ -1176,7 +1176,7 @@ mod nonblocking {
             ").await?;
             let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
             let mut id = 0;
-            let count = stmt.execute_into((":BIN", &data[..]), (":ID", &mut id)).await?;
+            let count = stmt.execute(((":BIN", &data[..]), (":ID", &mut id))).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
 
@@ -1235,10 +1235,10 @@ mod nonblocking {
             let mut num = Number::new(&session);
             let mut flt = 0f32;
             let mut dbl = 0f64;
-            let count = stmt.execute_into(
-                (":NUM", &src_num),
+            let count = stmt.execute(
                 (
-                    (":ID", &mut id),
+                    (":NUM",  &src_num),
+                    (":ID",   &mut id),
                     (":ONUM", &mut num),
                     (":OFLT", &mut flt),
                     (":ODBL", &mut dbl),
@@ -1363,7 +1363,7 @@ mod nonblocking {
             let mut lowest_payed_employee   = Cursor::new(&stmt)?;
             let mut median_salary_employees = Cursor::new(&stmt)?;
 
-            stmt.execute_into((), (
+            stmt.execute((
                 ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
                 ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
             )).await?;
@@ -1623,9 +1623,11 @@ mod nonblocking {
                 RETURNING id INTO :ID
             ").await?;
             let mut id = 0;
-            let count = stmt.execute_into(((":DIR", "MEDIA_DIR"), (":NAME", "hello_world.txt")), (":ID", &mut id)).await?;
+            let count = stmt.execute(((":DIR", "MEDIA_DIR"), (":NAME", "hello_world.txt"), (":ID", &mut id))).await?;
             assert_eq!(count, 1);
             assert!(id > 0);
+
+            // session.commit().await?;
 
             // Content of `hello_world.txt`:
             let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
@@ -1661,6 +1663,8 @@ mod nonblocking {
             assert_eq!(count, 28);
             lob.close().await?;
 
+            // session.commit().await?;
+
             // Read it (in another transaction)
 
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
@@ -1668,7 +1672,8 @@ mod nonblocking {
             let row  = rows.next().await?.expect("a row from the result set");
             let lob : BLOB = row.get_not_null(0)?;
             let mut lob_data = Vec::new();
-            lob.read(0, 28, &mut lob_data).await?;
+            let num_read = lob.read(0, 100, &mut lob_data).await?;
+            assert_eq!(num_read, 28);
             assert_eq!(lob_data, data);
 
 
@@ -1678,10 +1683,25 @@ mod nonblocking {
             let lob : CLOB = row.get_not_null(0)?;
             assert!(!lob.is_nclob()?);
 
-            let _text = "Two roads diverged in a yellow wood, And sorry I could not travel both And be one traveler, long I stood And looked down one as far as I could To where it bent in the undergrowth; Then took the other, as just as fair, And having perhaps the better claim, Because it was grassy and wanted wear; Though as for that the passing there Had worn them really about the same, And both that morning equally lay In leaves no step had trodden black. Oh, I kept the first for another day! Yet knowing how way leads on to way, I doubted if I should ever come back. I shall be telling this with a sigh Somewhere ages and ages hence: Two roads diverged in a wood, and I— I took the one less traveled by, And that has made all the difference.";
+            let text = "Two roads diverged in a yellow wood, And sorry I could not travel both And be one traveler, long I stood And looked down one as far as I could To where it bent in the undergrowth; Then took the other, as just as fair, And having perhaps the better claim, Because it was grassy and wanted wear; Though as for that the passing there Had worn them really about the same, And both that morning equally lay In leaves no step had trodden black. Oh, I kept the first for another day! Yet knowing how way leads on to way, I doubted if I should ever come back. I shall be telling this with a sigh Somewhere ages and ages hence: Two roads diverged in a wood, and I— I took the one less traveled by, And that has made all the difference.";
 
+            lob.open().await?;
+            let count = lob.append(text).await?;
+            assert_eq!(count, 726); // characters
+            lob.close().await?;
 
+            // session.commit().await?;
 
+            // Read it (in another transaction)
+
+            let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID").await?;
+            let rows = stmt.query(&id).await?;
+            let row  = rows.next().await?.expect("a row from the result set");
+            let lob : CLOB = row.get_not_null(0)?;
+            let mut lob_text = String::new();
+            let num_read = lob.read(0, 800, &mut lob_text).await?;
+            assert_eq!(num_read, 726);
+            assert_eq!(lob_text, text);
 
             Ok(())
         })

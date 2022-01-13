@@ -4,10 +4,10 @@ use super::bind::Params;
 use crate::{oci::*, Result};
 use std::mem::size_of;
 
-/// A trait for types that can be used as SQL IN arguments
+/// A trait for types that can be used as SQL arguments
 pub trait ToSql : Send + Sync {
     /**
-    Binds the value to the SQL IN placeholder
+    Binds itself to the SQL parameter placeholder
 
     # Parameters
 
@@ -15,28 +15,6 @@ pub trait ToSql : Send + Sync {
     - `params` - Statement parameters as defined in the SQL
     - `stmt` - statement to which the argument value will be bound
     - `err` - OCI error structure
-
-    Note that the specified position might be ignored if the argument also provides the specific
-    placeholder name to which the value should be bound.
-
-    # Returns
-
-    The index of the placeholder for the next argument.
-    */
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize>;
-}
-
-/// A trait for types that can be used as SQL OUT or INOUT arguments
-pub trait ToSqlOut : Send + Sync {
-    /**
-    Binds the value to the SQL OUT or INOUT placeholder
-
-    # Parameters
-
-    - `pos`  - zero-based index of the parameter placeholder to which the value will be bound
-    - `params` - Statement parameters as defined in the SQL
-    - `stmt` - OCI statement to which the argument value will be bound
-    - `err`  - OCI error structure
 
     Note that the specified position might be ignored if the argument also provides the specific
     placeholder name to which the value should be bound.
@@ -56,12 +34,6 @@ pub trait ToSqlOut : Send + Sync {
 }
 
 impl ToSql for () {
-    fn bind_to(&self, pos: usize, _params: &mut Params, _stmt: &OCIStmt, _err: &OCIError) -> Result<usize> {
-        Ok(pos)
-    }
-}
-
-impl ToSqlOut for () {
     fn bind_to(&mut self, pos: usize, _params: &mut Params, _stmt: &OCIStmt, _err: &OCIError) -> Result<usize> {
         Ok(pos)
     }
@@ -71,7 +43,7 @@ macro_rules! impl_num_to_sql {
     ($($t:ty),+ => $sqlt:ident) => {
         $(
             impl ToSql for $t {
-                fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
                     let ptr = self as *const $t;
                     let len = size_of::<$t>();
                     params.bind(pos, $sqlt, ptr as _, len, stmt, err)?;
@@ -79,14 +51,14 @@ macro_rules! impl_num_to_sql {
                 }
             }
             impl ToSql for &$t {
-                fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
                     let ptr = *self as *const $t;
                     let len = size_of::<$t>();
                     params.bind(pos, $sqlt, ptr as _, len, stmt, err)?;
                     Ok(pos + 1)
                 }
             }
-            impl ToSqlOut for &mut $t {
+            impl ToSql for &mut $t {
                 fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
                     let ptr = *self as *mut $t;
                     let len = size_of::<$t>();
@@ -104,40 +76,40 @@ impl_num_to_sql!{ f32 => SQLT_BFLOAT }
 impl_num_to_sql!{ f64 => SQLT_BDOUBLE }
 
 impl ToSql for &str {
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_CHR, (*self).as_ptr() as _, (*self).len(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
 impl ToSql for &&str {
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_CHR, (**self).as_ptr() as _, (**self).len(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
 impl ToSql for &[u8] {
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_LBI, (*self).as_ptr() as _, (*self).len(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
 impl ToSql for &&[u8] {
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_LBI, (**self).as_ptr() as _, (**self).len(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
-impl ToSqlOut for &mut String {
+impl ToSql for &mut String {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind_out(pos, SQLT_CHR, unsafe { self.as_mut_vec().as_mut_ptr() } as _, self.len(), self.capacity(), stmt, err)?;
         Ok(pos + 1)
     }
 
-    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {
+    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {        
         let new_len = params.out_data_len(pos);
         unsafe {
             self.as_mut_vec().set_len(new_len)
@@ -145,7 +117,7 @@ impl ToSqlOut for &mut String {
     }
 }
 
-impl ToSqlOut for &mut Vec<u8> {
+impl ToSql for &mut Vec<u8> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind_out(pos, SQLT_LBI, (*self).as_mut_ptr() as _, (*self).len(), (*self).capacity(), stmt, err)?;
         Ok(pos + 1)
@@ -159,14 +131,14 @@ impl ToSqlOut for &mut Vec<u8> {
     }
 }
 
-impl ToSqlOut for &mut [u8] {
+impl ToSql for &mut [u8] {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind_out(pos, SQLT_LBI, (*self).as_mut_ptr() as _, 0, (*self).len(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
-impl ToSqlOut for &mut &mut [u8] {
+impl ToSql for &mut &mut [u8] {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind_out(pos, SQLT_LBI, (**self).as_mut_ptr() as _, 0, (**self).len(), stmt, err)?;
         Ok(pos + 1)
@@ -174,46 +146,28 @@ impl ToSqlOut for &mut &mut [u8] {
 }
 
 impl<T> ToSql for Descriptor<T> where T: DescriptorType, T::OCIType: OCIStruct {
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, T::sql_type(), self.as_ptr() as _, size_of::<*mut T::OCIType>(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
 impl<T> ToSql for &Descriptor<T> where T: DescriptorType, T::OCIType: OCIStruct {
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, T::sql_type(), (*self).as_ptr() as _, size_of::<*mut T::OCIType>(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
-impl<T> ToSqlOut for Descriptor<T> where T: DescriptorType, T::OCIType: OCIStruct {
+impl<T> ToSql for &mut Descriptor<T> where T: DescriptorType, T::OCIType: OCIStruct {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = size_of::<*mut T::OCIType>();
-        params.bind_out(pos, T::sql_type(), self.as_mut_ptr() as _, len, len, stmt, err)?;
+        params.bind_out(pos, T::sql_type(), (*self).as_mut_ptr() as _, len, len, stmt, err)?;
         Ok(pos + 1)
     }
 }
 
 impl<T> ToSql for (&str, T) where T: ToSql {
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        let idx = params.index_of(self.0)?;
-        self.1.bind_to(idx, params, stmt, err)?;
-        Ok(pos)
-    }
-}
-
-impl<T1,T2> ToSql for ((&str, T1), (&str, T2)) where T1: ToSql, T2: ToSql {
-    fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        let idx = params.index_of(self.0.0)?;
-        self.0.1.bind_to(idx, params, stmt, err)?;
-        let idx = params.index_of(self.1.0)?;
-        self.1.1.bind_to(idx, params, stmt, err)?;
-        Ok(pos)
-    }
-}
-
-impl<T> ToSqlOut for (&str, T) where T: ToSqlOut {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let idx = params.index_of(self.0)?;
         self.1.bind_to(idx, params, stmt, err)?;
@@ -225,7 +179,7 @@ impl<T> ToSqlOut for (&str, T) where T: ToSqlOut {
     }
 }
 
-impl<T1,T2> ToSqlOut for ((&str, T1), (&str, T2)) where T1: ToSqlOut, T2: ToSqlOut {
+impl<T1,T2> ToSql for ((&str, T1), (&str, T2)) where T1: ToSql, T2: ToSql {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let idx = params.index_of(self.0.0)?;
         self.0.1.bind_to(idx, params, stmt, err)?;
@@ -243,16 +197,6 @@ impl<T1,T2> ToSqlOut for ((&str, T1), (&str, T2)) where T1: ToSqlOut, T2: ToSqlO
 macro_rules! impl_tuple_args {
     ($($name:ident)+) => {
         impl<$($name),+> ToSql for ($($name),+) where $($name: ToSql),+ {
-            #[allow(non_snake_case)]
-            fn bind_to(&self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                let ($(ref $name),+) = *self;
-                $(
-                    let pos = $name.bind_to(pos, params, stmt, err)?;
-                )+
-                Ok(pos)
-            }
-        }
-        impl<$($name),+> ToSqlOut for ($($name),+) where $($name: ToSqlOut),+ {
             #[allow(non_snake_case)]
             fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
                 let ($(ref mut $name),+) = *self;

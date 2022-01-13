@@ -15,7 +15,7 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-pub use args::{ToSql, ToSqlOut};
+pub use args::ToSql;
 pub use bind::Params;
 pub use cursor::Cursor;
 pub use rows::{Row, Rows};
@@ -227,7 +227,7 @@ impl<'a> Statement<'a> {
     #     RETURNING id INTO :ID
     # ")?;
     # let mut id = 0;
-    # let count = stmt.execute_into((":TEXT", &TEXT), (":ID", &mut id))?;
+    # let count = stmt.execute(((":TEXT", &TEXT), (":ID", &mut id)))?;
     let mut stmt = session.prepare("
         SELECT text
           FROM long_and_raw_test_data
@@ -269,7 +269,7 @@ impl<'a> Statement<'a> {
     #     RETURNING id INTO :ID
     # ").await?;
     # let mut id = 0;
-    # let count = stmt.execute_into((":TEXT", &TEXT), (":ID", &mut id)).await?;
+    # let count = stmt.execute(((":TEXT", &TEXT), (":ID", &mut id))).await?;
     # let mut stmt = session.prepare("
     #     SELECT text
     #       FROM long_and_raw_test_data
@@ -344,7 +344,7 @@ impl<'a> Statement<'a> {
     Returns the number of rows processed/seen so far in SELECT statements.
 
     For INSERT, UPDATE, and DELETE statements, it is the number of rows processed
-    by the most recent statement.
+    by the statement.
 
     For nonscrollable cursors, it is the total number of rows fetched into user buffers
     since this statement handle was executed. Because they are forward sequential only,
@@ -401,12 +401,12 @@ impl<'a> Statement<'a> {
     # let rows = stmt.query(103).await?;
     # let mut ids = Vec::new();
     # while let Some( row ) = rows.next().await? {
-    #     let id : u32 = row.get_not_null(0)?;
+    #     let id : i32 = row.get_not_null(0)?;
     #     ids.push(id);
     # }
     # assert_eq!(stmt.row_count()?, 4);
     # assert_eq!(ids.len(), 4);
-    # assert_eq!(ids.as_slice(), &[104 as u32, 105, 106, 107]);
+    # assert_eq!(ids.as_slice(), &[104, 105, 106, 107]);
     # Ok(()) })
     # }
     ```
@@ -454,12 +454,12 @@ impl<'a> Statement<'a> {
         RETURN commission_pct INTO :commission_pct
     ")?;
     let mut commission_pct = 0f64;
-    stmt.execute_into(
+    stmt.execute(
         (
             (":EMPLOYEE_ID", 133),
-            (":NEW_MANAGER_ID", 120)
-        ),
-            (":COMMISSION_PCT", &mut commission_pct)
+            (":NEW_MANAGER_ID", 120),
+            (":COMMISSION_PCT", &mut commission_pct),
+        )
     )?;
     let commission_pct_is_null = stmt.is_null(":COMMISSION_PCT")?;
     assert!(commission_pct_is_null);
@@ -481,12 +481,12 @@ impl<'a> Statement<'a> {
     #     RETURN commission_pct INTO :commission_pct
     # ").await?;
     # let mut commission_pct = 0f64;
-    # stmt.execute_into(
+    # stmt.execute(
     #     (
     #         (":EMPLOYEE_ID", 133),
-    #         (":NEW_MANAGER_ID", 120)
-    #     ),
+    #         (":NEW_MANAGER_ID", 120),
     #         (":COMMISSION_PCT", &mut commission_pct)
+    #     )
     # ).await?;
     # let commission_pct_is_null = stmt.is_null(":COMMISSION_PCT")?;
     # assert!(commission_pct_is_null);

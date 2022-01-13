@@ -1,30 +1,9 @@
 //! Binding of parameter placeholders
 
 use super::Position;
-use crate::{Result, Error, oci::{self, *}, ToSql, ToSqlOut};
+use crate::{Result, Error, oci::{self, *}, ToSql};
 use std::{ptr, collections::HashMap};
 use libc::c_void;
-
-
-/// OUT (and INOUT) argument NULL indicators and return data sizes
-struct OutInfo {
-    /// size of returned data
-    data_size: u32,
-    /// NULL indicator
-    indicator: i16,
-    /// Index of this OUT bind
-    bind_index: u16,
-}
-
-impl OutInfo {
-    fn new(index: usize, ind: i16, data_len: usize) -> Self {
-        Self {
-            data_size: data_len as _,
-            indicator: ind,
-            bind_index: index as _,
-        }
-    }
-}
 
 /// Represents statement parameters (a.k.a. parameter placeholders)
 pub struct Params {
@@ -34,10 +13,12 @@ pub struct Params {
     names: HashMap<usize,&'static str>,
     /// OCI bind handles
     binds: Vec<Ptr<OCIBind>>,
-    /// Bit "vector" of binds that have been established before
-    current_binds: u64,
-    /// NULL indicators and returned data sizes for OUT variables (if any)
-    out_info: Vec<OutInfo>,
+    /// NULL indicators
+    nulls: Vec<i16>,
+    /// Sizes of returned data
+    out_data_lens: Vec<u32>,
+    /// Map of arguments indexes (positions) to parameter placeholder indexes
+    bind_order: Vec<usize>,
 }
 
 impl Params {
@@ -80,7 +61,12 @@ impl Params {
                 binds.push(Ptr::new(oci_binds[i]));
             }
 
-            Ok(Some(Self{ idxs, names, binds, current_binds: 0, out_info: Vec::new() }))
+            Ok(Some(Self{
+                idxs, names, binds,
+                nulls: Vec::with_capacity(num_binds),
+                out_data_lens: Vec::with_capacity(num_binds),
+                bind_order: Vec::with_capacity(num_binds),
+            }))
         }
     }
 
@@ -99,7 +85,7 @@ impl Params {
 
     /// Binds an IN argument to a parameter placeholder at the specified position in the SQL statement.
     pub(crate) fn bind(&mut self, idx: usize, sql_type: u16, data_ptr: *mut c_void, data_len: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
-        self.current_binds |= 1 << idx;
+        self.bind_order.push(idx);
         oci::bind_by_pos(
             stmt, self.binds[idx].as_mut_ptr(), err,
             (idx + 1) as u32, data_ptr, data_len as i64, sql_type,
@@ -118,34 +104,53 @@ impl Params {
             };
             return Err(Error::msg(msg));
         }
-        self.current_binds |= 1 << idx;
-        let out_idx = self.out_info.len();
-        self.out_info.push(OutInfo::new(idx, OCI_IND_NOTNULL, data_len));
+        self.bind_order.push(idx);
+        if data_len != 0 {
+            self.nulls[idx] = OCI_IND_NOTNULL;
+        }
+        self.out_data_lens[idx] = data_len as _;
         oci::bind_by_pos(
             stmt, self.binds[idx].as_mut_ptr(), err,
             (idx + 1) as u32, data_ptr, buff_size as i64, sql_type,
-            &mut self.out_info[out_idx].indicator,  // Pointer to an indicator variable or array
-            &mut self.out_info[out_idx].data_size,  // Pointer to an array of actual lengths of array elements
+            &mut self.nulls[idx],           // Pointer to an indicator variable or array
+            &mut self.out_data_lens[idx],   // Pointer to an array of actual lengths of array elements
             OCI_DEFAULT
         )
     }
 
-    /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
-    pub(crate) fn bind_args(&mut self, stmt: &OCIStmt, err: &OCIError, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<()> {
-        let prior_binds = self.current_binds;
-        self.current_binds = 0;
-        self.out_info.clear();
-        let pos = in_args.bind_to(0, self, stmt, err)?;
-        out_args.bind_to(pos, self, stmt, err)?;
-        if (prior_binds ^ self.current_binds) & prior_binds != 0 {
+    /// Checks whether previously bound placeholders are rebound.
+    /// Returns `true` if they are.
+    fn prior_binds_are_rebound(&self, mut prior_binds: Vec<usize>) -> bool {
+        prior_binds.retain(|ix| !self.bind_order.contains(ix));
+        prior_binds.len() == 0
+    }
+
+    /// Binds provided arguments to SQL parameter placeholders.
+    pub(crate) fn bind_args(&mut self, stmt: &OCIStmt, err: &OCIError, args: &mut impl ToSql) -> Result<()> {
+        let prior_binds = self.bind_order.clone();
+        self.bind_order.clear();
+
+        self.nulls.clear();
+        self.nulls.resize(self.nulls.capacity(), OCI_IND_NULL);
+        self.out_data_lens.clear();
+        self.out_data_lens.resize(self.out_data_lens.capacity(), 0);
+
+        args.bind_to(0, self, stmt, err)?;
+
+        if prior_binds.len() > 0 && !self.prior_binds_are_rebound(prior_binds) {
             Err(Error::new("not all existing binds have been updated"))
         } else {
             Ok(())
         }
     }
 
-    pub(crate) fn set_out_data_len(&self, out_args: &mut impl ToSqlOut) {
-        out_args.set_len_from_bind(0, self);
+    pub(crate) fn set_out_to_null(&mut self) {
+        self.nulls.fill(OCI_IND_NULL);
+        self.out_data_lens.fill(0);
+    }
+
+    pub(crate) fn set_out_data_len(&self, args: &mut impl ToSql) {
+        args.set_len_from_bind(0, self);
     }
 
     /// Checks whether the value returned for the output parameter is NULL.
@@ -158,16 +163,19 @@ impl Params {
             )
             .map(|ix| *ix)
             .or(pos.index())
-            .and_then(|ix| self.out_info.iter().find(|&info| info.bind_index == ix as u16))
-            .map(|out_info| out_info.indicator == OCI_IND_NULL)
+            .map(|ix|
+                self.nulls.get(ix)
+                    .map(|&ind| ind == OCI_IND_NULL)
+                    .unwrap_or(true)
+            )
             .ok_or_else(|| Error::new("Parameter not found."))
     }
 
-    /// Returns the size of the returned data for the OUT parameter at the specified OUT index
-    pub(super) fn out_data_len(&self, idx: usize) -> usize {
-        self.out_info
-            .get(idx)
-            .map(|out_info| out_info.data_size as usize)
+    /// Returns the size of the returned data for the OUT parameter at the specified argument position
+    pub(super) fn out_data_len(&self, pos: usize) -> usize {
+        self.bind_order
+            .get(pos)
+            .map(|&ix| self.out_data_lens[ix] as _)
             .unwrap_or_default()
     }
 }

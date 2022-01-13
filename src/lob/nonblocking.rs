@@ -74,7 +74,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         END;
     ").await?;
     let mut lob = CLOB::new(&session)?;
-    stmt.execute_into((), &mut lob).await?;
+    stmt.execute(&mut lob).await?;
 
     let text = [
         "Love seeketh not itself to please,\n",
@@ -192,7 +192,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     pub async fn is_temp(&self) -> Result<bool> {
         let stmt = self.session.prepare("BEGIN :RES := DBMS_LOB.ISTEMPORARY(:LOC); END;").await?;
         let mut flag = 0;
-        stmt.execute_into((":LOC", &self.inner.locator), (":RES", &mut flag)).await?;
+        stmt.execute((&mut flag, self, ())).await?;
         let is_temp = flag != 0;
         if is_temp {
             self.inner.status_flags.fetch_or(LOB_IS_TEMP, Ordering::Release);
@@ -432,7 +432,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         END;
     ").await?;
     let mut lob = CLOB::new(&session)?;
-    stmt.execute_into((), &mut lob).await?;
+    stmt.execute(&mut lob).await?;
 
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -774,13 +774,18 @@ impl<'a> LOB<'a,OCICLobLocator> {
     pub async fn read(&self, mut offset: usize, len: usize, out: &mut String) -> Result<usize> {
         offset += 1;
 
+        let space_available = out.capacity() - out.len();
+        if len > space_available {
+            out.reserve(len - space_available);
+        }
+
         let stmt = self.session.prepare("BEGIN DBMS_LOB.READ(:LOC, :AMT, :POS, :DATA); END;").await?;
 
         let mut buf = String::with_capacity(32768);
         let mut remainder = len;
         while remainder > 0 {
             let mut amount = std::cmp::min(remainder, 32767);
-            let res = stmt.execute_into(((":LOC", self), (":POS", offset)), ((":AMT", &mut amount), (":DATA", &mut buf))).await;
+            let res = stmt.execute((self, &mut amount, offset, &mut buf)).await;
             match res {
                 Ok(num_rows) if num_rows == 0 => {
                     break;
@@ -890,7 +895,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         Ok(byte_count)
     }
 
-    /*
+    /**
     Reads specified number of bytes from this LOB, appending them to `buf`.
 
     # Parameters
@@ -948,8 +953,11 @@ impl<'a> LOB<'a,OCIBLobLocator> {
             let mut piece_len = std::cmp::min(remainder, 32767);
             let mut piece = unsafe { std::slice::from_raw_parts_mut(piece_ptr, piece_len) };
 
-            let res = stmt.execute_into(((":LOC", self), (":POS", offset)), ((":AMT", &mut piece_len), (":DATA", &mut piece))).await;
+            let res = stmt.execute((self, &mut piece_len, offset, &mut piece)).await;
             match res {
+                Ok(num_rows) if num_rows == 0 => {
+                    break;
+                }
                 Ok(_) => {
                     offset += piece_len;
                     remainder -= piece_len;

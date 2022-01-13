@@ -64,7 +64,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :row_id
     ")?;
     let mut rowid = RowID::new(&session)?;
-    stmt.execute_into((), &mut rowid)?;
+    stmt.execute(&mut rowid)?;
 
     // must lock LOB's row before writing into it
     let stmt = session.prepare("
@@ -411,7 +411,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         END;
     ")?;
     let mut lob = CLOB::new(&session)?;
-    stmt.execute_into((), &mut lob)?;
+    stmt.execute(&mut lob)?;
 
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -1155,7 +1155,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         insert into test_lobs (data) values (empty_blob()) returning rowid into :row_id
     ")?;
     let mut rowid = RowID::new(&session)?;
-    stmt.execute_into((), &mut rowid)?;
+    stmt.execute(&mut rowid)?;
 
     // must lock LOB's row before writing the LOB
     let stmt = session.prepare("

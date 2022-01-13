@@ -299,10 +299,10 @@ mod tests {
             RETURNING id INTO :ID
         ")?;
         let mut hw_id = 0usize;
-        let count = stmt.execute_into((":NAME", "hello_world.txt"), (":ID", &mut hw_id))?;
+        let count = stmt.execute(((":NAME", "hello_world.txt"), (":ID", &mut hw_id)))?;
         assert_eq!(count, 1);
         let mut hs_id = 0usize;
-        let count = stmt.execute_into((":NAME", "hello_supplemental.txt"), (":ID", &mut hs_id))?;
+        let count = stmt.execute(((":NAME", "hello_supplemental.txt"), (":ID", &mut hs_id)))?;
         assert_eq!(count, 1);
 
         let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id IN (:ID1, :ID2) ORDER BY id")?;

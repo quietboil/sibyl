@@ -1,7 +1,7 @@
 //! Nonblocking SQL statement methods
 
 use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}};
-use crate::{Result, oci::*, Session, Error, Rows, Cursor, ToSql, ToSqlOut};
+use crate::{Result, oci::*, Session, Error, Rows, Cursor, ToSql};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
@@ -15,17 +15,17 @@ impl<'a> Statement<'a> {
     }
 
     /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
-    fn bind_args(&self, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<()> {
+    fn bind_args(&self, args: &mut impl ToSql) -> Result<()> {
         if let Some(params) = &self.params {
-            params.write().bind_args(&self.stmt, &self.err, in_args, out_args)
+            params.write().bind_args(&self.stmt, &self.err, args)
         } else {
             Ok(())
         }
     }
 
     /// Executes the prepared statement. Returns the OCI result code from OCIStmtExecute.
-    async fn exec(&self, stmt_type: u16, in_args: &impl ToSql, out_args: &mut impl ToSqlOut) -> Result<i32> {
-        self.bind_args(in_args, out_args)?;
+    async fn exec(&self, stmt_type: u16, args: &mut impl ToSql) -> Result<i32> {
+        self.bind_args(args)?;
         futures::StmtExecute::new(self.svc.clone(), &self.err, &self.stmt, stmt_type).await
     }
 
@@ -34,75 +34,13 @@ impl<'a> Statement<'a> {
 
     # Parameters
 
-    * `args` - SQL statement arguments.
+    * `args` - SQL statement arguments - a single argument or a tuple of arguments
 
-    Arguments can be represented by:
-    - a value: `val`
-    - a reference: `&val`
-    - a tuple of values (or references) that will be bound to parameters by their position: `(val1, &val2, val3)`
-    - a 2-item tuple where first item is a parameter name: `(":PARAM", val)`
-    - a tuple of 2-item tuples with "named" parameters: `( (":P1", val1), (":P2", &val2) )`
-
-    # Example
-
-    ```
-    # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-    let stmt = session.prepare("
-        UPDATE hr.departments
-            SET manager_id = :manager_id
-            WHERE department_id = :department_id
-    ").await?;
-
-    let num_updated_rows = stmt.execute(
-        (
-            (":DEPARTMENT_ID", 120),
-            (":MANAGER_ID",    101),
-        )
-    ).await?;
-
-    assert_eq!(num_updated_rows, 1);
-    # session.rollback().await?;
-    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-    ```
-    */
-    pub async fn execute(&self, args: impl ToSql) -> Result<usize> {
-        let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
-        if stmt_type == OCI_STMT_SELECT {
-            return Err( Error::new("Use `query` to execute SELECT") );
-        }
-        let is_returning: u8 = self.get_attr(OCI_ATTR_STMT_IS_RETURNING)?;
-        if is_returning != 0 {
-            return Err( Error::new("Use `execute_into` with output arguments to execute a RETURNING statement") );
-        }
-        self.exec(stmt_type, &args, &mut ()).await?;
-        self.row_count()
-    }
-
-    /**
-    Executes a prepared RETURNING statement. Returns the number of rows affected.
-
-    # Parameters
-
-    * `in_args` - SQL statement IN arguments.
-    * `out_args` - SQL statement OUT (and INOUT) arguments.
-
-    IN Arguments can be represented by:
-    - a value: `val`
-    - a reference: `&val`
-    - a tuple of values (or references) that will be bound to parameters by their position: `(val1, &val2, val3)`
-    - a 2-item tuple where first item is a parameter name: `(":PARAM", val)`
-    - a tuple of 2-item tuples with "named" parameters: `( (":P1", val1), (":P2", &val2) )`
-
-    OUT Arguments can be represented by:
-    - a mutable reference: `&mut val`
-    - a tuple of mutable references that will be bound to parameters by their position: `(&mut val1, &mut val2, &mut val3)`
-    - a 2-item tuple where first item is a parameter name: `(":PARAM", &mut val)`
-    - a tuple of 2-item tuples with "named" parameters: `( (":P1", &mut val1), (":P2", &mut val2) )`
+    Where each argument can be represented by:
+    - a value: `val` (IN)
+    - a reference: `&val` (IN)
+    - a mutable reference: `&mut val` (OUT or INOUT)
+    - a 2-item tuple where first item is a parameter name: `(":NAME", arg)`
 
     # Example
 
@@ -115,47 +53,42 @@ impl<'a> Statement<'a> {
     # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
     let stmt = session.prepare("
         INSERT INTO hr.departments
-            ( department_id, department_name, manager_id, location_id )
-        VALUES
-            ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
-        RETURNING department_id
-             INTO :department_id
+               ( department_id, department_name, manager_id, location_id )
+        VALUES ( hr.departments_seq.nextval, :department_name, :manager_id
+               , (SELECT location_id FROM hr.locations WHERE city = :city)
+               )
+        RETURNING department_id INTO :department_id
     ").await?;
-    let mut department_id : usize = 0;
+    let mut department_id = 0u32;
 
-    // In this case (no duplicates in the statement parameters and the OUT parameter follows
-    // the IN parameters) we could have used positional arguments. However, there are many
-    // cases when positional is too difficult to use correcty with `execute_into`. For example,
-    // OUT is used as an INOUT parameter, OUT precedes or in the middle of the IN parameter
-    // list, parameter list is very long, etc. This example shows the call with the named
-    // arguments as this might be a more typical use case for it.
+    let num_updated_rows = stmt.execute((
+        ( ":DEPARTMENT_NAME", "Security"         ),
+        ( ":MANAGER_ID",      ""                 ),
+        ( ":CITY",            "Seattle"          ),
+        ( ":DEPARTMENT_ID",   &mut department_id ),
+    )).await?;
 
-    let num_rows = stmt.execute_into(
-        (
-            ( ":DEPARTMENT_NAME", "Security" ),
-            ( ":MANAGER_ID",      ""         ),
-            ( ":LOCATION_ID",     1700       ),
-        ),
-        ( ":DEPARTMENT_ID", &mut department_id )
-    ).await?;
-
-    assert_eq!(num_rows, 1);
+    assert_eq!(num_updated_rows, 1);
     assert!(!stmt.is_null(":DEPARTMENT_ID")?);
     assert!(department_id > 0);
     # session.rollback().await?;
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
-    pub async fn execute_into(&self, in_args: impl ToSql, mut out_args: impl ToSqlOut) -> Result<usize> {
+    pub async fn execute(&self, mut args: impl ToSql) -> Result<usize> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type == OCI_STMT_SELECT {
             return Err( Error::new("Use `query` to execute SELECT") );
         }
-        self.exec(stmt_type, &in_args, &mut out_args).await?;
+        self.exec(stmt_type, &mut args).await?;
+        let num_rows = self.row_count()?;
         if let Some(params) = &self.params {
-            params.read().set_out_data_len(&mut out_args);
+            if num_rows == 0 {
+                params.write().set_out_to_null();
+            }
+            params.read().set_out_data_len(&mut args);
         }
-        self.row_count()
+        Ok(num_rows)
     }
 
     /**
@@ -163,14 +96,12 @@ impl<'a> Statement<'a> {
 
     # Parameters
 
-    * `args` - SQL statement arguments.
+    * `args` - SQL statement arguments - a single argument or a tuple of arguments
 
-    Arguments can be represented by:
-    - a value: `val`
-    - a reference: `&val`
-    - a tuple of values (or references) that will be bound to parameters by their position: `(val1, &val2, val3)`
-    - a 2-item tuple where first item is a parameter name: `(":PARAM", val)`
-    - a tuple of 2-item tuples with "named" parameters: `( (":P1", val1), (":P2", &val2) )`
+    Where each argument can be represented by:
+    - a value: `val` (IN)
+    - a reference: `&val` (IN)
+    - a 2-item tuple where first item is a parameter name: `(":NAME", arg)`
 
     # Example
 
@@ -218,12 +149,12 @@ impl<'a> Statement<'a> {
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
-    pub async fn query(&'a self, args: impl ToSql) -> Result<Rows<'a>> {
+    pub async fn query(&'a self, mut args: impl ToSql) -> Result<Rows<'a>> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
-            return Err( Error::new("Use `execute` or `execute_into` to execute statements other than SELECT") );
+            return Err( Error::new("Use `execute` to execute statements other than SELECT") );
         }
-        let res = self.exec(stmt_type, &args, &mut ()).await?;
+        let res = self.exec(stmt_type, &mut args).await?;
 
         if self.cols.get().is_none() {
             let cols = Columns::new(Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), self.max_long)?;
@@ -363,13 +294,13 @@ impl<'a> Statement<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test,feature="nonblocking"))]
 mod tests {
-    use crate::Result;
+    use crate::*;
 
     #[test]
     fn async_query() -> Result<()> {
-        crate::block_on(async {
+        block_on(async {
             use std::env;
 
             let oracle = crate::env()?;
@@ -397,6 +328,191 @@ mod tests {
             let row = rows.next().await?;
             assert!(row.is_none());
 
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn plsql_args() -> std::result::Result<(),Box<dyn std::error::Error>> {
+        block_on(async {
+            let dbname = std::env::var("DBNAME")?;
+            let dbuser = std::env::var("DBUSER")?;
+            let dbpass = std::env::var("DBPASS")?;
+            let oracle = env()?;
+            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+
+            let stmt = session.prepare("
+                BEGIN
+                    SELECT city, street_address
+                      INTO :city, :street_address
+                      FROM hr.locations
+                     WHERE location_id = :location_id;
+                EXCEPTION
+                    WHEN NO_DATA_FOUND THEN
+                        :city := 'Unknown';
+                        :street_address := NULL;
+                END;
+            ").await?;
+            let mut city = String::with_capacity(30);
+            let mut addr = String::with_capacity(40);
+            let num_rows = stmt.execute((
+                ( ":LOCATION_ID",    2500      ),
+                ( ":CITY",           &mut city ),
+                ( ":STREET_ADDRESS", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 1);
+            assert!(!stmt.is_null(":CITY")?);
+            assert_eq!(city, "Oxford");
+            assert!(!stmt.is_null(":STREET_ADDRESS")?);
+            assert_eq!(addr, "Magdalen Centre, The Oxford Science Park");
+
+            let num_rows = stmt.execute((
+                ( ":LOCATION_ID",    2400      ),
+                ( ":CITY",           &mut city ),
+                ( ":STREET_ADDRESS", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 2); // no idea why... blocking mode is fine
+            assert!(!stmt.is_null(":CITY")?);
+            assert_eq!(city, "London");
+            assert!(!stmt.is_null(":STREET_ADDRESS")?);
+            assert_eq!(addr, "8204 Arthur St");
+
+            let num_rows = stmt.execute((
+                ( ":LOCATION_ID",    2200      ),
+                ( ":CITY",           &mut city ),
+                ( ":STREET_ADDRESS", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 2);
+            assert!(!stmt.is_null(":CITY")?);
+            assert_eq!(city, "Sydney");
+            assert!(!stmt.is_null(":STREET_ADDRESS")?);
+            assert_eq!(addr, "12-98 Victoria Street");
+
+            let num_rows = stmt.execute((
+                ( ":LOCATION_ID",    3300      ),
+                ( ":CITY",           &mut city ),
+                ( ":STREET_ADDRESS", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 2);
+            assert!(!stmt.is_null(":CITY")?);
+            assert_eq!(city, "Unknown");
+            assert!(stmt.is_null(":STREET_ADDRESS")?);
+
+            session.rollback().await?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn plsql_one_out_arg() -> std::result::Result<(),Box<dyn std::error::Error>> {
+        block_on(async {
+            let dbname = std::env::var("DBNAME")?;
+            let dbuser = std::env::var("DBUSER")?;
+            let dbpass = std::env::var("DBPASS")?;
+            let oracle = env()?;
+            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+
+            let stmt = session.prepare("
+                BEGIN
+                    SELECT street_address
+                      INTO :addr
+                      FROM hr.locations
+                     WHERE location_id = :id;
+                END;
+            ").await?;
+
+            let mut addr = String::with_capacity(40);
+
+            let num_rows = stmt.execute((
+                ( ":ID",   2500      ),
+                ( ":ADDR", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 1);
+            assert!(!stmt.is_null(":ADDR")?);
+            assert_eq!(addr, "Magdalen Centre, The Oxford Science Park");
+
+            let num_rows = stmt.execute((
+                ( ":ID",   2400      ),
+                ( ":ADDR", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 2);
+            assert!(!stmt.is_null(":ADDR")?);
+            assert_eq!(addr, "8204 Arthur St");
+
+            let num_rows = stmt.execute((
+                ( ":ID",   2200      ),
+                ( ":ADDR", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 2);
+            assert!(!stmt.is_null(":ADDR")?);
+            assert_eq!(addr, "12-98 Victoria Street");
+
+            let num_rows = stmt.execute((
+                ( ":ID",   3300      ),
+                ( ":ADDR", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 0);
+            assert!(stmt.is_null(":ADDR")?);
+
+            let num_rows = stmt.execute((
+                ( ":ID",   2200      ),
+                ( ":ADDR", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 2);
+            assert!(!stmt.is_null(":ADDR")?);
+            assert_eq!(addr, "12-98 Victoria Street");
+
+            let num_rows = stmt.execute((
+                ( ":ID",   2500      ),
+                ( ":ADDR", &mut addr )
+            )).await?;
+
+            assert_eq!(num_rows, 2);
+            assert!(!stmt.is_null(":ADDR")?);
+            assert_eq!(addr, "Magdalen Centre, The Oxford Science Park");
+
+            session.rollback().await?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn update_many_rows() -> std::result::Result<(),Box<dyn std::error::Error>> {
+        block_on(async {
+            let dbname = std::env::var("DBNAME")?;
+            let dbuser = std::env::var("DBUSER")?;
+            let dbpass = std::env::var("DBPASS")?;
+            let oracle = env()?;
+            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+
+            let stmt = session.prepare("
+                UPDATE hr.employees
+                   SET salary = Round(salary * :rate, -2)
+                 WHERE manager_id = :manager_id
+            ").await?;
+
+            let num_rows = stmt.execute((
+                (":MANAGER_ID", 103  ),
+                (":RATE",       1.02 ),
+            )).await?;
+            assert_eq!(num_rows, 4);
+
+            let num_rows = stmt.execute((
+                (":MANAGER_ID", 108  ),
+                (":RATE",       1.03 ),
+            )).await?;
+            assert_eq!(num_rows, 5);
+
+            session.rollback().await?;
             Ok(())
         })
     }

@@ -8,15 +8,15 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-use super::{Statement, args::ToSqlOut, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::Row, bind::Params};
+use super::{Statement, args::ToSql, cols::{Columns, ColumnInfo, DEFAULT_LONG_BUFFER_SIZE}, rows::Row, bind::Params};
 use crate::{Result, oci::*, types::Ctx, Session};
 use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-impl ToSqlOut for &mut Handle<OCIStmt> {
+impl ToSql for &mut Handle<OCIStmt> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = std::mem::size_of::<*mut OCIStmt>();
-        params.bind_out(pos, SQLT_RSET, (*self).as_ptr() as _, len, len, stmt, err)?;
+        params.bind_out(pos, SQLT_RSET, (*self).as_mut_ptr() as _, len, len, stmt, err)?;
         Ok(pos + 1)
     }
 }
@@ -132,7 +132,7 @@ impl Ctx for Cursor<'_> {
     }
 }
 
-impl ToSqlOut for &mut Cursor<'_> {
+impl ToSql for &mut Cursor<'_> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = std::mem::size_of::<*mut OCIStmt>();
         params.bind_out(pos, SQLT_RSET, self.cursor.as_mut_ptr() as _, len, len, stmt, err)?;
@@ -204,7 +204,7 @@ impl<'a> Cursor<'a> {
         let mut lowest_payed_employee   = Cursor::new(&stmt)?;
         let mut median_salary_employees = Cursor::new(&stmt)?;
 
-        stmt.execute_into((), (
+        stmt.execute((
             ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
             ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
         ))?;
@@ -294,7 +294,7 @@ impl<'a> Cursor<'a> {
         # ").await?;
         # let mut lowest_payed_employee   = Cursor::new(&stmt)?;
         # let mut median_salary_employees = Cursor::new(&stmt)?;
-        # stmt.execute_into((), (
+        # stmt.execute((
         #     ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
         #     ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
         # )).await?;
@@ -409,7 +409,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut subordinates = Cursor::new(&stmt)?;
-        stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates))?;
+        stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates)))?;
         assert_eq!(subordinates.column_count()?, 3);
         # Ok(())
         # }
@@ -431,7 +431,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates)).await?;
+        # stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
         # assert_eq!(subordinates.column_count()?, 3);
         # Ok(()) })
         # }
@@ -444,13 +444,13 @@ impl<'a> Cursor<'a> {
 
     /**
         Returns meta data of the specified column.
-        
+
         # Parameters
-        
+
         - `pos` - 0-based column index
-        
+
         # Returns
-        
+
         - Column metadata or
         - None if `pos` is greater than the number of columns in the query or if the prepared
         statement is not a SELECT and has no columns.
@@ -481,7 +481,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut subordinates = Cursor::new(&stmt)?;
-        stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates))?;
+        stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates)))?;
         let mut _rows = subordinates.rows()?;
         let col = subordinates.column(0).expect("ID column info");
         assert_eq!(col.name()?, "EMPLOYEE_ID", "column name");
@@ -511,7 +511,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates)).await?;
+        # stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
         # let mut _rows = subordinates.rows().await?;
         # let col = subordinates.column(0).expect("ID column info");
         # assert_eq!(col.name()?, "EMPLOYEE_ID", "column name");
@@ -571,7 +571,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut subordinates = Cursor::new(&stmt)?;
-        stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates))?;
+        stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates)))?;
         subordinates.set_prefetch_rows(5)?;
         let rows = subordinates.rows()?;
         let mut ids = Vec::new();
@@ -604,7 +604,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates)).await?;
+        # stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
         # subordinates.set_prefetch_rows(5)?;
         # let mut rows = subordinates.rows().await?;
         # let mut ids = Vec::new();
@@ -654,7 +654,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut subordinates = Cursor::new(&stmt)?;
-        stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates))?;
+        stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates)))?;
         subordinates.set_prefetch_rows(10)?;
         # Ok(())
         # }
@@ -677,7 +677,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute_into((":ID", 103), (":SUBORDINATES", &mut subordinates)).await?;
+        # stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
         # subordinates.set_prefetch_rows(10)?;
         # Ok(()) })
         # }
@@ -732,7 +732,7 @@ impl<'a> Cursor<'a> {
         # ")?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         # let mut id = 0;
-        # let count = stmt.execute_into((":TEXT", &text), (":ID", &mut id))?;
+        # let count = stmt.execute(((":TEXT", &text), (":ID", &mut id)))?;
         let stmt = session.prepare("
             BEGIN
                 OPEN :long_texts FOR
@@ -743,7 +743,7 @@ impl<'a> Cursor<'a> {
             END;
         ")?;
         let mut long_texts = Cursor::new(&stmt)?;
-        stmt.execute_into((":ID", &id), (":LONG_TEXTS", &mut long_texts))?;
+        stmt.execute(((":ID", &id), (":LONG_TEXTS", &mut long_texts)))?;
         long_texts.set_max_long_size(100_000);
         let rows = long_texts.rows()?;
         let row = rows.next()?.expect("first (and only) row");
@@ -781,7 +781,7 @@ impl<'a> Cursor<'a> {
         # ").await?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         # let mut id = 0;
-        # let count = stmt.execute_into((":TEXT", &text), (":ID", &mut id)).await?;
+        # let count = stmt.execute(((":TEXT", &text), (":ID", &mut id))).await?;
         # let stmt = session.prepare("
         #     BEGIN
         #         OPEN :long_texts FOR
@@ -792,7 +792,7 @@ impl<'a> Cursor<'a> {
         #     END;
         # ").await?;
         # let mut long_texts = Cursor::new(&stmt)?;
-        # stmt.execute_into((":ID", &id), (":LONG_TEXTS", &mut long_texts)).await?;
+        # stmt.execute(((":ID", &id), (":LONG_TEXTS", &mut long_texts))).await?;
         # long_texts.set_max_long_size(100_000);
         # let rows = long_texts.rows().await?;
         # let row = rows.next().await?.expect("first (and only) row");

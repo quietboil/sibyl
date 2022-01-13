@@ -31,7 +31,7 @@ pub use err::Error;
 pub use env::Environment;
 pub use session::Session;
 pub use pool::{SessionPool, SessionPoolGetMode};
-pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ToSqlOut, ColumnType, Position};
+pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ColumnType, Position};
 pub use types::{Date, Raw, Number, Varchar, RowID, DateTime, Interval};
 pub use oci::{Cache, CharSetForm};
 pub use lob::LOB;
