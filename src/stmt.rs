@@ -130,7 +130,7 @@ impl<'a> Statement<'a> {
     }
 
     /**
-    Sets the number of top-level rows to be prefetched. The default value is 1 row.
+    Sets the number of top-level rows to be prefetched. The default value is 10 rows.
 
     # Parameters
 
@@ -155,7 +155,7 @@ impl<'a> Statement<'a> {
           FROM hr.employees
          WHERE manager_id = :id
     ")?;
-    stmt.set_prefetch_rows(10)?;
+    stmt.set_prefetch_rows(5)?;
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
@@ -171,7 +171,7 @@ impl<'a> Statement<'a> {
     #       FROM hr.employees
     #      WHERE manager_id = :id
     # ").await?;
-    # stmt.set_prefetch_rows(10)?;
+    # stmt.set_prefetch_rows(5)?;
     # Ok(()) })
     # }
     ```

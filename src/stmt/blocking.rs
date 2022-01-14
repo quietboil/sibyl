@@ -19,7 +19,9 @@ impl<'a> Statement<'a> {
             OCI_NTV_SYNTAX, OCI_DEFAULT
         )?;
         let params = Params::new(&stmt, &err)?.map(|params| RwLock::new(params));
-        Ok(Self {session, svc: session.get_svc(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
+        let stmt = Self {session, svc: session.get_svc(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE};
+        stmt.set_prefetch_rows(10)?;
+        Ok(stmt)
     }
 
     /// Binds provided arguments to SQL parameter placeholders.

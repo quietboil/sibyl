@@ -11,7 +11,9 @@ impl<'a> Statement<'a> {
         let err = Handle::<OCIError>::new(session)?;
         let stmt = futures::StmtPrepare::new(session.get_svc(), &err, sql).await?;
         let params = Params::new(&stmt, &err)?.map(|params| RwLock::new(params));
-        Ok(Self {session, svc: session.get_svc(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE})
+        let stmt = Self {session, svc: session.get_svc(), stmt, params, cols: OnceCell::new(), err, max_long: DEFAULT_LONG_BUFFER_SIZE};
+        stmt.set_prefetch_rows(10)?;
+        Ok(stmt)
     }
 
     /// Binds provided arguments to SQL parameter placeholders. Returns indexes of parameter placeholders for the OUT args.
