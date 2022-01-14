@@ -71,8 +71,7 @@ impl Environment {
           FROM v$session_connect_info
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ").await?;
-    let rows = stmt.query(()).await?;
-    let row = rows.next().await?.unwrap();
+    let row = stmt.query_single(()).await?.unwrap();
     let client_driver : &str = row.get_not_null(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");

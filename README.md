@@ -34,7 +34,8 @@ fn main() -> Result<(),Box<dyn std::error::Error>> {
     let rows = stmt.query(&date)?;
 
     // The SELECT above will return either 1 or 0 rows, thus `if let` is sufficient.
-    // When more than one row is expected, `while let` would be used to process rows.
+    // Alternatively, `query_single` could be used as it will return that single row.
+    // When more than one row is expected, `while let` would be used to process `rows`.
     if let Some( row ) = rows.next()? {
         let first_name : Option<&str> = row.get("FIRST_NAME")?;
         let last_name  : &str         = row.get_not_null("LAST_NAME")?;
@@ -197,20 +198,21 @@ let stmt = session.prepare("
 ")?;
 ```
 
-A prepared statement can be executed either with the `query` or `execute` methods:
+A prepared statement can be executed either with the `query`, `query_single` or `execute` methods:
 - `query` is used for `SELECT` statements. In fact, Sibyl will complain if you try to `query` any other statement.
+- `query_single` is a variant of `query` that returns a single row. It's a convenience method that allows skipping boilerplate of extrating only one row from a result set when it is known upfront that only one row (or none) is expected.
 - `execute` is used for all other, non-SELECT, DML and DDL.
 
-`query` and `execute` take a tuple of arguments. The latter can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call `query` using a positional argument as:
+`query`, `query_single` and `execute` take a tuple of arguments. The latter can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call `query` using a positional argument as:
 
 ```rust
-let rows = stmt.query(103)?;
+let row = stmt.query_single(103)?;
 ```
 
 or bind a value to `:id` by name as:
 
 ```rust
-let rows = stmt.query((":ID", 103))?;
+let row = stmt.query_single((":ID", 103))?;
 ```
 
 In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicares. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one "duplicate" name in a statement.
@@ -224,7 +226,7 @@ let stmt = session.prepare("
      WHERE department_name = :DEPARTMENT_NAME
        AND location_id = :LOCATION_ID
 ")?;
-let rows = stmt.query(("Security", 1700, ()))?;
+let rows = stmt.query(("Administration", 1700, ()))?;
 ```
 
 `execute` also allows execution of statements with OUT (or INOUT) parameters. For example:
@@ -411,8 +413,7 @@ let stmt = session.prepare("
      WHERE employee_id = :id
        FOR UPDATE
 ")?;
-let rows = stmt.query(107)?;
-let row = rows.next()?.unwrap();
+let row = stmt.query_single(107)?;
 let rowid = row.rowid()?;
 
 let manager_id: u32 = row.get_not_null(0)?;
@@ -491,12 +492,12 @@ We can then create and write data into that LOB as:
 
 let file = BFile::new(&session)?;
 file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
-let file_len = file.len().await?;
+let file_len = file.len()?;
 
-file.open_file().await?;
+file.open_file()?;
 let mut data = Vec::new();
-let num_read = file.read(0, file_len, &mut data).await?;
-file.close_file().await?;
+let num_read = file.read(0, file_len, &mut data)?;
+file.close_file()?;
 // ... or do not close now as it will be closed
 // automatically when `file` goes out of scope
 
@@ -508,24 +509,24 @@ let stmt = session.prepare("
         INSERT INTO lob_example (bin) VALUES (Empty_Blob()) RETURNING rowid INTO row_id;
         SELECT bin INTO :NEW_BLOB FROM lob_example WHERE rowid = row_id FOR UPDATE;
     END;
-").await?;
+")?;
 let mut lob = BLOB::new(&session)?;
-stmt.execute(&mut lob).await?;
+stmt.execute(&mut lob)?;
 
-lob.open().await?;
-let num_bytes_written = lob.write(0, &data).await?;
-lob.close().await?;
+lob.open()?;
+let num_bytes_written = lob.write(0, &data)?;
+lob.close()?;
 
-session.commit().await?;
+session.commit()?;
 ```
 
 And then later it could be read as:
 
 ```rust
 let id: usize = 1234; // assume it was retrieved from somewhere...
-let stmt = session.prepare("SELECT bin FROM lob_example WHERE id = :ID").await?;
-let rows = stmt.query(&id).await?;
-if let Some(row) = rows.next().await? {
+let stmt = session.prepare("SELECT bin FROM lob_example WHERE id = :ID")?;
+let row = stmt.query_single(&id)?;
+if let Some(row) = row {
     if let Some(lob) = row.get(0)? {
         let data = read_blob(lob)?;
         // ...
@@ -536,11 +537,11 @@ if let Some(row) = rows.next().await? {
 Where `read_blob` could be this:
 
 ```rust
-async fn read_blob(lob: BLOB<'_>) -> Result<Vec<u8>> {
+fn read_blob(lob: BLOB<'_>) -> Result<Vec<u8>> {
     let mut data = Vec::new();
-    let lob_len = lob.len().await?;
+    let lob_len = lob.len()?;
     let offset = 0;
-    lob.read(offset, lob_len, &mut data).await?;
+    lob.read(offset, lob_len, &mut data)?;
     Ok(data)
 }
 ```

@@ -234,8 +234,7 @@ impl<'a> Statement<'a> {
          WHERE id = :id
     ")?;
     stmt.set_max_long_size(100_000);
-    let rows = stmt.query(&id)?;
-    let row = rows.next()?.expect("first (and only) row");
+    let row = stmt.query_single(&id)?.unwrap();
     let txt : &str = row.get_not_null(0)?;
     # assert_eq!(txt, TEXT);
     # Ok(())
@@ -276,8 +275,7 @@ impl<'a> Statement<'a> {
     #      WHERE id = :id
     # ").await?;
     # stmt.set_max_long_size(100_000);
-    # let rows = stmt.query(&id).await?;
-    # let row = rows.next().await?.expect("first (and only) row");
+    # let row = stmt.query_single(&id).await?.unwrap();
     # let txt : &str = row.get_not_null(0)?;
     # assert_eq!(txt, TEXT);
     # Ok(()) })

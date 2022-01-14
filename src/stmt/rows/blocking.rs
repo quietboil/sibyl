@@ -47,16 +47,32 @@ impl<'a> Rows<'a> {
     ```
     */
     pub fn next(&self) -> Result<Option<Row>> {
+        if self.last_result.load(Ordering::Acquire) == OCI_NO_DATA {
+            Ok( None )
+        } else {
+            let res = unsafe {
+                OCIStmtFetch2(self.rset.as_ref(), self.rset.as_ref(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
+            };
+            self.last_result.store(res, Ordering::Release);
+            match res {
+                OCI_NO_DATA => Ok( None ),
+                OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::new(self)) ),
+                _ => Err( Error::oci(self.rset.as_ref(), res) )
+            }
+        }
+    }
+
+    /// Variant of [`Row::next`] for a single row query
+    pub(in crate::stmt) fn single(self) -> Result<Option<Row<'a>>> {
         if self.last_result.load(Ordering::Relaxed) == OCI_NO_DATA {
             Ok( None )
         } else {
             let res = unsafe {
                 OCIStmtFetch2(self.rset.as_ref(), self.rset.as_ref(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
             };
-            self.last_result.store(res, Ordering::Relaxed);
             match res {
                 OCI_NO_DATA => Ok( None ),
-                OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::new(self)) ),
+                OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::single(self)) ),
                 _ => Err( Error::oci(self.rset.as_ref(), res) )
             }
         }

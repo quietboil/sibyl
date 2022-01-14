@@ -176,8 +176,7 @@ mod blocking {
 
         // retrieve BLOB and lock its row so we could write into it
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&id)?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&id)?.expect("one row");
         let lob : BLOB = row.get_not_null(0)?;
 
         let file = BFile::new(&session)?;
@@ -229,8 +228,7 @@ mod blocking {
 
         // retrieve BLOB and lock its row so we could write into it
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&ids[0])?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&ids[0])?.expect("one row");
         let lob : BLOB = row.get_not_null(0)?;
 
         lob.open()?;
@@ -238,8 +236,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(written, file_len);
 
-        let rows = stmt.query(&ids[1])?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&ids[1])?.expect("one row");
         let lob : BLOB = row.get_not_null(0)?;
 
         let chunk_size = lob.chunk_size()?;
@@ -265,8 +262,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(total_written, file_len);
 
-        let rows = stmt.query(&ids[2])?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&ids[2])?.expect("one row");
         let lob : BLOB = row.get_not_null(0)?;
 
         lob.open()?;
@@ -274,8 +270,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(written, file_len);
 
-        let rows = stmt.query(&ids[3])?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&ids[3])?.expect("one row");
         let lob : BLOB = row.get_not_null(0)?;
 
         lob.open()?;
@@ -302,8 +297,7 @@ mod blocking {
         // read them back and check that they all match the source
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
         for id in ids {
-            let rows = stmt.query(&id)?;
-            let row = rows.next()?.expect("one row");
+            let row = stmt.query_single(&id)?.expect("one row");
             let lob : BLOB = row.get_not_null(0)?;
 
             check_blob(lob)?;
@@ -333,8 +327,7 @@ mod blocking {
         stmt.execute(&mut ids[3])?;
 
         let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&ids[0])?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&ids[0])?.expect("one row");
         let lob : CLOB = row.get_not_null(0)?;
 
         lob.open()?;
@@ -342,8 +335,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(written, expected_lob_char_len);
 
-        let rows = stmt.query(&ids[1])?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&ids[1])?.expect("one row");
         let lob : CLOB = row.get_not_null(0)?;
 
         lob.open()?;
@@ -361,8 +353,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(total_written, expected_lob_char_len);
 
-        let rows = stmt.query(&ids[2])?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&ids[2])?.expect("one row");
         let lob : CLOB = row.get_not_null(0)?;
 
         lob.open()?;
@@ -370,8 +361,7 @@ mod blocking {
         lob.close()?;
         assert_eq!(written, expected_lob_char_len);
 
-        let rows = stmt.query(&ids[3])?;
-        let row = rows.next()?.expect("one row");
+        let row = stmt.query_single(&ids[3])?.expect("one row");
         let lob : CLOB = row.get_not_null(0)?;
 
         lob.open()?;
@@ -394,8 +384,7 @@ mod blocking {
         // read them back and check that they all match the source
         let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
         for id in ids {
-            let rows = stmt.query(&id)?;
-            let row = rows.next()?.expect("one row");
+            let row = stmt.query_single(&id)?.expect("one row");
             let lob : CLOB = row.get_not_null(0)?;
 
             let mut lob_content = String::new();
@@ -581,8 +570,7 @@ mod nonblocking {
 
             // retrieve BLOB and lock its row so we could write into it
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(ids[0]).await?;
-            let row = rows.next().await?.expect("one row");
+            let row = stmt.query_single(ids[0]).await?.expect("one row");
             let lob : BLOB = row.get_not_null(0)?;
 
             lob.open().await?;
@@ -590,8 +578,7 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(written, file_len);
 
-            let rows = stmt.query(ids[1]).await?;
-            let row = rows.next().await?.expect("one row");
+            let row = stmt.query_single(ids[1]).await?.expect("one row");
             let lob : BLOB = row.get_not_null(0)?;
 
             lob.open().await?;
@@ -605,8 +592,7 @@ mod nonblocking {
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
             for id in ids {
                 if id > 0 {
-                    let rows = stmt.query(&id).await?;
-                    let row = rows.next().await?.expect("one row");
+                    let row = stmt.query_single(&id).await?.expect("one row");
                     let lob : BLOB = row.get_not_null(0)?;
                     check_blob(lob).await?;
                 }
@@ -635,8 +621,7 @@ mod nonblocking {
             stmt.execute(&mut ids[1]).await?;
 
             let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(ids[0]).await?;
-            let row = rows.next().await?.expect("one row");
+            let row = stmt.query_single(ids[0]).await?.expect("one row");
             let lob : CLOB = row.get_not_null(0)?;
 
             lob.open().await?;
@@ -644,8 +629,7 @@ mod nonblocking {
             lob.close().await?;
             assert_eq!(written, expected_lob_char_len);
 
-            let rows = stmt.query(ids[1]).await?;
-            let row = rows.next().await?.expect("one row");
+            let row = stmt.query_single(ids[1]).await?.expect("one row");
             let lob : CLOB = row.get_not_null(0)?;
 
             lob.open().await?;
@@ -658,8 +642,7 @@ mod nonblocking {
             // read them back and check that they all match the source
             let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID").await?;
             for id in ids {
-                let rows = stmt.query(&id).await?;
-                let row = rows.next().await?.expect("one row");
+                let row = stmt.query_single(&id).await?.expect("one row");
                 let lob : CLOB = row.get_not_null(0)?;
                 let lob_len = lob.len().await?;
 

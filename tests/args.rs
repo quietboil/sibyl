@@ -22,8 +22,7 @@ mod tests {
               FROM hr.locations
              WHERE location_id = :id
         ")?;
-        let rows = stmt.query(3333)?;
-        let row = rows.next()?;
+        let row = stmt.query_single(3333)?;
         assert!(row.is_some());
         let row = row.unwrap();
         let state_province : &str = row.get_not_null(0)?;

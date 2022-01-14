@@ -84,31 +84,25 @@ mod blocking {
 
         let stmt = session.prepare("SELECT text, ntext FROM test_character_data WHERE id = :ID")?;
 
-        let rows = stmt.query(ids[0])?;
-        let row  = rows.next()?.unwrap();
+        let row = stmt.query_single(ids[0])?.unwrap();
         let text : &str = row.get_not_null("TEXT")?;
         assert_eq!(text, "Two roads diverged in a yellow wood,");
         let text : &str = row.get_not_null("NTEXT")?;
         assert_eq!(text, "> Two roads diverged in a yellow wood,");
-        assert!(rows.next()?.is_none());
 
-        let rows = stmt.query(ids[1])?;
-        if let Some(row)  = rows.next()? {
+        if let Some(row) = stmt.query_single(ids[1])? {
             let text : String = row.get_not_null(0)?;
             assert_eq!(text.as_str(), "And sorry I could not travel both");
             let text : String = row.get_not_null(1)?;
             assert_eq!(text.as_str(), "> And sorry I could not travel both");
         }
-        assert!(rows.next()?.is_none());
 
-        let rows = stmt.query(ids[2])?;
-        if let Some(row) = rows.next()? {
+        if let Some(row) = stmt.query_single(ids[2])? {
             let text : Varchar = row.get_not_null("TEXT")?;
             assert_eq!(text.as_str(), "And be one traveler, long I stood");
             let text : Varchar = row.get_not_null("NTEXT")?;
             assert_eq!(text.as_str(), "> And be one traveler, long I stood");
         }
-        assert!(rows.next()?.is_none());
 
         Ok(())
     }
@@ -147,7 +141,7 @@ mod blocking {
             INSERT INTO test_datetime_data (dt, ts, tsz, tsl, iym, ids) VALUES (:DT, :TS, :TSZ, :TSL, :IYM, :IDS)
             RETURNING id, dt, ts, tsz, tsl, iym, ids INTO :ID, :ODT, :OTS, :OTSZ, :OTSL, :OIYM, :OIDS
         ")?;
-        let mut id = 0;
+        let mut id = 0u32;
 
         let dt  = Date::with_date_and_time(1969, 7, 24, 16, 50, 35, &session);
         let ts  = Timestamp::with_date_and_time(1969, 7, 24, 16, 50, 35, 1, "", &session)?;
@@ -222,8 +216,7 @@ mod blocking {
 
 
         let stmt = session.prepare("SELECT dt, ts, tsz, tsl, iym, ids FROM test_datetime_data WHERE id = :ID")?;
-        let rows = stmt.query(id)?;
-        let row  = rows.next()?.unwrap();
+        let row = stmt.query_single(id)?.unwrap();
         let val : Date = row.get_not_null("DT")?;
         assert_eq!(val.compare(&dt2)?, Equal);
         let val : Timestamp = row.get_not_null("TS")?;
@@ -236,8 +229,6 @@ mod blocking {
         assert_eq!(val.compare(&iym2)?, Equal);
         let val : IntervalDS = row.get_not_null("IDS")?;
         assert_eq!(val.compare(&ids2)?, Equal);
-
-        assert!(rows.next()?.is_none());
 
         Ok(())
     }
@@ -283,8 +274,7 @@ mod blocking {
 
         // Can only read BFILEs
         let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID")?;
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.expect("a row from the result set");
+        let row = stmt.query_single(&id)?.unwrap();
         let lob : BFile = row.get_not_null("FBIN")?;
 
         assert!(lob.file_exists()?);
@@ -303,8 +293,7 @@ mod blocking {
         // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
 
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.expect("a row from the result set");
+        let row = stmt.query_single(&id)?.unwrap();
         let lob : BLOB = row.get_not_null(0)?;
 
         lob.open()?;
@@ -315,8 +304,7 @@ mod blocking {
         // Read it (in another transaction)
 
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.expect("a row from the result set");
+        let row = stmt.query_single(&id)?.unwrap();
         let lob : BLOB = row.get_not_null(0)?;
         let mut lob_data = Vec::new();
         lob.read(0, 28, &mut lob_data)?;
@@ -324,8 +312,7 @@ mod blocking {
 
 
         let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.expect("a row from the result set");
+        let row = stmt.query_single(&id)?.unwrap();
         let lob : CLOB = row.get_not_null(0)?;
         assert!(!lob.is_nclob()?);
 
@@ -338,8 +325,7 @@ mod blocking {
         lob.close()?;
 
         let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.expect("a row from the result set");
+        let row = stmt.query_single(&id)?.unwrap();
         let lob : CLOB = row.get_not_null(0)?;
         assert!(!lob.is_nclob()?);
 
@@ -349,8 +335,7 @@ mod blocking {
 
 
         let stmt = session.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.expect("a row from the result set");
+        let row = stmt.query_single(&id)?.unwrap();
         let lob : CLOB = row.get_not_null(0)?;
         assert!(lob.is_nclob()?);
 
@@ -361,8 +346,7 @@ mod blocking {
         lob.close()?;
 
         let stmt = session.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID")?;
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.expect("a row from the result set");
+        let row = stmt.query_single(&id)?.unwrap();
         let lob : CLOB = row.get_not_null(0)?;
         assert!(lob.is_nclob()?);
 
@@ -413,8 +397,7 @@ mod blocking {
 
         let stmt = session.prepare("SELECT bin, text FROM long_and_raw_test_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.unwrap();
+        let row = stmt.query_single(&id)?.unwrap();
         let bin : &[u8] = row.get_not_null("BIN")?;
         let txt : &str = row.get_not_null("TEXT")?;
         assert_eq!(bin, &data[..]);
@@ -458,8 +441,7 @@ mod blocking {
 
         let stmt = session.prepare("SELECT bin FROM test_long_raw_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) BIN output is limited to 32768
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.unwrap();
+        let row = stmt.query_single(&id)?.unwrap();
         let bin : &[u8] = row.get_not_null(0)?;
         assert_eq!(bin, &data[..]);
 
@@ -518,8 +500,7 @@ mod blocking {
         assert!(3.1415926 < flt && flt < 3.1415929);
 
         let stmt = session.prepare("SELECT num, flt, dbl FROM test_numeric_data WHERE id = :ID")?;
-        let rows = stmt.query(&id)?;
-        let row  = rows.next()?.unwrap();
+        let row = stmt.query_single(&id)?.unwrap();
         let num : Number = row.get_not_null("NUM")?;
         let flt : f32 = row.get_not_null("FLT")?;
         let dbl : f64 = row.get_not_null("DBL")?;
@@ -544,8 +525,7 @@ mod blocking {
              WHERE employee_id = :ID
                FOR UPDATE
         ")?;
-        let rows = stmt.query(107)?;
-        let row = rows.next()?.expect("selected row");
+        let row = stmt.query_single(107)?.unwrap();
         let implicit_rowid = row.rowid()?;
         let str_rowid : String = row.get_not_null(0)?;
         assert_eq!(str_rowid, implicit_rowid.to_string(&session)?);
@@ -785,9 +765,7 @@ mod blocking {
                      WHERE last_name = :last_name
                    ) e
         ")?;
-        let rows = stmt.query("King")?;
-
-        let row = rows.next()?.unwrap();
+        let row = stmt.query_single("King")?.unwrap();
         let last_name : &str = row.get_not_null(0)?;
         assert_eq!(last_name, "King");
 
@@ -803,7 +781,6 @@ mod blocking {
         assert_eq!(department_name, "Sales");
 
         assert!(dept_rows.next()?.is_none());
-        assert!(rows.next()?.is_none());
 
         Ok(())
     }
@@ -1127,8 +1104,7 @@ mod nonblocking {
 
             let stmt = session.prepare("SELECT bin, text FROM long_and_raw_test_data WHERE id = :ID").await?;
             // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
-            let rows = stmt.query(&id).await?;
-            let row  = rows.next().await?.unwrap();
+            let row = stmt.query_single(&id).await?.unwrap();
             let bin : &[u8] = row.get_not_null("BIN")?;
             let txt : &str = row.get_not_null("TEXT")?;
             assert_eq!(bin, &data[..]);
@@ -1182,8 +1158,7 @@ mod nonblocking {
 
             let stmt = session.prepare("SELECT bin FROM test_long_raw_data WHERE id = :ID").await?;
             // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) BIN output is limited to 32768
-            let rows = stmt.query(&id).await?;
-            let row  = rows.next().await?.unwrap();
+            let row = stmt.query_single(&id).await?.unwrap();
             let bin : &[u8] = row.get_not_null(0)?;
             assert_eq!(bin, &data[..]);
 
@@ -1251,8 +1226,7 @@ mod nonblocking {
             assert!(3.1415926 < flt && flt < 3.1415929);
 
             let stmt = session.prepare("SELECT num, flt, dbl FROM test_numeric_data WHERE id = :ID").await?;
-            let rows = stmt.query(&id).await?;
-            let row  = rows.next().await?.unwrap();
+            let row = stmt.query_single(&id).await?.unwrap();
             let num : Number = row.get_not_null("NUM")?;
             let flt : f32 = row.get_not_null("FLT")?;
             let dbl : f64 = row.get_not_null("DBL")?;
@@ -1287,8 +1261,7 @@ mod nonblocking {
                  WHERE employee_id = :ID
                    FOR UPDATE
             ").await?;
-            let rows = stmt.query(107).await?;
-            let row = rows.next().await?.expect("selected row");
+            let row = stmt.query_single(107).await?.expect("selected row");
 
             let implicit_rowid = row.rowid()?;
             let str_rowid : String = row.get_not_null(0)?;
@@ -1559,9 +1532,7 @@ mod nonblocking {
                         WHERE last_name = :last_name
                     ) e
             ").await?;
-            let rows = stmt.query("King").await?;
-
-            let row = rows.next().await?.unwrap();
+            let row = stmt.query_single("King").await?.unwrap();
             let last_name : &str = row.get_not_null(0)?;
             assert_eq!(last_name, "King");
 
@@ -1577,7 +1548,6 @@ mod nonblocking {
             assert_eq!(department_name, "Sales");
 
             assert!(dept_rows.next().await?.is_none());
-            assert!(rows.next().await?.is_none());
 
             Ok(())
         })
@@ -1634,8 +1604,7 @@ mod nonblocking {
 
             // Can only read BFILEs
             let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID").await?;
-            let rows = stmt.query(&id).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
+            let row = stmt.query_single(&id).await?.expect("a row from the result set");
             let lob : BFile = row.get_not_null("FBIN")?;
 
             assert!(lob.file_exists().await?);
@@ -1654,8 +1623,7 @@ mod nonblocking {
             // One way to do this is to use a SELECT...FOR UPDATE statement to select the locator before performing the operation.
 
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(&id).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
+            let row = stmt.query_single(&id).await?.expect("a row from the result set");
             let lob : BLOB = row.get_not_null(0)?;
 
             lob.open().await?;
@@ -1668,8 +1636,7 @@ mod nonblocking {
             // Read it (in another transaction)
 
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
-            let rows = stmt.query(&id).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
+            let row = stmt.query_single(&id).await?.expect("a row from the result set");
             let lob : BLOB = row.get_not_null(0)?;
             let mut lob_data = Vec::new();
             let num_read = lob.read(0, 100, &mut lob_data).await?;
@@ -1678,8 +1645,7 @@ mod nonblocking {
 
 
             let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let rows = stmt.query(&id).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
+            let row = stmt.query_single(&id).await?.expect("a row from the result set");
             let lob : CLOB = row.get_not_null(0)?;
             assert!(!lob.is_nclob()?);
 
@@ -1695,8 +1661,7 @@ mod nonblocking {
             // Read it (in another transaction)
 
             let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID").await?;
-            let rows = stmt.query(&id).await?;
-            let row  = rows.next().await?.expect("a row from the result set");
+            let row = stmt.query_single(&id).await?.expect("a row from the result set");
             let lob : CLOB = row.get_not_null(0)?;
             let mut lob_text = String::new();
             let num_read = lob.read(0, 800, &mut lob_text).await?;

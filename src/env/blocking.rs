@@ -31,8 +31,7 @@ impl Environment {
           FROM v$session_connect_info
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
-    let rows = stmt.query(())?;
-    let row = rows.next()?.expect("one row");
+    let row = stmt.query_single(())?.unwrap();
     let client_driver : &str = row.get_not_null(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())
@@ -79,8 +78,7 @@ impl Environment {
           FROM v$session_connect_info
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
-    let rows = stmt.query(())?;
-    let row = rows.next()?.expect("one row");
+    let row = stmt.query_single(())?.unwrap();
     let client_driver : &str = row.get_not_null(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())
@@ -124,8 +122,7 @@ impl Environment {
           FROM v$session_connect_info
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
-    let rows = stmt.query(())?;
-    let row = rows.next()?.expect("one row");
+    let row = stmt.query_single(())?.unwrap();
     let client_driver : &str = row.get_not_null(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())

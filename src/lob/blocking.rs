@@ -70,8 +70,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     let stmt = session.prepare("
         SELECT text FROM test_lobs WHERE rowid = :row_id FOR UPDATE
     ")?;
-    let rows = stmt.query(&rowid)?;
-    let row = rows.next()?.expect("a single row");
+    let row = stmt.query_single(&rowid)?.unwrap();
     let mut lob : CLOB = row.get_not_null(0)?;
 
     let text = [
@@ -1161,8 +1160,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     let stmt = session.prepare("
         SELECT data FROM test_lobs WHERE rowid = :row_id FOR UPDATE
     ")?;
-    let rows = stmt.query(&rowid)?;
-    let row = rows.next()?.expect("a single row");
+    let row = stmt.query_single(&rowid)?.unwrap();
     let mut lob : BLOB = row.get_not_null(0)?;
 
     lob.open()?;

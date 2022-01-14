@@ -250,8 +250,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     let stmt = session.prepare("
         SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE
     ")?;
-    let rows = stmt.query(&id)?;
-    let row = rows.next()?.expect("one row");
+    let row = stmt.query_single(&id)?.unwrap();
     let lob : CLOB = row.get_not_null(0)?;
 
     let text = "
@@ -269,12 +268,10 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     let stmt = session.prepare("
         SELECT text FROM test_lobs WHERE id = :id
     ")?;
-    let rows = stmt.query(&id)?;
-    let row = rows.next()?.expect("one row");
+    let row = stmt.query_single(&id)?.unwrap();
     let lob1 : CLOB = row.get_not_null(0)?;
 
-    let rows = stmt.query(&id)?;
-    let row = rows.next()?.expect("one row");
+    let row = stmt.query_single(&id)?.unwrap();
     let lob2 : CLOB = row.get_not_null(0)?;
 
     // Even though locators are different, they point to
@@ -312,8 +309,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # let mut id : usize = 0;
     # stmt.execute(&mut id).await?;
     # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE").await?;
-    # let rows = stmt.query(&id).await?;
-    # let row = rows.next().await?.expect("one row");
+    # let row = stmt.query_single(&id).await?.unwrap();
     # let lob : CLOB = row.get_not_null(0)?;
     # let text = "
     #     To Mercy, Pity, Peace, and Love
@@ -326,11 +322,9 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # lob.close().await?;
     # session.commit().await?;
     # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :id").await?;
-    # let rows = stmt.query(&id).await?;
-    # let row = rows.next().await?.expect("one row");
+    # let row = stmt.query_single(&id).await?.unwrap();
     # let lob1 : CLOB = row.get_not_null(0)?;
-    # let rows = stmt.query(&id).await?;
-    # let row = rows.next().await?.expect("one row");
+    # let row = stmt.query_single(&id).await?.unwrap();
     # let lob2 : CLOB = row.get_not_null(0)?;
     # assert!(lob1.is_equal(&lob2)?, "CLOB1 == CLOB2");
     # assert!(lob2.is_equal(&lob1)?, "CLOB2 == CLOB1");

@@ -42,8 +42,7 @@ mod tests {
     }
 
     fn fetch_latest_hire(stmt: Statement) -> Result<String> {
-        let rows = stmt.query(())?;
-        if let Some( row ) = rows.next()? {
+        if let Some( row ) = stmt.query_single(())? {
             let first_name : Option<&str> = row.get(0)?;
             let last_name : &str = row.get_not_null(1)?;
             let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
@@ -255,8 +254,7 @@ mod tests {
     }
 
     async fn fetch_latest_hire(stmt: Statement<'_>) -> Result<String> {
-        let rows = stmt.query(()).await?;
-        if let Some( row ) = rows.next().await? {
+        if let Some( row ) = stmt.query_single(()).await? {
             let first_name : Option<&str> = row.get(0)?;
             let last_name : &str = row.get_not_null(1)?;
             let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));

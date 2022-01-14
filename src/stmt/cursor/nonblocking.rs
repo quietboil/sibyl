@@ -36,9 +36,8 @@ impl<'a> Cursor<'a> {
                  WHERE last_name = :last_name
                ) e
     ").await?;
-    let rows = stmt.query("King").await?;
+    let row = stmt.query_single("King").await?.unwrap();
 
-    let row = rows.next().await?.unwrap();
     let last_name : &str = row.get_not_null(0)?;
     assert_eq!(last_name, "King");
 
@@ -54,7 +53,6 @@ impl<'a> Cursor<'a> {
     assert_eq!(department_name, "Sales");
 
     assert!(dept_rows.next().await?.is_none());
-    assert!(rows.next().await?.is_none());
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */

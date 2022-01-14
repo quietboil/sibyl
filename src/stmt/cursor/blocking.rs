@@ -35,9 +35,8 @@ impl<'a> Cursor<'a> {
                  WHERE last_name = :last_name
                ) e
     ")?;
-    let rows = stmt.query("King")?;
+    let row = stmt.query_single("King")?.unwrap();
 
-    let row = rows.next()?.unwrap();
     let last_name : &str = row.get_not_null(0)?;
     assert_eq!(last_name, "King");
 
@@ -53,7 +52,6 @@ impl<'a> Cursor<'a> {
     assert_eq!(department_name, "Sales");
 
     assert!(dept_rows.next()?.is_none());
-    assert!(rows.next()?.is_none());
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */

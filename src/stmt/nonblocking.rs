@@ -1,7 +1,7 @@
 //! Nonblocking SQL statement methods
 
 use super::{Statement, bind::Params, cols::{DEFAULT_LONG_BUFFER_SIZE, Columns}};
-use crate::{Result, oci::*, Session, Error, Rows, Cursor, ToSql};
+use crate::{Result, oci::*, Session, Error, Rows, Cursor, ToSql, Row};
 use parking_lot::RwLock;
 use once_cell::sync::OnceCell;
 
@@ -172,6 +172,80 @@ impl<'a> Statement<'a> {
     }
 
     /**
+    Convenience method to execute a query that returns a single rows.
+
+    If the query returns more than one row, `query_single` will return only the first
+    row and ignore the rest.
+
+    # Parameters
+
+    * `args` - SQL statement arguments - a single argument or a tuple of arguments
+
+    Where each argument can be represented by:
+    - a value: `val` (IN)
+    - a reference: `&val` (IN)
+    - a 2-item tuple where first item is a parameter name: `(":NAME", arg)`
+
+    # Returns
+
+    - `None` - if query did not return any rows
+    - `Some(row) - a single row (even if query returned more than one row)
+
+    # Example
+
+    ```
+    use std::collections::HashMap;
+
+    # sibyl::block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    let stmt = session.prepare("
+        SELECT country_id, state_province, city, postal_code, street_address
+          FROM hr.locations
+         WHERE location_id = :id
+    ").await?;
+
+    let row = stmt.query_single(1800).await?;
+
+    assert!(row.is_some());
+    let row = row.unwrap();
+    let country_id     : &str = row.get_not_null(0)?;
+    let state_province : &str = row.get_not_null(1)?;
+    let city           : &str = row.get_not_null(2)?;
+    let postal_code    : &str = row.get_not_null(3)?;
+    let street_address : &str = row.get_not_null(4)?;
+    assert_eq!(country_id, "CA");
+    assert_eq!(state_province, "Ontario");
+    assert_eq!(city, "Toronto");
+    assert_eq!(postal_code, "M5V 2L7");
+    assert_eq!(street_address, "147 Spadina Ave");
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
+    */
+    pub async fn query_single(&'a self, mut args: impl ToSql) -> Result<Option<Row<'a>>> {
+        let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
+        if stmt_type != OCI_STMT_SELECT {
+            return Err( Error::new("Use `execute` to execute statements other than SELECT") );
+        }
+        self.set_prefetch_rows(1)?;
+        let res = self.exec(stmt_type, &mut args).await?;
+
+        if self.cols.get().is_none() {
+            let cols = Columns::new(Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), self.max_long)?;
+            self.cols.get_or_init(|| RwLock::new(cols));
+        }
+
+        match res {
+            OCI_NO_DATA => Ok(None),
+            OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Rows::from_query(res, self).single().await,
+            _ => Err( Error::oci(&self.err, res) )
+        }
+    }
+
+    /**
     Retrieves a single implicit result (cursor) in the order in which they were returned
     from the PL/SQL procedure or block. If no more results are available, then `None` is
     returned.
@@ -296,7 +370,7 @@ impl<'a> Statement<'a> {
     }
 }
 
-#[cfg(all(test,feature="nonblocking"))]
+#[cfg(test)]
 mod tests {
     use crate::*;
 
@@ -321,14 +395,9 @@ mod tests {
                        )
                  WHERE hire_date_rank = 1
             ").await?;
-            let rows = stmt.query(()).await?;
-
-            let row = rows.next().await?.expect("first (and only) row");
+            let row = stmt.query_single(()).await?.unwrap();
             let id : usize = row.get_not_null(0)?;
             assert_eq!(id, 102);
-
-            let row = rows.next().await?;
-            assert!(row.is_none());
 
             Ok(())
         })
@@ -515,6 +584,58 @@ mod tests {
             assert_eq!(num_rows, 5);
 
             session.rollback().await?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn single_row_query() -> Result<()> {
+        block_on(async {
+            let oracle = env()?;
+            let dbname = std::env::var("DBNAME").expect("database name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
+            let dbpass = std::env::var("DBPASS").expect("password");
+            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+
+            let stmt = session.prepare("
+                SELECT country_id, state_province, city, postal_code, street_address
+                  FROM hr.locations
+                 WHERE location_id = :id
+            ").await?;
+            let row = stmt.query_single(1800).await?;
+            assert!(row.is_some());
+            let row = row.unwrap();
+            let country_id     : &str = row.get_not_null(0)?;
+            let state_province : &str = row.get_not_null(1)?;
+            let city           : &str = row.get_not_null(2)?;
+            let postal_code    : &str = row.get_not_null(3)?;
+            let street_address : &str = row.get_not_null(4)?;
+            assert_eq!(country_id, "CA");
+            assert_eq!(state_province, "Ontario");
+            assert_eq!(city, "Toronto");
+            assert_eq!(postal_code, "M5V 2L7");
+            assert_eq!(street_address, "147 Spadina Ave");
+
+            let stmt = session.prepare("
+                SELECT location_id, state_province, city, postal_code, street_address
+                  FROM hr.locations
+                 WHERE country_id = :country_id
+              ORDER BY location_id
+            ").await?;
+            let row = stmt.query_single("CA").await?;
+            assert!(row.is_some());
+            let row = row.unwrap();
+            let location_id    : u16  = row.get_not_null(0)?;
+            let state_province : &str = row.get_not_null(1)?;
+            let city           : &str = row.get_not_null(2)?;
+            let postal_code    : &str = row.get_not_null(3)?;
+            let street_address : &str = row.get_not_null(4)?;
+            assert_eq!(location_id, 1800);
+            assert_eq!(state_province, "Ontario");
+            assert_eq!(city, "Toronto");
+            assert_eq!(postal_code, "M5V 2L7");
+            assert_eq!(street_address, "147 Spadina Ave");
+
             Ok(())
         })
     }

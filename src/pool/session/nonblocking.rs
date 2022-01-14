@@ -114,8 +114,7 @@ impl<'a> SessionPool<'a> {
         #                )
         #          WHERE hire_date_rank = 1
         #     ").await?;
-        #     let rows = stmt.query(()).await?;
-        #     if let Some( row ) = rows.next().await? {
+        #     if let Some( row ) = stmt.query_single(()).await? {
         #         let first_name : Option<&str> = row.get(0)?;
         #         let last_name : &str = row.get_not_null(1)?;
         #         let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));

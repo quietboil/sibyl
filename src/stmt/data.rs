@@ -35,7 +35,7 @@ impl<'a> FromSql<'a> for String {
             ColumnBuffer::Float( val )              => Ok( val.to_string() ),
             ColumnBuffer::Double( val )             => Ok( val.to_string() ),
             ColumnBuffer::Rowid( ref rowid )        => rowid::to_string(rowid, row.as_ref()),
-            _                                       => Err( Error::new("cannot convert") )
+            _                                       => Err( Error::new("cannot return as a String") )
         }
     }
 }
@@ -55,7 +55,7 @@ impl<'a> FromSql<'a> for &'a str {
     fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
         match col.buf {
             ColumnBuffer::Text( oci_str_ptr ) => Ok( varchar::as_str(&oci_str_ptr, row.as_ref()) ),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot borrow as &str") )
         }
     }
 }
@@ -71,7 +71,7 @@ impl<'a> FromSql<'a> for &'a [u8] {
                     std::slice::from_raw_parts(ptr, len)
                 }
             }),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot borrow as &[u8]") )
         }
     }
 }
@@ -80,7 +80,7 @@ impl<'a, T: number::Integer> FromSql<'a> for T {
     fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
         match col.buf {
             ColumnBuffer::Number( ref oci_num_box ) => <T>::from_number(oci_num_box, row.as_ref()),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as an integer") )
         }
     }
 }
@@ -99,7 +99,7 @@ impl<'a> FromSql<'a> for f32 {
                 let num = interval::to_number(int, row)?;
                 number::to_real(&num, row.as_ref())
             }
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as f32") )
         }
     }
 }
@@ -118,7 +118,7 @@ impl<'a> FromSql<'a> for f64 {
                 let num = interval::to_number(int, row)?;
                 number::to_real(&num, row.as_ref())
             }
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as f64") )
         }
     }
 }
@@ -137,7 +137,7 @@ impl<'a> FromSql<'a> for number::Number<'a> {
                 let num = interval::to_number(int, row)?;
                 Ok( number::Number::make(num, row) )
             }
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as a Number") )
         }
     }
 }
@@ -146,7 +146,7 @@ impl<'a> FromSql<'a> for Date<'a> {
     fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
         match col.buf  {
             ColumnBuffer::Date( ref oci_date ) => date::from_date(oci_date, row.as_ref()),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as a Date") )
         }
     }
 }
@@ -157,7 +157,7 @@ impl<'a> FromSql<'a> for Timestamp<'a> {
             ColumnBuffer::Timestamp( ref ts )    => timestamp::from_timestamp(ts, row),
             ColumnBuffer::TimestampTZ( ref ts )  => timestamp::convert_into(ts, row),
             ColumnBuffer::TimestampLTZ( ref ts ) => timestamp::convert_into(ts, row),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as a Timestamp") )
         }
     }
 }
@@ -168,7 +168,7 @@ impl<'a> FromSql<'a> for TimestampTZ<'a> {
             ColumnBuffer::Timestamp( ref ts )    => timestamp::convert_into(ts, row),
             ColumnBuffer::TimestampTZ( ref ts )  => timestamp::from_timestamp(ts, row),
             ColumnBuffer::TimestampLTZ( ref ts ) => timestamp::convert_into(ts, row),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as a Timestamp with time zone") )
         }
     }
 }
@@ -179,7 +179,7 @@ impl<'a> FromSql<'a> for TimestampLTZ<'a> {
             ColumnBuffer::Timestamp( ref ts )    => timestamp::convert_into(ts, row),
             ColumnBuffer::TimestampTZ( ref ts )  => timestamp::convert_into(ts, row),
             ColumnBuffer::TimestampLTZ( ref ts ) => timestamp::from_timestamp(ts, row),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as a Timestamp with local time zone") )
         }
     }
 }
@@ -188,7 +188,7 @@ impl<'a> FromSql<'a> for IntervalYM<'a> {
     fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
         match col.buf {
             ColumnBuffer::IntervalYM( ref int )  => interval::from_interval(int, row),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as Inteval year to month") )
         }
     }
 }
@@ -197,7 +197,7 @@ impl<'a> FromSql<'a> for IntervalDS<'a> {
     fn value(row: &'a Row<'a>, col: &mut ColumnData) -> Result<Self> {
         match col.buf {
             ColumnBuffer::IntervalDS( ref int )  => interval::from_interval(int, row),
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as Interval day to second") )
         }
     }
 }
@@ -210,7 +210,7 @@ impl<'a> FromSql<'a> for Cursor<'a> {
                 ref_cursor.swap(handle);
                 Ok( Cursor::explicit(ref_cursor, row) )
             }
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as Cursor") )
         }
     }
 }
@@ -229,7 +229,7 @@ macro_rules! impl_from_lob {
                             Err(Error::new("already consumed"))
                         }
                     },
-                    _ => Err( Error::new("cannot convert") )
+                    _ => Err( Error::new("cannot return as a LOB locator") )
                 }
             }
         }
@@ -252,7 +252,7 @@ impl<'a> FromSql<'a> for RowID {
                     Err(Error::new("already consumed"))
                 }
             },
-            _ => Err( Error::new("cannot convert") )
+            _ => Err( Error::new("cannot return as row id") )
         }
     }
 }
@@ -352,9 +352,7 @@ mod tests {
               FROM hr.employees
              WHERE employee_id = :ID
         ")?;
-        let rows = stmt.query((":ID", 107))?;
-
-        if let Some(row) = rows.next()? {
+        if let Some(row) = stmt.query_single((":ID", 107))? {
             let strid : String = row.get_not_null(0)?;
             let rowid : RowID = row.get_not_null(0)?;
             assert_eq!(rowid.to_string(&session)?, strid);

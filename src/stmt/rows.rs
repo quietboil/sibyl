@@ -19,41 +19,22 @@ pub(crate) enum DataSource<'a> {
     Cursor(&'a Cursor<'a>)
 }
 
-impl AsRef<OCIEnv> for DataSource<'_> {
-    fn as_ref(&self) -> &OCIEnv {
-        match self {
-            &Self::Statement(stmt) => stmt.as_ref(),
-            &Self::Cursor(cursor)  => cursor.as_ref(),
-        }
-    }
+macro_rules! impl_as_ref_for_data_source {
+    ($($tname:ty),+) => {
+        $(
+            impl AsRef<$tname> for DataSource<'_> {
+                fn as_ref(&self) -> &$tname {
+                    match self {
+                        &Self::Statement(stmt) => stmt.as_ref(),
+                        &Self::Cursor(cursor)  => cursor.as_ref(),
+                    }
+                }
+            }
+        )+
+    };
 }
 
-impl AsRef<OCIError> for DataSource<'_> {
-    fn as_ref(&self) -> &OCIError {
-        match self {
-            &Self::Statement(stmt) => stmt.as_ref(),
-            &Self::Cursor(cursor)  => cursor.as_ref(),
-        }
-    }
-}
-
-impl AsRef<OCISvcCtx> for DataSource<'_> {
-    fn as_ref(&self) -> &OCISvcCtx {
-        match self {
-            &Self::Statement(stmt) => stmt.as_ref(),
-            &Self::Cursor(cursor)  => cursor.as_ref(),
-        }
-    }
-}
-
-impl AsRef<OCIStmt> for DataSource<'_> {
-    fn as_ref(&self) -> &OCIStmt {
-        match self {
-            &Self::Statement(stmt) => stmt.as_ref(),
-            &Self::Cursor(cursor)  => cursor.as_ref(),
-        }
-    }
-}
+impl_as_ref_for_data_source!(OCIEnv, OCIError, OCISvcCtx, OCIStmt);
 
 impl Ctx for DataSource<'_> {
     fn try_as_session(&self) -> Option<&OCISession> {
@@ -101,55 +82,85 @@ impl<'a> Rows<'a> {
     pub(crate) fn from_cursor(query_result: i32, cursor: &'a Cursor<'a>) -> Self {
         Self { rset: DataSource::Cursor(cursor), last_result: AtomicI32::new(query_result) }
     }
+
+    fn src(self) -> DataSource<'a> {
+        self.rset
+    }
 }
+
+enum RowSource<'a> {
+    Single(DataSource<'a>),
+    Multi(&'a DataSource<'a>)
+}
+
+impl RowSource<'_> {
+    fn rset(&self) -> &DataSource {
+        match self {
+            Self::Single(ds) => ds,
+            &Self::Multi(ds) => ds,
+        }
+    }
+}
+
+macro_rules! impl_as_ref_for_row_source {
+    ($($tname:ty),+) => {
+        $(
+            impl AsRef<$tname> for RowSource<'_> {
+                fn as_ref(&self) -> &$tname {
+                    match self {
+                        Self::Single(ds) => ds.as_ref(),
+                        &Self::Multi(ds) => ds.as_ref(),
+                    }
+                }
+            }
+        )+
+    };
+}
+
+impl_as_ref_for_row_source!(OCIEnv, OCIError, OCISvcCtx, OCIStmt);
+
 
 /// A row in the returned result set
 pub struct Row<'a> {
-    rset: &'a DataSource<'a>,
+    src: RowSource<'a>,
 }
 
-impl AsRef<OCIEnv> for Row<'_> {
-    fn as_ref(&self) -> &OCIEnv {
-        self.rset.as_ref()
-    }
+macro_rules! impl_as_ref_for_row {
+    ($($tname:ty),+) => {
+        $(
+            impl AsRef<$tname> for Row<'_> {
+                fn as_ref(&self) -> &$tname {
+                    self.src.as_ref()
+                }
+            }
+        )+
+    };
 }
 
-impl AsRef<OCIError> for Row<'_> {
-    fn as_ref(&self) -> &OCIError {
-        self.rset.as_ref()
-    }
-}
-
-impl AsRef<OCISvcCtx> for Row<'_> {
-    fn as_ref(&self) -> &OCISvcCtx {
-        self.rset.as_ref()
-    }
-}
-
-impl AsRef<OCIStmt> for Row<'_> {
-    fn as_ref(&self) -> &OCIStmt {
-        self.rset.as_ref()
-    }
-}
+impl_as_ref_for_row!(OCIEnv, OCIError, OCISvcCtx, OCIStmt);
 
 impl Ctx for Row<'_> {
     fn try_as_session(&self) -> Option<&OCISession> {
-        self.rset.try_as_session()
+        self.src.rset().try_as_session()
     }
 }
 
 impl<'a> Row<'a> {
     fn new(rows: &'a Rows) -> Self {
-        Self { rset: &rows.rset }
+        Self { src: RowSource::Multi(&rows.rset) }
+    }
+
+    fn single(rows: Rows<'a>) -> Self {
+        Self { src: RowSource::Single(rows.src()) }
     }
 
     pub(crate) fn session(&self) -> &Session {
-        self.rset.session()
+        self.src.rset().session()
     }
 
     // `get` helper to ensure that the read lock is released when we have the index
     fn col_index_and_null_indicator(&self, pos: &impl Position) -> Option<(usize, bool)> {
-        let cols = self.rset.read_columns();
+        let cols = self.src.rset().read_columns();
         pos.name().and_then(|name| cols.col_index(name)).or(pos.index())
             .map(|ix| (ix, cols.is_null(ix)))
     }
@@ -180,8 +191,7 @@ impl<'a> Row<'a> {
           FROM hr.employees
          WHERE manager_id = :id
     ")?;
-    let rows = stmt.query(120)?;
-    let row = rows.next()?.unwrap();
+    let row = stmt.query_single(120)?.unwrap();
 
     let commission_exists = !row.is_null(0);
     assert!(!commission_exists);
@@ -200,8 +210,7 @@ impl<'a> Row<'a> {
     #       FROM hr.employees
     #      WHERE manager_id = :id
     # ").await?;
-    # let rows = stmt.query(120).await?;
-    # let row = rows.next().await?.unwrap();
+    # let row = stmt.query_single(120).await?.unwrap();
     # let commission_exists = !row.is_null(0);
     # assert!(!commission_exists);
     # Ok(()) })
@@ -213,7 +222,7 @@ impl<'a> Row<'a> {
     This method considers the out of bounds or unknown/misnamed "columns" to be NULL.
     */
     pub fn is_null(&self, pos: impl Position) -> bool {
-        let cols = self.rset.read_columns();
+        let cols = self.src.rset().read_columns();
         pos.name().and_then(|name| cols.col_index(name)).or(pos.index())
             .map(|ix| cols.is_null(ix))
             .unwrap_or(true)
@@ -250,8 +259,7 @@ impl<'a> Row<'a> {
           FROM hr.locations
          WHERE location_id = :id
     ")?;
-    let rows = stmt.query(2400)?;
-    let row = rows.next()?.expect("first (and only) row");
+    let row = stmt.query_single(2400)?.unwrap();
 
     // Either a 0-based column position...
     let postal_code : Option<&str> = row.get(0)?;
@@ -283,8 +291,7 @@ impl<'a> Row<'a> {
     #       FROM hr.locations
     #      WHERE location_id = :id
     # ").await?;
-    # let rows = stmt.query(2400).await?;
-    # let row = rows.next().await?.expect("first (and only) row");
+    # let row = stmt.query_single(2400).await?.unwrap();
     # let postal_code : Option<&str> = row.get(0)?;
     # assert!(postal_code.is_none());
     # let country_id  : Option<&str> = row.get(1)?;
@@ -308,7 +315,7 @@ impl<'a> Row<'a> {
                 if is_null {
                     Ok(None)
                 } else {
-                    self.rset.write_columns().get(self, ix)
+                    self.src.rset().write_columns().get(self, ix)
                 }
             }
         }
@@ -349,8 +356,7 @@ impl<'a> Row<'a> {
           FROM hr.locations
          WHERE location_id = :id
     ")?;
-    let rows = stmt.query(2400)?;
-    let row = rows.next()?.expect("first (and only) row");
+    let row = stmt.query_single(2400)?.unwrap();
 
     // CITY is NOT NULL
     let city : &str = row.get_not_null("CITY")?;
@@ -391,8 +397,7 @@ impl<'a> Row<'a> {
     #       FROM hr.locations
     #      WHERE location_id = :id
     # ").await?;
-    # let rows = stmt.query(2400).await?;
-    # let row = rows.next().await?.expect("first (and only) row");
+    # let row = stmt.query_single(2400).await?.unwrap();
     # let city : &str = row.get_not_null("CITY")?;
     # assert_eq!(city, "London");
     # let postal_code    : Option<&str> = row.get("POSTAL_CODE")?;
@@ -416,7 +421,7 @@ impl<'a> Row<'a> {
                 if is_null {
                     Err(Error::msg(format!("Column {} is null", pos)))
                 } else {
-                    self.rset.write_columns().get(self, ix).transpose().unwrap()
+                    self.src.rset().write_columns().get(self, ix).transpose().unwrap()
                 }
             }
         }
@@ -451,8 +456,7 @@ impl<'a> Row<'a> {
          WHERE employee_id = :id
            FOR UPDATE
     ")?;
-    let rows = stmt.query(107)?;
-    let row = rows.next()?.expect("first (and only) row");
+    let row = stmt.query_single(107)?.unwrap();
     let manager_id: u32 = row.get_not_null(0)?;
     assert_eq!(manager_id, 103);
 
@@ -485,8 +489,7 @@ impl<'a> Row<'a> {
     #      WHERE employee_id = :id
     #        FOR UPDATE
     # ").await?;
-    # let rows = stmt.query(107).await?;
-    # let row = rows.next().await?.expect("first (and only) row");
+    # let row = stmt.query_single(107).await?.unwrap();
     # let manager_id: u32 = row.get_not_null(0)?;
     # assert_eq!(manager_id, 103);
     # let rowid = row.rowid()?;
@@ -530,8 +533,7 @@ mod tests {
               FROM hr.locations
              WHERE location_id = :id
         ")?;
-        let rows = stmt.query(2400)?;
-        let row = rows.next()?.unwrap();
+        let row = stmt.query_single(2400)?.unwrap();
 
         assert!(row.is_null("POSTAL_CODE"));
         assert!(!row.is_null("CITY"));
@@ -573,8 +575,7 @@ mod tests {
               FROM hr.locations
              WHERE location_id = :id
         ")?;
-        let rows = stmt.query(2400)?;
-        let row = rows.next()?.unwrap();
+        let row = stmt.query_single(2400)?.unwrap();
 
         #[derive(Clone,Copy)]
         enum Col {

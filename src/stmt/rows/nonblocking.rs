@@ -62,4 +62,19 @@ impl<'a> Rows<'a> {
             }
         }
     }
+
+    pub(in crate::stmt) async fn single(self) -> Result<Option<Row<'a>>> {
+        if self.last_result.load(Ordering::Relaxed) == OCI_NO_DATA {
+            Ok( None )
+        } else {
+            let stmt: &OCIStmt  = self.rset.as_ref();
+            let err:  &OCIError = self.rset.as_ref();
+            let res = futures::StmtFetch::new(self.rset.session().get_svc(), stmt, err).await?;
+            match res {
+                OCI_NO_DATA => Ok( None ),
+                OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::single(self)) ),
+                _ => Err( Error::oci(self.rset.as_ref(), res) )
+            }
+        }
+    }
 }
