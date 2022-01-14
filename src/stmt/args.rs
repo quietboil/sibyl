@@ -35,7 +35,7 @@ pub trait ToSql : Send + Sync {
 
 impl ToSql for () {
     fn bind_to(&mut self, pos: usize, _params: &mut Params, _stmt: &OCIStmt, _err: &OCIError) -> Result<usize> {
-        Ok(pos)
+        Ok(pos + 1)
     }
 }
 
