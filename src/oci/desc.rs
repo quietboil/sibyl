@@ -83,7 +83,7 @@ impl<T> Descriptor<T>
         Self(desc_ptr)
     }
 
-    pub(crate) fn take_over(other: &mut Self) -> Self {
+    pub(crate) fn take(other: &mut Self) -> Self {
         let mut desc_ptr = Ptr::<T::OCIType>::null();
         desc_ptr.swap(&mut other.0);
         Self(desc_ptr)

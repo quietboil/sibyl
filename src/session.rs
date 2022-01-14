@@ -37,7 +37,7 @@ impl Drop for SvcCtx {
     fn drop(&mut self) {
         let mut svc = Ptr::<OCISvcCtx>::null();
         svc.swap(&mut self.svc);
-        let err = Handle::take_over(&mut self.err);
+        let err = Handle::take(&mut self.err);
         let env = self.env.clone();
         task::spawn(futures::SessionRelease::new(svc, err, env));
     }

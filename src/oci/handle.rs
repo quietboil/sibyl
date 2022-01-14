@@ -49,7 +49,7 @@ impl<T: HandleType> Handle<T> {
         let mut handle_ptr = Ptr::<T>::null();
         oci::handle_alloc(env.as_ref(), handle_ptr.as_mut_ptr(), T::get_type())?;
         if handle_ptr.is_null() {
-            Err( Error::new(&format!("OCI returned NULL for handle {}", T::get_type())) )
+            Err( Error::msg(format!("OCI returned NULL for handle {}", T::get_type())) )
         } else {
             Ok( handle_ptr )
         }
@@ -66,7 +66,7 @@ impl<T: HandleType> Handle<T> {
         Self(handle_ptr)
     }
 
-    pub(crate) fn take_over(other: &mut Self) -> Self {
+    pub(crate) fn take(other: &mut Self) -> Self {
         let mut handle_ptr = Ptr::<T>::null();
         handle_ptr.swap(&mut other.0);
         Self(handle_ptr)

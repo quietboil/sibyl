@@ -71,7 +71,7 @@ impl Drop for Statement<'_> {
         if !self.stmt.is_null() {
             let mut stmt = Ptr::<OCIStmt>::null();
             stmt.swap(&mut self.stmt);
-            let err = Handle::take_over(&mut self.err);
+            let err = Handle::take(&mut self.err);
             let svc = self.svc.clone();
             task::spawn(futures::StmtRelease::new(stmt, err, svc));
         }

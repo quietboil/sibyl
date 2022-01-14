@@ -79,7 +79,7 @@ impl Params {
         } else if let Some(&ix) = self.idxs.get(name[1..].to_uppercase().as_str()) {
             Ok(ix)
         } else {
-            Err(Error::new(&format!("Statement does not define parameter placeholder {}", name)))
+            Err(Error::msg(format!("Statement does not define parameter placeholder {}", name)))
         }
     }
 

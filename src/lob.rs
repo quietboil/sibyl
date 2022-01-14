@@ -70,7 +70,7 @@ impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 's
     #[cfg(feature="nonblocking")]
     fn drop(&mut self) {
         let ctx = self.svc.clone();
-        let loc = Descriptor::take_over(&mut self.locator);
+        let loc = Descriptor::take(&mut self.locator);
         let flags = self.status_flags.load(Ordering::Acquire);
         task::spawn(futures::LobDrop::new(ctx, loc, flags));
     }
