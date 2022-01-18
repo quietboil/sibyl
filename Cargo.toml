@@ -1,6 +1,6 @@
 [package]
 name = "sibyl"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2018"
 description = "An OCI-based (synchronous or asynchronous) interface between Rust applications and Oracle databases"
 authors = ["Alex Demenchuk <alexander.demenchuk@gmail.com>"]
@@ -8,7 +8,7 @@ license = "MIT"
 keywords = ["database","sql","oracle","ffi","async"]
 categories = ["database"]
 repository = "https://github.com/quietboil/sibyl"
-homepage = "https://github.com/quietboil/sibyl"
+homepage = "https://quietboil.github.io/sibyl"
 documentation = "https://docs.rs/sibyl"
 
 [dependencies]

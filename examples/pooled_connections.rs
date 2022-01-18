@@ -1,21 +1,17 @@
-use sibyl::*;
-/**
-    This example is a variant of `readme` that executes its work in multiple
-    threads. It creates a connection pool which is then used by worker threads
-    that establish their own private (and most likely stateful) sessions with
-    the database, which share a small number of physical connections.
+/*!
+This example is a variant of `readme` that executes its work in multiple
+threads. It creates a connection pool which is then used by worker threads
+that establish their own private (and most likely stateful) sessions with
+the database, which share a small number of physical connections.
 
-    *Note* that connection pooling is only available in `blocking` mode and
-    thus there is no `nonblocking` example.
+*Note* that connection pooling is only available in `blocking` mode and
+thus there is no `nonblocking` example.
 */
-fn main() -> Result<()> {
-    example()
-}
-
 #[cfg(feature="blocking")]
-fn example() -> Result<()> {
+fn main() -> sibyl::Result<()> {
     use std::{env, thread, sync::Arc};
     use once_cell::sync::OnceCell;
+    use sibyl::*;
 
     static ORACLE : OnceCell<Environment> = OnceCell::new();
     let oracle = ORACLE.get_or_try_init(|| {
@@ -73,13 +69,10 @@ fn example() -> Result<()> {
 }
 
 /**
-    Connection pools are not supported in nonblocking mode.
+Connection pools are not supported in nonblocking mode.
 
-    OCI returns "ORA-03126 network driver does not support non-blocking operations"
-    when one tries to set OCI_ATTR_NONBLOCKING_MODE on a pooled connection.
+OCI returns "ORA-03126 network driver does not support non-blocking operations"
+when one tries to set OCI_ATTR_NONBLOCKING_MODE on a pooled connection.
 */
 #[cfg(feature="nonblocking")]
-fn example() -> Result<()> {
-    eprintln!("Connection pools are not supported in nonblocking mode");
-    Ok(())
-}
+fn main() {}

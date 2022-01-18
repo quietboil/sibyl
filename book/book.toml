@@ -1,0 +1,15 @@
+[book]
+title = "Sibyl User Manual"
+authors = ["Alex Demenchuk"]
+language = "en"
+multilingual = false
+
+[rust]
+edition = "2018"
+
+[build]
+build-dir = "pages"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/quietboil/sibyl"

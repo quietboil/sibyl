@@ -2,3 +2,4 @@
 Cargo.lock
 .*
 !.gitignore
+!.github

@@ -1,4 +1,86 @@
-#![cfg_attr(not(doctest), doc=include_str!("../README.md"))]
+/*!
+Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databases. Sibyl supports both sync (blocking) and async (nonblocking) API.
+
+# Blocking Mode Example
+
+```
+# #[cfg(feature="blocking")]
+fn main() -> sibyl::Result<()> {
+    let oracle = sibyl::env()?;
+
+    let dbname = std::env::var("DBNAME").expect("database name");
+    let dbuser = std::env::var("DBUSER").expect("user name");
+    let dbpass = std::env::var("DBPASS").expect("password");
+
+    let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+
+    let stmt = session.prepare("
+        SELECT c.country_name, Median(e.salary)
+          FROM hr.employees e
+          JOIN hr.departments d ON d.department_id = e.department_id
+          JOIN hr.locations l   ON l.location_id = d.location_id
+          JOIN hr.countries c   ON c.country_id = l.country_id
+          JOIN hr.regions r     ON r.region_id = c.region_id
+         WHERE r.region_name = :REGION_NAME
+      GROUP BY c.country_name
+    ")?;
+
+    let rows = stmt.query("Europe")?;
+
+    while let Some(row) = rows.next()? {
+        let country_name : &str = row.get_not_null(0)?;
+        let median_salary : u16 = row.get_not_null(1)?;
+        println!("{:25}: {:>5}", country_name, median_salary);
+    }
+    Ok(())
+}
+# #[cfg(feature="nonblocking")]
+# fn main() {}
+```
+
+# Nonblocking Mode Example
+
+```
+# #[cfg(feature="nonblocking")]
+fn main() -> sibyl::Result<()> {
+  sibyl::block_on(async {
+    let oracle = sibyl::env()?;
+
+    let dbname = std::env::var("DBNAME").expect("database name");
+    let dbuser = std::env::var("DBUSER").expect("user name");
+    let dbpass = std::env::var("DBPASS").expect("password");
+
+    let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+
+    let stmt = session.prepare("
+        SELECT c.country_name, Median(e.salary)
+          FROM hr.employees e
+          JOIN hr.departments d ON d.department_id = e.department_id
+          JOIN hr.locations l   ON l.location_id = d.location_id
+          JOIN hr.countries c   ON c.country_id = l.country_id
+          JOIN hr.regions r     ON r.region_id = c.region_id
+         WHERE r.region_name = :REGION_NAME
+      GROUP BY c.country_name
+    ").await?;
+
+    let rows = stmt.query("Europe").await?;
+
+    while let Some(row) = rows.next().await? {
+        let country_name : &str = row.get_not_null(0)?;
+        let median_salary : u16 = row.get_not_null(1)?;
+        println!("{:25}: {:>5}", country_name, median_salary);
+    }
+    Ok(())
+  })
+}
+# #[cfg(feature="blocking")]
+# fn main() {}
+```
+
+> Note that `sibyl::block_on` is an abstraction over `block_on` of different async executors. It is intended only to help running Sibyl's tests and examples.
+
+[1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html
+*/
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 

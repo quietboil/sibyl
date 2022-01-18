@@ -4,6 +4,7 @@ Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databa
 
 [![crates.io](https://img.shields.io/crates/v/sibyl)](https://crates.io/crates/sibyl)
 [![Documentation](https://docs.rs/sibyl/badge.svg)](https://docs.rs/sibyl)
+[![User Guide](https://quietboil.github.io/sibyl/favicon.svg)](https://quietboil.github.io/sibyl)
 ![MIT](https://img.shields.io/crates/l/sibyl.svg)
 
 ## Example
@@ -14,46 +15,34 @@ Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databa
 use sibyl as oracle; // pun intended :)
 
 fn main() -> Result<(),Box<dyn std::error::Error>> {
-    let dbname = std::env::var("DBNAME")?;
-    let dbuser = std::env::var("DBUSER")?;
-    let dbpass = std::env::var("DBPASS")?;
-
     let oracle = oracle::env()?;
+
+    let dbname = std::env::var("DBNAME").expect("database name");
+    let dbuser = std::env::var("DBUSER").expect("user name");
+    let dbpass = std::env::var("DBPASS").expect("password");
+
     let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
     let stmt = session.prepare("
         SELECT first_name, last_name, hire_date
-          FROM (
-                SELECT first_name, last_name, hire_date
-                     , Row_Number() OVER (ORDER BY hire_date) hire_date_rank
-                  FROM hr.employees
-                 WHERE hire_date >= :hire_date
-               )
-         WHERE hire_date_rank = 1
+          FROM hr.employees
+         WHERE hire_date >= :hire_date
+      ORDER BY hire_date
     ")?;
-    let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
+    let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &session)?;
     let rows = stmt.query(&date)?;
+    while let Some( row ) = rows.next()? {
+        let first_name : Option<&str>  = row.get(0)?;
+        let last_name  : &str          = row.get_not_null(1)?;
+        let hire_date  : oracle::Date  = row.get_not_null(2)?;
 
-    // The SELECT above will return either 1 or 0 rows, thus `if let` is sufficient.
-    // Alternatively, `query_single` could be used as it will return that single row.
-    // When more than one row is expected, `while let` would be used to process `rows`.
-    if let Some( row ) = rows.next()? {
-        let first_name : Option<&str> = row.get("FIRST_NAME")?;
-        let last_name  : &str         = row.get_not_null("LAST_NAME")?;
-        let hire_date  : oracle::Date = row.get_not_null("HIRE_DATE")?;
-
-        // Note that the type of `last_name` is `&str`. Similarly, `first_name` is
-        // `Option<&str>`. This makes them borrow directly from the internal row
-        // buffer. This also restricts their lifetime to the lifetime of the `row`.
-        // If the returned value is intended to be used beyond the lifetime of the
-        // current row it should be retrieved as a `String`.
-
-        let name = first_name.map_or(last_name.to_string(),
-            |first_name| format!("{}, {}", last_name, first_name)
-        );
         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
-
-        println!("{} was hired on {}", name, hire_date);
-    } else {
+        if first_name.is_some() {
+            println!("{}: {} {}", hire_date, first_name.unwrap(), last_name);
+        } else {
+            println!("{}: {}", hire_date, last_name);
+        }
+    }
+    if stmt.row_count()? == 0 {
         println!("No one was hired after {}", date.to_string("FMMonth DD, YYYY")?);
     }
     Ok(())
@@ -67,36 +56,34 @@ use sibyl as oracle;
 
 #[tokio::main]
 async fn main() -> Result<(),Box<dyn std::error::Error>> {
-    let dbname = std::env::var("DBNAME")?;
-    let dbuser = std::env::var("DBUSER")?;
-    let dbpass = std::env::var("DBPASS")?;
-
     let oracle = oracle::env()?;
+
+    let dbname = std::env::var("DBNAME").expect("database name");
+    let dbuser = std::env::var("DBUSER").expect("user name");
+    let dbpass = std::env::var("DBPASS").expect("password");
+
     let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
     let stmt = session.prepare("
         SELECT first_name, last_name, hire_date
-          FROM (
-                SELECT first_name, last_name, hire_date
-                     , Row_Number() OVER (ORDER BY hire_date) hire_date_rank
-                  FROM hr.employees
-                 WHERE hire_date >= :hire_date
-               )
-         WHERE hire_date_rank = 1
+          FROM hr.employees
+         WHERE hire_date >= :hire_date
+      ORDER BY hire_date
     ").await?;
     let date = oracle::Date::from_string("January 1, 2005", "MONTH DD, YYYY", &oracle)?;
     let rows = stmt.query(&date).await?;
-    if let Some( row ) = rows.next().await? {
-        let first_name : Option<&str> = row.get("FIRST_NAME")?;
-        let last_name  : &str         = row.get_not_null("LAST_NAME")?;
-        let hire_date  : oracle::Date = row.get_not_null("HIRE_DATE")?;
+    while let Some( row ) = rows.next().await? {
+        let first_name : Option<&str>  = row.get(0)?;
+        let last_name  : &str          = row.get_not_null(1)?;
+        let hire_date  : oracle::Date  = row.get_not_null(2)?;
 
-        let name = first_name.map_or(last_name.to_string(),
-            |first_name| format!("{}, {}", last_name, first_name)
-        );
         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
-
-        println!("{} was hired on {}", name, hire_date);
-    } else {
+        if first_name.is_some() {
+            println!("{}: {} {}", hire_date, first_name.unwrap(), last_name);
+        } else {
+            println!("{}: {}", hire_date, last_name);
+        }
+    }
+    if stmt.row_count()? == 0 {
         println!("No one was hired after {}", date.to_string("FMMonth DD, YYYY")?);
     }
     Ok(())
@@ -104,520 +91,9 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
 ```
 
 > Note that:
-> - The nonblocking mode example is almost a verbatim copy of the blocking mode example (see above) with `await`s added.
-> - The example below uses and depends on [Tokio](https://crates.io/crates/tokio)
+> - The nonblocking mode example is almost a verbatim copy of the blocking mode example with `await`s added.
+> - The async example uses and depends on [Tokio][2]
 > - For the moment, Sibyl can use only Tokio as an async executor.
 
-
-## Notes on Building
-
-Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The cargo build needs to know where that library is. You can provide that information via environment variable `OCI_LIB_DIR` on Windows or `LIBRARY_PATH` on Linux. On Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build Sibyl's example as:
-
-```bash
-LIBRARY_PATH=/usr/lib/oracle/19.13/client64/lib cargo build --examples --features=blocking
-```
-
-On Windows the process is similar if the target environment is `gnu`. The `OCI_LIB_DIR` would point to the directory with `oci.dll`:
-
-```bat
-set OCI_LIB_DIR=%ORACLE_HOME%\bin
-cargo build --examples --features=blocking
-```
-
-However, for `msvc` environment the `OCI_LIB_DIR` must point to the directory with `oci.lib`. For example, you might build that example as:
-
-```bat
-set OCI_LIB_DIR=%ORACLE_HOME%\oci\lib\msvc
-cargo build --examples --features=blocking
-```
-
-> Note that Sibyl has 2 features - `blocking` and `nonblocking`. They are exclusive and one must be explictly selected. Thus, when Sibyl is used as a dependency it might be included as:
-
-```toml
-[dependencies]
-sibyl = { version = "0.5", features = "blocking" }
-```
-
-## Usage
-
-### Environment
-
-An OCI environment handle must be created before any other OCI function can be called. While there can be many environments - for example, they might be configured to have different languages and territories - usually one is sufficient. Sibyl initializes it to be the most compatible with Rust requirements - thread-safe using UTF8 (AL32UTF8) character encoding. That single environment handle can be created in `main` and then passed around:
-
-```rust
-fn main() {
-    let oracle = sibyl::env().expect("Oracle OCI environment");
-    // ...
-}
-```
-
-Note however that some functions will need a direct reference to this handle, so instead of passing it around some applications might prefer to create it statically:
-
-```rust
-use sibyl::Environment;
-use lazy_static::lazy_static;
-
-lazy_static!{
-    pub static ref ORACLE : Environment = sibyl::env().expect("Oracle OCI environment");
-}
-```
-
-Then later one would be able to create, for example, a current timestamp as:
-
-```rust
-use sibyl::TimestampTZ;
-
-let current_timestamp = TimestampTZ::from_systimestamp(&ORACLE)?;
-```
-
-### Connections
-
-Use `Environment::connect` method to connect to a database and start a new user session:
-
-```rust
-fn main() -> sibyl::Result<()> {
-    let oracle = sibyl::env()?;
-    let session = oracle.connect("dbname", "username", "password")?;
-    // ...
-    Ok(())
-}
-```
-
-Where `dbname` can be any name that is acceptable to Oracle clients - from local TNS name to EZConnect identifier to a connect descriptor.
-
-### SQL Statement Execution
-
-All SQL or PL/SQL statements must be prepared before they can be executed:
-
-```rust
-let stmt = session.prepare("
-    SELECT employee_id, last_name, first_name
-      FROM hr.employees
-     WHERE manager_id = :id
-  ORDER BY employee_id
-")?;
-```
-
-A prepared statement can be executed either with the `query`, `query_single` or `execute` methods:
-- `query` is used for `SELECT` statements. In fact, Sibyl will complain if you try to `query` any other statement.
-- `query_single` is a variant of `query` that returns a single row. It's a convenience method that allows skipping boilerplate of extrating only one row from a result set when it is known upfront that only one row (or none) is expected.
-- `execute` is used for all other, non-SELECT, DML and DDL.
-
-`query`, `query_single` and `execute` take a tuple of arguments. The latter can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call `query` using a positional argument as:
-
-```rust
-let row = stmt.query_single(103)?;
-```
-
-or bind a value to `:id` by name as:
-
-```rust
-let row = stmt.query_single((":ID", 103))?;
-```
-
-In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicares. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one "duplicate" name in a statement.
-
-> Note one caveat - until [min_specialization][5] is stabilized Sibyl has no way to distinguish whether a 2-item tuple is used to pass a named argument or 2 positional arguments. At the moment you'll have to use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is treated as "nothing", so effectively only first 2 arguments are used. For example:
-
-```rust
-let stmt = session.prepare("
-    SELECT department_id, manager_id
-      FROM hr.departments
-     WHERE department_name = :DEPARTMENT_NAME
-       AND location_id = :LOCATION_ID
-")?;
-let rows = stmt.query(("Administration", 1700, ()))?;
-```
-
-`execute` also allows execution of statements with OUT (or INOUT) parameters. For example:
-
-```rust
-let stmt = session.prepare("
-    INSERT INTO hr.departments
-           ( department_id, department_name, manager_id, location_id )
-    VALUES ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
- RETURNING department_id
-      INTO :department_id
-")?;
-let mut department_id: u32 = 0;
-let num_inserted = stmt.execute(
-    (
-        (":DEPARTMENT_NAME", "Security"         ),
-        (":MANAGER_ID",      ""                 ),
-        (":LOCATION_ID",     1700               ),
-        (":DEPARTMENT_ID",   &mut department_id ),
-    )
-)?;
-```
-
-`execute` returns the number of rows affected by the statement. `query` returns what is colloquially called a "streaming iterator" which is typically iterated using `while`. For example (continuing the SELECT example from above):
-
-```rust
-let mut employees = HashMap::new();
-let stmt = session.prepare("
-    SELECT employee_id, last_name, first_name
-      FROM hr.employees
-     WHERE manager_id = :id
-  ORDER BY employee_id
-")?;
-let rows = stmt.query(103)?;
-while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(0)?;
-    let last_name : &str  = row.get_not_null(1)?;
-    let first_name : Option<&str> = row.get(2)?;
-    let name = first_name.map_or(last_name.to_string(),
-        |first_name| format!("{}, {}", last_name, first_name)
-    );
-    employees.insert(employee_id, name);
-}
-```
-
-There are a few notable points of interest in the last example:
-- Sibyl uses 0-based column indexing in a projection.
-- `LAST_NAME` and `FIRST_NAME` are retrieved as `&str`. This is fast as they borrow directly from the respective column buffers. However, those values will only be valid during the lifetime of the row. If the value needs to continue to exist beyond the lifetime of a row, it should be retrieved as a `String`.
-
-> Note that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:
-
-```rust
-while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null("EMPLOYEE_ID")?;
-    let last_name : &str  = row.get_not_null("LAST_NAME")?;
-    let first_name : Option<&str> = row.get("FIRST_NAME")?;
-    let name = first_name.map_or(last_name.to_string(),
-        |first_name| format!("{}, {}", last_name, first_name)
-    );
-    employees.insert(employee_id, name);
-}
-```
-
-**Note** that all examples use all upper case column and parameter names. This is not really necessary as Sibyl treat them as case-insensitive. However, using all upper case gives Sibyl a chance to locate a column (or a parameter placeholder) without converting the name to upper case first (to match the Oracle reported names), thus avoiding temporary string allocation and upper case conversion. Of course, you can always maintain an `enum` for a select list, thus using indexes, which are the speediest way to get to the data anyway.
-
-```rust
-enum Col { EmployeeId, LastName, FirstName }
-
-while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(Col::EmployeeId as usize)?;
-    let last_name : &str  = row.get_not_null(Col::LastName as usize)?;
-    let first_name : Option<&str> = row.get(Col::FirstName as usize)?;
-    // ...
-}
-```
-
-Or to be extra fancy:
-
-```rust
-#[derive(Clone,Copy)]
-enum Col { EmployeeId, LastName, FirstName }
-
-impl sibyl::Position for Col {
-    fn index(&self) -> Option<usize> { Some(*self as _) }
-}
-
-impl std::fmt::Display for Col {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        static COLS : [&str;3] = ["EMPLOYEE_ID", "LAST_NAME", "FIRST_NAME"];
-        let i = *self as usize;
-        f.write_str(COLS[i])
-    }
-}
-
-while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(Col::EmployeeId)?;
-    let last_name : &str  = row.get_not_null(Col::LastName)?;
-    let first_name : Option<&str> = row.get(Col::FirstName)?;
-    // ...
-}
-```
-
-Of couse, that's a lot of boilerplate, which would benefit from a `derive` macro. Maybe we'll get to that eventually :-)
-
-## Oracle Data Types
-
-Sibyl provides API to access several Oracle native data types.
-
-### Number
-```rust
-use sibyl::Number;
-
-let oracle = sibyl::env()?;
-
-let pi = Number::pi(&oracle);
-let two = Number::from_int(2, &oracle);
-let two_pi = pi.mul(&two)?;
-let h = Number::from_string("6.62607004E-34", "9D999999999EEEE", &oracle)?;
-let hbar = h.div(&two_pi)?;
-
-assert_eq!(
-    hbar.to_string("TME")?,
-    "1.05457180013911265115394106872506677375E-34"
-);
-```
-
-### Date
-```rust
-use sibyl::Date;
-
-let mar28_1996 = Date::from_string("28-MAR-1996", "DD-MON-YYYY", &oracle)?;
-let next_monday = mar28_1996.next_week_day("MONDAY")?;
-
-assert_eq!(next_monday.to_string("DL")?, "Monday, April 01, 1996");
-```
-
-### Timestamp
-
-There are 3 types of timestamps:
-- `Timestamp` which is equivalent to Oracle's TIMESTAMP,
-- `TimestampTZ` - for TIMESTAMP WITH TIME ZONE, and
-- `TimestampLTZ` - for TIMESTAMP WITH LOCAL TIME ZONE
-
-```rust
-use sibyl::TimestampTZ;
-
-let ts = oracle::TimestampTZ::from_string(
-    "July 20, 1969 8:18:04.16 pm UTC",
-    "MONTH DD, YYYY HH:MI:SS.FF PM TZR",
-    &oracle
-)?;
-assert_eq!(
-    ts.to_string("YYYY-MM-DD HH24:MI:SS.FF TZR", 3)?,
-    "1969-07-20 20:18:04.160 UTC"
-);
-```
-
-> Note that if you are getting `ORA-01805` when timestamp with time zone is used, then most likely your local client and the server it is connected to are using different versions of the time zone file. This [stackoverflow answer][4] should help you in setting up your local client with the correct time zone file.
-
-### Interval
-
-There are 2 types of intervals:
-- `IntervalYM` which is eqivalent to Oracle's INTERVAL YEAR TO MONTH,
-- `IntervalDS` - INTERVAL DAY TO SECOND
-
-```rust
-use sibyl::{ TimestampTZ, IntervalDS };
-
-let launch  = TimestampTZ::with_date_and_time(1969, 7, 16, 13, 32,  0, 0, "UTC", &oracle)?;
-let landing = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 0, "UTC", &oracle)?;
-let duration : IntervalDS = landing.subtract(&launch)?;
-
-assert_eq!(duration.to_string(1,3)?, "+8 03:18:35.000");
-```
-
-### RowID
-
-Oracle ROWID can be selected and retrieved explicitly into an instance of the `RowID`. However, one interesting case is SELECT FOR UPDATE queries where Oracle returns ROWIDs implicitly. Those can be retrieved using `Row::rowid` method.
-
-```rust
-let stmt = session.prepare("
-    SELECT manager_id
-      FROM hr.employees
-     WHERE employee_id = :id
-       FOR UPDATE
-")?;
-let row = stmt.query_single(107)?;
-let rowid = row.rowid()?;
-
-let manager_id: u32 = row.get_not_null(0)?;
-assert_eq!(manager_id, 103);
-
-let stmt = session.prepare("
-    UPDATE hr.employees
-       SET manager_id = :manager_id
-     WHERE rowid = :row_id
-")?;
-let num_updated = stmt.execute((
-    ( ":MANAGER_ID", 102 ),
-    ( ":ROW_ID",  &rowid ),
-))?;
-assert_eq!(num_updated, 1);
-```
-
-### Cursors
-
-Cursors can be returned explicitly:
-
-```rust
-let stmt = session.prepare("
-    BEGIN
-        OPEN :emp FOR
-            SELECT department_name, first_name, last_name, salary
-              FROM hr.employees e
-              JOIN hr.departments d
-                ON d.department_id = e.department_id;
-    END;
-")?;
-let mut cursor = Cursor::new(&stmt)?;
-stmt.execute(&mut cursor)?;
-let rows = cursor.rows()?;
-// ...
-```
-
-Or, beginning with Oracle 12.1, implicitly:
-
-```rust
-let stmt = session.prepare("
-    DECLARE
-        emp SYS_REFCURSOR;
-    BEGIN
-        OPEN emp FOR
-            SELECT department_name, first_name, last_name, salary
-              FROM hr.employees e
-              JOIN hr.departments d
-                ON d.department_id = e.department_id;
-        ;
-        DBMS_SQL.RETURN_RESULT(emp);
-    END;
-")?;
-stmt.execute(())?;
-if let Some( cursor ) = stmt.next_result()? {
-    let rows = cursor.rows()?;
-    // ...
-}
-```
-
-### CLOBs, BLOBs, BFILEs
-
-Let's assume a table was created:
-
-```sql
-CREATE TABLE lob_example (
-    id  NUMBER GENERATED ALWAYS AS IDENTITY,
-    bin BLOB
-);
-```
-
-We can then create and write data into that LOB as:
-
-```rust
-// ... create OCI environment, connect to the database, etc.
-
-let file = BFile::new(&session)?;
-file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
-let file_len = file.len()?;
-
-file.open_file()?;
-let mut data = Vec::new();
-let num_read = file.read(0, file_len, &mut data)?;
-file.close_file()?;
-// ... or do not close now as it will be closed
-// automatically when `file` goes out of scope
-
-// Insert new BLOB and lock its row
-let stmt = session.prepare("
-    DECLARE
-        row_id ROWID;
-    BEGIN
-        INSERT INTO lob_example (bin) VALUES (Empty_Blob()) RETURNING rowid INTO row_id;
-        SELECT bin INTO :NEW_BLOB FROM lob_example WHERE rowid = row_id FOR UPDATE;
-    END;
-")?;
-let mut lob = BLOB::new(&session)?;
-stmt.execute(&mut lob)?;
-
-lob.open()?;
-let num_bytes_written = lob.write(0, &data)?;
-lob.close()?;
-
-session.commit()?;
-```
-
-And then later it could be read as:
-
-```rust
-let id: usize = 1234; // assume it was retrieved from somewhere...
-let stmt = session.prepare("SELECT bin FROM lob_example WHERE id = :ID")?;
-let row = stmt.query_single(&id)?;
-if let Some(row) = row {
-    if let Some(lob) = row.get(0)? {
-        let data = read_blob(lob)?;
-        // ...
-    }
-}
-```
-
-Where `read_blob` could be this:
-
-```rust
-fn read_blob(lob: BLOB<'_>) -> Result<Vec<u8>> {
-    let mut data = Vec::new();
-    let lob_len = lob.len()?;
-    let offset = 0;
-    lob.read(offset, lob_len, &mut data)?;
-    Ok(data)
-}
-```
-
-
-## Testing
-
-Some of Sibyl's tests connect to the database and expect certain objects to exist in it and certain privileges granted:
-- At least the HR demo schema should be [installed][2].
-- While there is no need to install other demo schemas at least `MEDIA_DIR` should be created (see `$ORACLE_HOME/demo/schema/mk_dir.sql`) and point to the directory with demo files that can be found in `product_media` in the [db-sample-schemas.zip][3].
-- Some of the LOB tests need text files with the the expected content. Those can be found in `etc/media` and copied into `MEDIA_DIR`.
-- A test user should be created. That user needs acccess to the HR schema and to the `MEDIA_DIR` directory. See `etc/create_sandbox.sql` for an example of how it can be accomplished.
-- Tests that connect to the database use environment variables - DBNAME, DBUSER and DBPASS - to identify the database, user and password respectively. These variables should be set before executing `cargo test`.
-
-
-## Supported Clients
-
-The minimal supported client is 12.2 as Sibyl uses some API functions that are not available in earlier clients. While suporting those is definitely feasible, it was not a priority.
-
-Sibyl tests are routinely executed on x64 Linux with Instant Clients 12.2, 18.5, 19.13 and 21.4 that connect to the 19.3 database. Sibyl is also tested on x64 Windows the with Instant Client 19.12.
-
-### Known Issues with Some Clients
-
-`SessionPool`'s `session_max_use_count` and `set_session_max_use_count` will fail on 12.2 client with `ORA-24315: illegal attribute type`.
-
-Client 21.4 (at least with 19.3 database) is strangely picky about names of parameter placeholders for LOB columns. For example, if a table was created with the following LOB column:
-
-```sql
-CREATE TABLE table_with_lob (
-    id   NUMBER GENERATED ALWAYS AS IDENTITY,
-    txt  CLOB
-);
-```
-
-and if an SQL parameter name is the same as the LOB column name (as in this example):
-
-```rust
-let stmt = session.prepare("
-    INSERT INTO table_with_lob (txt) VALUES (:TXT) RETURNING id INTO :ID
-")?;
-```
-
-Then 21.4 client will fail executing this SQL with `ORA-03120: two-task conversion routine: integer overflow`. Renaming the parameter placeholder resolves this:
-
-```rust
-let stmt = session.prepare("
-    INSERT INTO table_with_lob (txt) VALUES (:NEW_TXT) RETURNING id INTO :ID
-")?;
-```
-
-21.4 also does not "like" some specific parameter names like `:NAME` which makes it fail with the same `ORA-03120`.
-
-> Note that 12.2 through 19.13 clients (as far as Sibyl's tests showed) do not exhibit this issue.
-
-21.4 client (at least when it is connected to the 19.3 database) cannot read **CLOBs** piece-wize - something bad happens in `OCILobRead2` as it reads the last piece and the process gets killed. 21.4 client has no issues executing piece-wise reads from BFILEs and BLOBs.
-
-## Limitations
-
-At this time Sibyl provides only the most commonly needed means to interface with the Oracle database. Some of the missing features are:
-- Array interface for multi-row operations
-- User defined data types
-- PL/SQL collections and tables
-- Objects
-- JSON data
-- LDAP and proxy authentications
-- Global transactions
-- High Availability
-- Continuous query and publish-subscribe notifications
-- Advanced queuing
-- Shards
-- Direct path load
-
-Some of these features might be added in the upcoming releases if the need arises or if they are explicitly requested. Some, however, will never be implemented. The latter category includes those that are incompatible with nonblocking execution.
-
 [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html
-[2]: https://docs.oracle.com/en/database/oracle/oracle-database/19/comsc/installing-sample-schemas.html#GUID-1E645D09-F91F-4BA6-A286-57C5EC66321D
-[3]: https://github.com/oracle/db-sample-schemas/releases/latest
-[4]: https://stackoverflow.com/questions/69381749/where-is-the-oracle-instant-client-timezone-file-located
-[5]: https://doc.rust-lang.org/stable/unstable-book/language-features/min-specialization.html#min_specialization
+[2]: https://crates.io/crates/tokio
