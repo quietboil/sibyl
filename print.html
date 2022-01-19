@@ -76,7 +76,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">2.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">3.</strong> Connections</a></li><li class="chapter-item expanded "><a href="exec.html"><strong aria-hidden="true">4.</strong> SQL Statement Execution</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">5.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">5.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">5.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">5.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">5.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">5.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">5.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">5.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">5.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">5.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">6.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">7.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">8.</strong> Testing</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">2.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">3.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html"><strong aria-hidden="true">3.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">3.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">3.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html"><strong aria-hidden="true">4.</strong> SQL Statement Execution</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">5.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">5.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">5.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">5.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">5.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">5.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">5.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">5.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">5.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">5.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">6.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">7.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">8.</strong> Testing</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -257,7 +257,13 @@ lazy_static!{
 let current_timestamp = TimestampTZ::from_systimestamp(&amp;ORACLE)?;
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="connections"><a class="header" href="#connections">Connections</a></h1>
-<p>Use <code>Environment::connect</code> method to connect to a database and start a new user session:</p>
+<p>Depending on the application and its needs there are several ways to obtain a database sesssion:</p>
+<ul>
+<li>An application might use <code>Environment::connect</code> method to connect to a database and start a new user session. This is the most relevant way to get session for a single threaded application. Though, multithreaded applications might, in some cases, do the same.</li>
+<li>A multithreaded or a multitasking (async) application might create a session pool and then make each thread (or task) &quot;borrow&quot; a session from that pool for limited time. The caveat here is that those sessions are indistinguishable and thus must be &quot;stateless&quot;.</li>
+<li>A blocking mode multithreaded application might create a connection pool and make each thread establish their own sessions that would use pooled connections when they need to communicate with the database. As these sessions are not shared, they can be &quot;stateful&quot;.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="connection-per-thread"><a class="header" href="#connection-per-thread">Connection Per Thread</a></h1>
 <pre><code class="language-rust noplayground">fn main() -&gt; sibyl::Result&lt;()&gt; {
     let oracle = sibyl::env()?;
 
@@ -271,6 +277,155 @@ let current_timestamp = TimestampTZ::from_systimestamp(&amp;ORACLE)?;
 }
 </code></pre>
 <p>Where <code>dbname</code> can be any name that is acceptable to Oracle clients - from local TNS name to EZConnect identifier to a connect descriptor.</p>
+<p>Or with multiple threads:</p>
+<pre><code class="language-rust noplayground">use std::{env, thread, sync::Arc};
+use sibyl::*;
+
+fn main() -&gt; Result&lt;()&gt; {
+    let oracle = sibyl::env()?;
+    let oracle = Arc::new(oracle);
+
+    let mut workers = Vec::new();
+    for _i in 0..10 {
+        let oracle = oracle.clone();
+        let handle = thread::spawn(move || -&gt; Result&lt;()&gt; {
+            let dbname = env::var(&quot;DBNAME&quot;).expect(&quot;database name&quot;);
+            let dbuser = env::var(&quot;DBUSER&quot;).expect(&quot;user name&quot;);
+            let dbpass = env::var(&quot;DBPASS&quot;).expect(&quot;password&quot;);
+
+            let session = oracle.connect(&amp;dbname, &amp;dbuser, &amp;dbpass)?;            
+            // ...
+            Ok(())
+        }
+        workers.push(handle);
+    }
+    for handle in workers {
+        let _ = handle.join();
+    }
+    Ok(())
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="session-pool"><a class="header" href="#session-pool">Session Pool</a></h1>
+<p><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/session-and-connection-pooling.html#GUID-F9662FFB-EAEF-495C-96FC-49C6D1D9625C">Session pool</a> can be used in both <code>blocking</code> and <code>nonblocking</code> mode applicaitons.</p>
+<h2 id="blocking-mode-pool"><a class="header" href="#blocking-mode-pool">Blocking Mode Pool</a></h2>
+<pre><code class="language-rust noplayground">use std::{env, thread, sync::Arc};
+use once_cell::sync::OnceCell;
+use sibyl::*;
+
+fn main() -&gt; sibyl::Result&lt;()&gt; {
+    static ORACLE : OnceCell&lt;Environment&gt; = OnceCell::new();
+    let oracle = ORACLE.get_or_try_init(|| {
+        Environment::new()
+    })?;
+
+    let dbname = env::var(&quot;DBNAME&quot;).expect(&quot;database name&quot;);
+    let dbuser = env::var(&quot;DBUSER&quot;).expect(&quot;user name&quot;);
+    let dbpass = env::var(&quot;DBPASS&quot;).expect(&quot;password&quot;);
+
+    // All sessions will be authenticated with the provided user name and password.
+    let pool = oracle.create_session_pool(&amp;dbname, &amp;dbuser, &amp;dbpass, 0, 1, 10)?;
+    // This pool has 0 available session at this time, will create 1 session at a
+    // time when they are needed (session is requested and there are no available
+    // sessions in the pool), up to the maximum of 10 sessions.
+    let pool = Arc::new(pool);
+
+    let mut workers = Vec::new();
+    for _i in 0..100 {
+        let pool = pool.clone();
+        let handle = thread::spawn(move || -&gt; Result&lt;()&gt; {
+            let session = pool.get_session()?;
+            // ...
+            Ok(())
+        }
+        workers.push(handle);
+    }
+    for handle in workers {
+        let _ = handle.join();
+    }
+    Ok(())
+}
+</code></pre>
+<h2 id="nonblocking-mode-pool"><a class="header" href="#nonblocking-mode-pool">Nonblocking Mode Pool</a></h2>
+<pre><code class="language-rust noplayground">use std::{env, thread, sync::Arc};
+use once_cell::sync::OnceCell;
+use sibyl::*;
+
+#[tokio::main]
+async fn main() -&gt; sibyl::Result&lt;()&gt; {
+    static ORACLE : OnceCell&lt;Environment&gt; = OnceCell::new();
+    let oracle = ORACLE.get_or_try_init(|| {
+        Environment::new()
+    })?;
+
+    let dbname = env::var(&quot;DBNAME&quot;).expect(&quot;database name&quot;);
+    let dbuser = env::var(&quot;DBUSER&quot;).expect(&quot;user name&quot;);
+    let dbpass = env::var(&quot;DBPASS&quot;).expect(&quot;password&quot;);
+
+    let pool = oracle.create_session_pool(&amp;dbname, &amp;dbuser, &amp;dbpass, 0, 1, 10).await?;
+    let pool = Arc::new(pool);
+
+    let mut workers = Vec::new();
+    for _i in 0..100 {
+        let pool = pool.clone();
+        let handle = tokio::task::spawn(async move {
+            let session = pool.get_session().await?;
+            // ...
+            Ok::&lt;_,Error&gt;(())
+        }
+        workers.push(handle);
+    }
+    for handle in workers {
+        let _ = handle.join();
+    }
+    Ok(())
+}
+</code></pre>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="connection-pool"><a class="header" href="#connection-pool">Connection Pool</a></h1>
+<p><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/session-and-connection-pooling.html#GUID-1C9A6E8F-EF5A-478D-B65E-CE39D4F00683">Connection pool</a> can only be used in <code>blocking</code> mode applications.</p>
+<pre><code class="language-rust noplayground">use std::{env, thread, sync::Arc};
+use once_cell::sync::OnceCell;
+use sibyl::*;
+
+fn main() -&gt; sibyl::Result&lt;()&gt; {
+    static ORACLE : OnceCell&lt;Environment&gt; = OnceCell::new();
+    let oracle = ORACLE.get_or_try_init(|| {
+        Environment::new()
+    })?;
+
+    let dbname = env::var(&quot;DBNAME&quot;).expect(&quot;database name&quot;);
+    let dbuser = env::var(&quot;DBUSER&quot;).expect(&quot;user name&quot;);
+    let dbpass = env::var(&quot;DBPASS&quot;).expect(&quot;password&quot;);
+
+    // Connection pool needs to establish an internal session with the database.
+    // `dbuser` and `dbpass` here are for that session.
+    let pool = oracle.create_connection_pool(&amp;dbname, &amp;dbuser, &amp;dbpass, 0, 1, 4)?;
+    // This pool has 0 available connections at this time, will create 1 connection
+    // at a time when they are needed (session needs a connection to run and there
+    // are no available connections in the pool), up to the maximum of 4 connections.
+    let pool = Arc::new(pool);
+
+    let mut workers = Vec::new();
+    for i in 0..10 {
+        let pool = pool.clone();
+        let handle = thread::spawn(move || -&gt; Result&lt;()&gt; {
+            let dbuser = env::var(format!(&quot;DBUSER{}&quot;,i)).expect(&quot;user name&quot;);
+            let dbpass = env::var(format!(&quot;DBPASS{}&quot;,i)).expect(&quot;password&quot;);
+            // Here `dbuser` and `dbpass` are used to create a new database session.
+            // While these sessions share pooled connections, they are entirely
+            // &quot;owned&quot; by the threads that created them and as such might use
+            // different users for authentication.
+            let session = pool.get_session(&amp;dbuser, &amp;dbpass)?;
+            // ...
+            Ok(())
+        }
+        workers.push(handle);
+    }
+    for handle in workers {
+        let _ = handle.join();
+    }
+    Ok(())
+}
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="sql-statement-execution"><a class="header" href="#sql-statement-execution">SQL Statement Execution</a></h1>
 <p>All SQL or PL/SQL statements must be prepared before they can be executed:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;

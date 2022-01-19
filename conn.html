@@ -75,7 +75,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">2.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html" class="active"><strong aria-hidden="true">3.</strong> Connections</a></li><li class="chapter-item expanded "><a href="exec.html"><strong aria-hidden="true">4.</strong> SQL Statement Execution</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">5.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">5.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">5.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">5.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">5.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">5.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">5.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">5.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">5.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">5.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">6.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">7.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">8.</strong> Testing</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">2.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html" class="active"><strong aria-hidden="true">3.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html"><strong aria-hidden="true">3.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">3.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">3.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html"><strong aria-hidden="true">4.</strong> SQL Statement Execution</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">5.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">5.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">5.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">5.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">5.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">5.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">5.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">5.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">5.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">5.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">6.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">7.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">8.</strong> Testing</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -138,20 +138,12 @@
                 <div id="content" class="content">
                     <main>
                         <h1 id="connections"><a class="header" href="#connections">Connections</a></h1>
-<p>Use <code>Environment::connect</code> method to connect to a database and start a new user session:</p>
-<pre><code class="language-rust noplayground">fn main() -&gt; sibyl::Result&lt;()&gt; {
-    let oracle = sibyl::env()?;
-
-    let dbname = std::env::var(&quot;DBNAME&quot;).expect(&quot;database name&quot;);
-    let dbuser = std::env::var(&quot;DBUSER&quot;).expect(&quot;user name&quot;);
-    let dbpass = std::env::var(&quot;DBPASS&quot;).expect(&quot;password&quot;);
-
-    let session = oracle.connect(&amp;dbname, &amp;dbuser, &amp;dbpass)?;
-    // ...
-    Ok(())
-}
-</code></pre>
-<p>Where <code>dbname</code> can be any name that is acceptable to Oracle clients - from local TNS name to EZConnect identifier to a connect descriptor.</p>
+<p>Depending on the application and its needs there are several ways to obtain a database sesssion:</p>
+<ul>
+<li>An application might use <code>Environment::connect</code> method to connect to a database and start a new user session. This is the most relevant way to get session for a single threaded application. Though, multithreaded applications might, in some cases, do the same.</li>
+<li>A multithreaded or a multitasking (async) application might create a session pool and then make each thread (or task) &quot;borrow&quot; a session from that pool for limited time. The caveat here is that those sessions are indistinguishable and thus must be &quot;stateless&quot;.</li>
+<li>A blocking mode multithreaded application might create a connection pool and make each thread establish their own sessions that would use pooled connections when they need to communicate with the database. As these sessions are not shared, they can be &quot;stateful&quot;.</li>
+</ul>
 
                     </main>
 
@@ -160,7 +152,7 @@
                             <a rel="prev" href="env.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
-                            <a rel="next" href="exec.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="conn_own.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
@@ -172,7 +164,7 @@
                     <a rel="prev" href="env.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
-                    <a rel="next" href="exec.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="conn_own.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
