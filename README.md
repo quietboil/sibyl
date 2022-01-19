@@ -4,7 +4,6 @@ Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databa
 
 [![crates.io](https://img.shields.io/crates/v/sibyl)](https://crates.io/crates/sibyl)
 [![Documentation](https://docs.rs/sibyl/badge.svg)](https://docs.rs/sibyl)
-[![User Guide](https://quietboil.github.io/sibyl/favicon.svg)](https://quietboil.github.io/sibyl)
 ![MIT](https://img.shields.io/crates/l/sibyl.svg)
 
 ## Example
@@ -94,6 +93,11 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
 > - The nonblocking mode example is almost a verbatim copy of the blocking mode example with `await`s added.
 > - The async example uses and depends on [Tokio][2]
 > - For the moment, Sibyl can use only Tokio as an async executor.
+
+# Documentation
+
+- [User Guide](https://quietboil.github.io/sibyl)
+- [API](https://docs.rs/sibyl)
 
 [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html
 [2]: https://crates.io/crates/tokio
