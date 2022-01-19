@@ -5,9 +5,14 @@
 # User Guide
 
 - [Getting Started](using.md)
+
+---
+
 - [Environment](env.md)
 - [Connections](conn.md)
 - [SQL Statement Execution](exec.md)
+
+---
 
 - [Oracle Data Types](odt.md)
   - [Varchar](odt/varchar.md)
