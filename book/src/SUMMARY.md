@@ -10,6 +10,9 @@
 # Working with Databases
 
 - [Connections](conn.md)
+  - [Connection Per Thread](conn_own.md)
+  - [Session Pool](session_pool.md)
+  - [Connection Pool](conn_pool.md)
 - [SQL Statement Execution](exec.md)
 
 - [Oracle Data Types](odt.md)
