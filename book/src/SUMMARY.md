@@ -6,9 +6,6 @@
 
 - [Getting Started](using.md)
 - [Environment](env.md)
-
-# Working with Databases
-
 - [Connections](conn.md)
 - [SQL Statement Execution](exec.md)
 
