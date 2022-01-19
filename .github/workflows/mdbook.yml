@@ -3,7 +3,7 @@ name: mdbook
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'book/**'
 
