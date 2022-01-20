@@ -1,6 +1,6 @@
 [package]
 name = "sibyl"
-version = "0.6.1"
+version = "0.6.2"
 edition = "2018"
 description = "An OCI-based (synchronous or asynchronous) interface between Rust applications and Oracle databases"
 authors = ["Alex Demenchuk <alexander.demenchuk@gmail.com>"]
@@ -16,14 +16,17 @@ libc = "0.2"
 once_cell = "1.9"
 parking_lot = "0.11"
 tokio-rt = { version = "1", features = ["rt"], optional = true, package = "tokio" }
+actix-rt = { version = "2.6", default-features = false, optional = true }
 
 [dev-dependencies]
 tokio-rt = { version = "1", features = ["rt", "rt-multi-thread"], package = "tokio" }
 
 [features]
 blocking = []
-nonblocking = ["tokio-rt"]
+nonblocking = []
+tokio = ["tokio-rt"]
+actix = ["actix-rt"]
 
 [package.metadata.docs.rs]
-all-features = true
+features = ["blocking", "nonblocking", "tokio"]
 rustdoc-args = ["--cfg", "docsrs"]

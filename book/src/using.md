@@ -6,11 +6,18 @@ Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Wind
 
 # Using Sibyl In A Project
 
-Sibyl has 2 features - `blocking` and `nonblocking`. They are **exclusive** and **one** must be explictly selected as neither is the default. Thus, when Sibyl is used as a dependency, it might be included as:
+Sibyl has 2 features - `blocking` and `nonblocking`. They are **exclusive** and **one** must be explictly selected as neither is the default. Thus when Sibyl is used as a dependency, it might be included as:
 
 ```toml
 [dependencies]
-sibyl = { version = "0.6", features = "blocking" }
+sibyl = { version = "0.6", features = ["blocking"] }
+```
+
+A `nonblocking` mode also needs to know which async runtime it is allowed to use to spawn async tasks. The async runtime selection is also controled by a set of exclusive features. For now, Sibyl supports `tokio` and `actix`. One of these must be specified with the `nonblocking` feature. For example:
+
+```toml
+[dependencies]
+sibyl = { version = "0.6", features = ["nonblocking", "tokio"] }
 ```
 
 # Building
