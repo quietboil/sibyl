@@ -143,9 +143,13 @@
 <p><em>Note</em> that while suporting 12.1 and older clients is definitely feasible, it was not a priority.</p>
 </blockquote>
 <h1 id="using-sibyl-in-a-project"><a class="header" href="#using-sibyl-in-a-project">Using Sibyl In A Project</a></h1>
-<p>Sibyl has 2 features - <code>blocking</code> and <code>nonblocking</code>. They are <strong>exclusive</strong> and <strong>one</strong> must be explictly selected as neither is the default. Thus, when Sibyl is used as a dependency, it might be included as:</p>
+<p>Sibyl has 2 features - <code>blocking</code> and <code>nonblocking</code>. They are <strong>exclusive</strong> and <strong>one</strong> must be explictly selected as neither is the default. Thus when Sibyl is used as a dependency, it might be included as:</p>
 <pre><code class="language-toml">[dependencies]
-sibyl = { version = &quot;0.6&quot;, features = &quot;blocking&quot; }
+sibyl = { version = &quot;0.6&quot;, features = [&quot;blocking&quot;] }
+</code></pre>
+<p>A <code>nonblocking</code> mode also needs to know which async runtime it is allowed to use to spawn async tasks. The async runtime selection is also controled by a set of exclusive features. For now, Sibyl supports <code>tokio</code> and <code>actix</code>. One of these must be specified with the <code>nonblocking</code> feature. For example:</p>
+<pre><code class="language-toml">[dependencies]
+sibyl = { version = &quot;0.6&quot;, features = [&quot;nonblocking&quot;, &quot;tokio&quot;] }
 </code></pre>
 <h1 id="building"><a class="header" href="#building">Building</a></h1>
 <p>The cargo build needs to know where the OCI client library is. You can provide that information via environment variable <code>OCI_LIB_DIR</code> on Windows or <code>LIBRARY_PATH</code> on Linux. On Linux <code>LIBRARY_PATH</code> would include the path to the <code>lib</code> directory with <code>libclntsh.so</code>. For example, you might build Sibyl's examples as:</p>
