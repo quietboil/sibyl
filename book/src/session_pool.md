@@ -75,7 +75,7 @@ async fn main() -> sibyl::Result<()> {
         workers.push(handle);
     }
     for handle in workers {
-        let _ = handle.join();
+        let _ = handle.await;
     }
     Ok(())
 }
