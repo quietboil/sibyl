@@ -379,7 +379,7 @@ async fn main() -&gt; sibyl::Result&lt;()&gt; {
         workers.push(handle);
     }
     for handle in workers {
-        let _ = handle.join();
+        let _ = handle.await;
     }
     Ok(())
 }
