@@ -18,7 +18,7 @@ impl SvcCtx {
         let err_ptr = Ptr::<OCIError>::from(err.as_ref());
         let dblink_ptr = Ptr::new(dblink.as_ptr() as *mut u8);
         let dblink_len = dblink.len() as u32;
-        let svc = task::spawn_blocking(move || -> Result<Ptr<OCISvcCtx>> {
+        let svc = task::execute_blocking(move || -> Result<Ptr<OCISvcCtx>> {
             let mut svc = Ptr::<OCISvcCtx>::null();
             let mut found = 0u8;
             oci::session_get(

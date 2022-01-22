@@ -57,7 +57,11 @@ fn main() -> sibyl::Result<()> {
         }
         let mut n = 1;
         for handle in workers {
-            if let Some((name,hire_date)) = handle.await.expect("task's result")? {
+            let worker_result = handle.await;
+            #[cfg(any(feature="tokio", feature="actix"))]
+            let worker_result = worker_result.expect("completed task result");
+
+            if let Some((name,hire_date)) = worker_result? {
                 println!("{:?}: {} was hired on {}", n, name, hire_date);
             } else {
                 println!("{:?}: did not find the latest hire", n);

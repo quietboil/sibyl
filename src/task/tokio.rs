@@ -2,7 +2,21 @@
 
 use std::future::Future;
 
-pub use tokio_rt::task::{spawn, spawn_blocking, yield_now, JoinError};
+pub use tokio_rt::task::spawn;
+
+use tokio_rt::task::spawn_blocking;
+use crate::{Result, Error};
+
+pub(crate) async fn execute_blocking<F, R>(f: F) -> Result<R> 
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    match spawn_blocking(f).await {
+        Ok(res) => Ok(res),
+        Err(err) => Err(Error::msg(format!("blocking task {}", err))),
+    }
+}
 
 /// Builds a new multi-thread Tokio runtime and runs a future to completion on it.
 /// 

@@ -22,7 +22,7 @@ impl<'a> SessionPool<'a> {
         let password_ptr = Ptr::new(password.as_ptr() as *mut u8);
         let password_len = password.len() as u32;
 
-        let name = task::spawn_blocking(move || -> Result<&[u8]> {
+        let name = task::execute_blocking(move || -> Result<&[u8]> {
             let mut pool_name_ptr = ptr::null::<u8>();
             let mut pool_name_len = 0u32;
             oci::session_pool_create(
@@ -51,7 +51,7 @@ impl<'a> SessionPool<'a> {
         let pool_name_ptr = Ptr::new(self.name.as_ptr() as *mut u8);
         let pool_name_len = self.name.len() as u32;
 
-        task::spawn_blocking(move || -> Result<Ptr<OCISvcCtx>> {
+        task::execute_blocking(move || -> Result<Ptr<OCISvcCtx>> {
             let mut svc = Ptr::<OCISvcCtx>::null();
             let mut found = 0u8;
             oci::session_get(
@@ -91,14 +91,18 @@ impl<'a> SessionPool<'a> {
                 for _i in 0..workers.capacity() {
                     let pool = pool.clone();
                     let handle = sibyl::spawn(async move {
-                        let session = pool.get_session().await.expect("database session");
+                        let session = pool.get_session().await?;
 
-                        select_latest_hire(&session).await.expect("selected employee name")
+                        select_latest_hire(&session).await
                     });
                     workers.push(handle);
                 }
                 for handle in workers {
-                    let name = handle.await.expect("select result");
+                    let worker_result = handle.await;
+                    #[cfg(any(feature="tokio", feature="actix"))]
+                    let worker_result = worker_result.expect("completed task result");
+
+                    let name = worker_result?;
                     assert_eq!(name, "Amit Banda was hired on April 21, 2008");
                 }
                 Ok(())
@@ -159,7 +163,7 @@ mod tests {
             for _i in 0..workers.capacity() {
                 let pool = pool.clone();
                 let handle = spawn(async move {
-                    let session = pool.get_session().await.expect("database session");
+                    let session = pool.get_session().await?;
                     session.start_call_time_measurements()?;
                     session.ping().await?;
                     let dt = session.call_time()?;
@@ -169,7 +173,11 @@ mod tests {
                 workers.push(handle);
             }
             for handle in workers {
-                let dt = handle.await??;
+                let worker_result = handle.await;
+                #[cfg(any(feature="tokio", feature="actix"))]
+                let worker_result = worker_result.expect("completed task result");
+
+                let dt = worker_result?;
                 assert!(dt > 0, "ping time");
             }
 

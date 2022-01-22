@@ -230,7 +230,7 @@ mod tests {
             for _i in 0..workers.capacity() {
                 let pool = pool.clone();
                 let handle = spawn(async move {
-                    let session = pool.get_session().await.expect("database session");
+                    let session = pool.get_session().await?;
                     let stmt = session.prepare("
                         SELECT first_name, last_name, hire_date
                           FROM (
@@ -240,12 +240,16 @@ mod tests {
                                )
                          WHERE hire_date_rank = 1
                     ").await.expect("prepared select");
-                    fetch_latest_hire(stmt).await.expect("selected employee name")
+                    fetch_latest_hire(stmt).await
                 });
                 workers.push(handle);
             }
             for handle in workers {
-                let name = handle.await.expect("select result");
+                let worker_result = handle.await;
+                #[cfg(any(feature="tokio", feature="actix"))]
+                let worker_result = worker_result.expect("completed task result");
+
+                let name = worker_result?;
                 assert_eq!(name, "Amit Banda was hired on April 21, 2008");
             }
 

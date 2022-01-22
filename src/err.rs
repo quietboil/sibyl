@@ -4,9 +4,6 @@ use crate::oci::*;
 use std::{ptr, cmp, fmt, error, io, ffi::CStr};
 use libc::c_void;
 
-#[cfg(feature="nonblocking")]
-use  crate::task::JoinError;
-
 fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
     let mut errcode = rc;
     let mut errmsg : Vec<u8> = Vec::with_capacity(OCI_ERROR_MAXMSG_SIZE);
@@ -35,17 +32,6 @@ pub enum Error {
     Interface(String),
     /// Errors returned by OCI
     Oracle(i32,String),
-    /// Spawned task failed to execute to completion
-    #[cfg(feature="nonblocking")]
-    #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
-    JoinError(JoinError),
-}
-
-#[cfg(feature="nonblocking")]
-impl From<JoinError> for Error {
-    fn from(err: JoinError) -> Self {
-        Error::JoinError(err)
-    }
 }
 
 impl fmt::Display for Error {
@@ -53,8 +39,6 @@ impl fmt::Display for Error {
         match self {
             Error::Oracle(errcode, errmsg) => write!(f, "ORA-{:05}: {}", errcode, errmsg),
             Error::Interface(errmsg) => write!(f, "{}", errmsg),
-            #[cfg(feature="nonblocking")]
-            Error::JoinError(src) => src.fmt(f)
         }
     }
 }

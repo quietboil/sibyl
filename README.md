@@ -1,6 +1,6 @@
 # Sibyl
 
-Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databases. Sibyl supports both sync (blocking) and async (nonblocking) API.
+Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databases. Sibyl supports both blocking (threads) and nonblocking (async) API.
 
 [![crates.io](https://img.shields.io/crates/v/sibyl)](https://crates.io/crates/sibyl)
 [![Documentation](https://docs.rs/sibyl/badge.svg)](https://docs.rs/sibyl)
