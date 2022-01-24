@@ -5,6 +5,7 @@
 # User Guide
 
 - [Getting Started](using.md)
+- [Example Project](example_project.md)
 
 ---
 
