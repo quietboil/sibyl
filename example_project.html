@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Connection Per Thread - Sibyl User Manual</title>
+        <title>Example Project - Sibyl User Manual</title>
         <!-- Custom HTML head -->
         <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="">
@@ -75,7 +75,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="example_project.html"><strong aria-hidden="true">2.</strong> Example Project</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">3.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">4.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html" class="active"><strong aria-hidden="true">4.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">4.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">4.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html"><strong aria-hidden="true">5.</strong> SQL Statement Execution</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">6.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">6.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">6.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">6.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">6.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">6.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">6.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">6.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">6.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">6.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">7.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">8.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">9.</strong> Testing</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="example_project.html" class="active"><strong aria-hidden="true">2.</strong> Example Project</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">3.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">4.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html"><strong aria-hidden="true">4.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">4.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">4.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html"><strong aria-hidden="true">5.</strong> SQL Statement Execution</a></li><li class="spacer"></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">6.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">6.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">6.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">6.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">6.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">6.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">6.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">6.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">6.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">6.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">7.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">8.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">9.</strong> Testing</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -137,57 +137,67 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="connection-per-thread"><a class="header" href="#connection-per-thread">Connection Per Thread</a></h1>
+                        <h1 id="example-project"><a class="header" href="#example-project">Example Project</a></h1>
+<p>Let's say we need to write a program to generate a report for the <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/comsc/installing-sample-schemas.html#GUID-1E645D09-F91F-4BA6-A286-57C5EC66321D">demo HR schema</a>. This report shall list median salaries for each country of the specified region. The name of the region and the connection parameters shall be specified as environment variables (maybe because our program will be executed in a container).</p>
+<h2 id="project-setup"><a class="header" href="#project-setup">Project Setup</a></h2>
+<pre><code class="language-shell">cargo new median-salary
+</code></pre>
+<p>Then edit <code>Cargo.toml</code> and include Sibyl as a dependency:</p>
+<pre><code class="language-toml">[dependencies]
+sibyl = { version=&quot;0.6&quot;, features=[&quot;blocking&quot;] }
+</code></pre>
+<p>We will be writing a single threaded program, thus we will use Sibyl's <code>blocking</code> API.</p>
+<h2 id="implement-the-solution"><a class="header" href="#implement-the-solution">Implement the Solution</a></h2>
 <pre><code class="language-rust noplayground">fn main() -&gt; sibyl::Result&lt;()&gt; {
     let oracle = sibyl::env()?;
 
     let dbname = std::env::var(&quot;DBNAME&quot;).expect(&quot;database name&quot;);
     let dbuser = std::env::var(&quot;DBUSER&quot;).expect(&quot;user name&quot;);
     let dbpass = std::env::var(&quot;DBPASS&quot;).expect(&quot;password&quot;);
+    let region = std::env::var(&quot;REGION&quot;).expect(&quot;HR region&quot;);
 
     let session = oracle.connect(&amp;dbname, &amp;dbuser, &amp;dbpass)?;
-    // ...
+
+    let stmt = session.prepare(&quot;
+        SELECT c.country_name, Median(e.salary)
+          FROM hr.employees e
+          JOIN hr.departments d ON d.department_id = e.department_id
+          JOIN hr.locations l   ON l.location_id = d.location_id
+          JOIN hr.countries c   ON c.country_id = l.country_id
+          JOIN hr.regions r     ON r.region_id = c.region_id
+         WHERE r.region_name = :REGION_NAME
+      GROUP BY c.country_name
+    &quot;)?;
+
+    let rows = stmt.query(&amp;region)?;
+
+    while let Some(row) = rows.next()? {
+        let country_name : &amp;str = row.get_not_null(0)?;
+        let median_salary : u16 = row.get_not_null(1)?;
+        println!(&quot;{:25}: {:&gt;5}&quot;, country_name, median_salary);
+    }
     Ok(())
 }
 </code></pre>
-<p>Where <code>dbname</code> can be any name that is acceptable to Oracle clients - from local TNS name to EZConnect identifier to a connect descriptor.</p>
-<p>Or with multiple threads:</p>
-<pre><code class="language-rust noplayground">use std::{env, thread, sync::Arc};
-use sibyl::*;
-
-fn main() -&gt; Result&lt;()&gt; {
-    let oracle = sibyl::env()?;
-    let oracle = Arc::new(oracle);
-
-    let mut workers = Vec::new();
-    for _i in 0..10 {
-        let oracle = oracle.clone();
-        let handle = thread::spawn(move || -&gt; Result&lt;()&gt; {
-            let dbname = env::var(&quot;DBNAME&quot;).expect(&quot;database name&quot;);
-            let dbuser = env::var(&quot;DBUSER&quot;).expect(&quot;user name&quot;);
-            let dbpass = env::var(&quot;DBPASS&quot;).expect(&quot;password&quot;);
-
-            let session = oracle.connect(&amp;dbname, &amp;dbuser, &amp;dbpass)?;            
-            // ...
-            Ok(())
-        }
-        workers.push(handle);
-    }
-    for handle in workers {
-        let _ = handle.join();
-    }
-    Ok(())
-}
+<h2 id="build-and-run"><a class="header" href="#build-and-run">Build and Run</a></h2>
+<pre><code class="language-shell">cargo build
+</code></pre>
+<p>And then run it:</p>
+<pre><code class="language-shell">DBNAME=localhost/orcl DBUSER=sibyl DBPASS=Or4cl3 REGION=Americas cargo run
+</code></pre>
+<h2 id="expected-output"><a class="header" href="#expected-output">Expected Output</a></h2>
+<pre><code class="language-plaintext">Canada                   :  9500
+United States of America :  3250
 </code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="conn.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="using.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
-                            <a rel="next" href="session_pool.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="env.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
@@ -196,10 +206,10 @@ fn main() -&gt; Result&lt;()&gt; {
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="conn.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="using.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
-                    <a rel="next" href="session_pool.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="env.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
