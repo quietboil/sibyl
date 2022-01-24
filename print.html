@@ -223,7 +223,7 @@ United Kingdom           :  8800
 <pre><code class="language-toml">[dependencies]
 sibyl = { version = &quot;0.6&quot;, features = [&quot;blocking&quot;] }
 </code></pre>
-<p>A <code>nonblocking</code> mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controled by a set of exclusive features. For now, Sibyl supports <code>tokio</code>, <code>actix</code>, and <code>async-std</code>. One of these must be specified with the <code>nonblocking</code> feature. For example:</p>
+<p>A <code>nonblocking</code> mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controled by a set of exclusive features. For now, Sibyl supports <code>tokio</code>, <code>actix</code>, <code>async-std</code>, and <code>async-global</code>. One of these must be specified with the <code>nonblocking</code> feature. For example:</p>
 <pre><code class="language-toml">[dependencies]
 sibyl = { version = &quot;0.6&quot;, features = [&quot;nonblocking&quot;, &quot;tokio&quot;] }
 </code></pre>
