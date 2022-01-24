@@ -89,6 +89,20 @@ impl ToSql for &&str {
     }
 }
 
+impl ToSql for String {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind(pos, SQLT_CHR, self.as_ptr() as _, self.len(), stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
+impl ToSql for &String {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind(pos, SQLT_CHR, (*self).as_ptr() as _, (*self).len(), stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
 impl ToSql for &[u8] {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_LBI, (*self).as_ptr() as _, (*self).len(), stmt, err)?;
@@ -99,6 +113,20 @@ impl ToSql for &[u8] {
 impl ToSql for &&[u8] {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_LBI, (**self).as_ptr() as _, (**self).len(), stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
+impl ToSql for Vec<u8> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind(pos, SQLT_LBI, self.as_ptr() as _, self.len(), stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
+impl ToSql for &Vec<u8> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind(pos, SQLT_LBI, (*self).as_ptr() as _, (*self).len(), stmt, err)?;
         Ok(pos + 1)
     }
 }
