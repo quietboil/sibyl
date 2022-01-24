@@ -92,7 +92,7 @@ async fn main() -> Result<(),Box<dyn std::error::Error>> {
 > Note that:
 > - The nonblocking mode example is almost a verbatim copy of the blocking mode example with `await`s added.
 > - The async example uses and depends on [Tokio][2]
-> - For the moment, Sibyl can use only Tokio or Actix as an async executor.
+> - For the moment, Sibyl can use only Tokio, Actix, async-std or async-global-executor as an async executor.
 
 # Documentation
 

@@ -13,7 +13,7 @@ Sibyl has 2 features - `blocking` and `nonblocking`. They are **exclusive** and 
 sibyl = { version = "0.6", features = ["blocking"] }
 ```
 
-A `nonblocking` mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controled by a set of exclusive features. For now, Sibyl supports `tokio`, `actix`, and `async-std`. One of these must be specified with the `nonblocking` feature. For example:
+A `nonblocking` mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controled by a set of exclusive features. For now, Sibyl supports `tokio`, `actix`, `async-std`, and `async-global`. One of these must be specified with the `nonblocking` feature. For example:
 
 ```toml
 [dependencies]
