@@ -18,6 +18,7 @@ parking_lot = "0.11"
 tokio-rt = { version = "1", features = ["rt"], optional = true, package = "tokio" }
 actix-rt = { version = "2.6", default-features = false, optional = true }
 async-rt = { version = "1.10", features = ["unstable"], optional = true, package = "async-std" }
+async-global-executor = { version = "2.0", optional = true }
 
 [dev-dependencies]
 tokio-rt = { version = "1", features = ["rt", "rt-multi-thread"], package = "tokio" }
@@ -28,6 +29,7 @@ nonblocking = []
 tokio = ["tokio-rt"]
 actix = ["actix-rt"]
 async-std = ["async-rt"]
+async-global = ["async-global-executor"]
 
 [package.metadata.docs.rs]
 features = ["blocking", "nonblocking", "tokio"]

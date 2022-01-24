@@ -73,7 +73,7 @@ impl Drop for Statement<'_> {
             stmt.swap(&mut self.stmt);
             let err = Handle::take(&mut self.err);
             let svc = self.svc.clone();
-            task::spawn(futures::StmtRelease::new(stmt, err, svc));
+            task::spawn_detached(futures::StmtRelease::new(stmt, err, svc));
         }
     }
 }

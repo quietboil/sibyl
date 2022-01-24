@@ -39,7 +39,7 @@ impl Drop for SvcCtx {
         svc.swap(&mut self.svc);
         let err = Handle::take(&mut self.err);
         let env = self.env.clone();
-        task::spawn(futures::SessionRelease::new(svc, err, env));
+        task::spawn_detached(futures::SessionRelease::new(svc, err, env));
     }
 }
 

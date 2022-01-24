@@ -18,9 +18,17 @@ where
     }
 }
 
+pub fn spawn_detached<F>(f: F)
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let _ = spawn(f);
+}
+
 /// Builds a new actix runtime and runs a future to completion on it.
 /// 
-/// This function is inteded to run Sibyl's tests and examples.
+/// This function is included to run Sibyl's tests and examples.
 ///
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 pub fn block_on<F: Future>(future: F) -> F::Output {
