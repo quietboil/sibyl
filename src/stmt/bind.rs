@@ -179,3 +179,45 @@ impl Params {
             .unwrap_or_default()
     }
 }
+
+#[cfg(all(test, feature="blocking"))]
+mod tests {
+    use crate::{Result, Environment};
+
+    #[test]
+    fn dup_args() -> Result<()> {
+        let oracle = Environment::new()?;
+        let dbname = std::env::var("DBNAME").expect("database name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
+        let dbpass = std::env::var("DBPASS").expect("password");
+        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+
+        let stmt = session.prepare("
+            INSERT INTO hr.locations (location_id, state_province, city, postal_code, street_address)
+            VALUES (:id, :na, :na, :code, :na)
+        ")?;
+        assert!(stmt.params.is_some());
+        let stmt_params = stmt.params.as_ref().unwrap();
+        let params = stmt_params.read();
+        assert_eq!(params.binds.len(), 5);
+        assert_eq!(params.index_of(":ID")?, 0);
+        assert_eq!(params.index_of(":NA")?, 1);
+        assert_eq!(params.index_of(":CODE")?, 3);
+
+        let stmt = session.prepare("
+          BEGIN
+            INSERT INTO hr.locations (location_id, state_province, city, postal_code, street_address)
+            VALUES (:id, :na, :na, :code, :na);
+          END;
+        ")?;
+        assert!(stmt.params.is_some());
+        let stmt_params = stmt.params.as_ref().unwrap();
+        let params = stmt_params.read();
+        assert_eq!(params.binds.len(), 3);
+        assert_eq!(params.index_of(":ID")?, 0);
+        assert_eq!(params.index_of(":NA")?, 1);
+        assert_eq!(params.index_of(":CODE")?, 2);
+
+        Ok(())
+    }
+}

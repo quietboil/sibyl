@@ -13,7 +13,7 @@ let stmt = session.prepare("
 
 A prepared statement can be executed either with the `query`, `query_single` or `execute` methods:
 - `query` is used for `SELECT` statements. In fact, Sibyl will complain if you try to `query` any other statement.
-- `query_single` is a variant of `query` that returns a single row. It's a convenience method that allows skipping boilerplate of extrating only one row from a result set when it is known upfront that only one row (or none) is expected.
+- `query_single` is a variant of `query` that returns a single row. It's a convenience method that allows skipping boilerplate of extracting only one row from a result set when it is known upfront that only one row (or none) is expected.
 - `execute` is used for all other, non-SELECT, DML and DDL.
 
 ## Arguments
@@ -30,7 +30,37 @@ or bind a value to `:id` by name as:
 let row = stmt.query_single((":ID", 103))?;
 ```
 
-In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicares. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one "duplicate" name in a statement.
+In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicates. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one "duplicate" name in a statement. For example, the following (contrived) `INSERT` would need argument to be bound differently depending on whether it is defined as a standalone SQL or as a (part of a) PL/SQL:
+
+```rust,ignore
+let stmt = session.prepare("
+    INSERT INTO hr.locations 
+        (location_id, state_province, city, postal_code, street_address)
+    VALUES 
+        (:id, :na, :na, :code, :na)
+")?;
+stmt.execute( (3333, "N/A", (), "00000", ()) )?;
+// :NA'a first pos __^---^  
+// while ___________________^^____and____^^
+// are its duplicate positions
+```
+
+The duplicate position can be skipped using `()` as in the example. However, when it is a part of PL/SQL:
+
+```rust,ignore
+let stmt = session.prepare("
+  BEGIN
+    INSERT INTO hr.locations 
+        (location_id, state_province, city, postal_code, street_address)
+    VALUES 
+        (:id, :na, :na, :code, :na);
+  END;  
+")?;
+stmt.execute( ( 3333, "N/A", "00000" ) )?;
+```
+
+Only 3 position are possible as there are only 3 unique names.
+
 
 > Note one caveat - until [min_specialization][1] is stabilized Sibyl has no way of distinguishing whether a 2-item tuple is used to pass a single named argument or 2 positional arguments. For the moment you must use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is skipped, so effectively only first 2 arguments are used. For example:
 
@@ -144,6 +174,6 @@ while let Some( row ) = rows.next()? {
 }
 ```
 
-Of couse, that's a lot of boilerplate, which would benefit from a `derive` macro. Maybe we'll get to that eventually :-)
+Of course, that's a lot of boilerplate, which would benefit from a `derive` macro. Maybe we'll get to that eventually :-)
 
 [1]: https://doc.rust-lang.org/stable/unstable-book/language-features/min-specialization.html#min_specialization
