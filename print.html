@@ -504,30 +504,6 @@ fn main() -&gt; sibyl::Result&lt;()&gt; {
 <p>or bind a value to <code>:id</code> by name as:</p>
 <pre><code class="language-rust ignore">let row = stmt.query_single((&quot;:ID&quot;, 103))?;
 </code></pre>
-<p>In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicates. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one &quot;duplicate&quot; name in a statement. For example, the following (contrived) <code>INSERT</code> would need argument to be bound differently depending on whether it is defined as a standalone SQL or as a (part of a) PL/SQL:</p>
-<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
-    INSERT INTO hr.locations 
-        (location_id, state_province, city, postal_code, street_address)
-    VALUES 
-        (:id, :na, :na, :code, :na)
-&quot;)?;
-stmt.execute( (3333, &quot;N/A&quot;, (), &quot;00000&quot;, ()) )?;
-// :NA'a first pos __^---^  
-// while ___________________^^____and____^^
-// are its duplicate positions
-</code></pre>
-<p>The duplicate position can be skipped using <code>()</code> as in the example. However, when it is a part of PL/SQL:</p>
-<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
-  BEGIN
-    INSERT INTO hr.locations 
-        (location_id, state_province, city, postal_code, street_address)
-    VALUES 
-        (:id, :na, :na, :code, :na);
-  END;  
-&quot;)?;
-stmt.execute( ( 3333, &quot;N/A&quot;, &quot;00000&quot; ) )?;
-</code></pre>
-<p>Only 3 position are possible as there are only 3 unique names.</p>
 <blockquote>
 <p>Note one caveat - until <a href="https://doc.rust-lang.org/stable/unstable-book/language-features/min-specialization.html#min_specialization">min_specialization</a> is stabilized Sibyl has no way of distinguishing whether a 2-item tuple is used to pass a single named argument or 2 positional arguments. For the moment you must use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is skipped, so effectively only first 2 arguments are used. For example:</p>
 </blockquote>
@@ -539,6 +515,31 @@ stmt.execute( ( 3333, &quot;N/A&quot;, &quot;00000&quot; ) )?;
 &quot;)?;
 let rows = stmt.query(( &quot;Administration&quot;, 1700, () ))?;
 </code></pre>
+<p>In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicates. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one &quot;duplicate&quot; name in a statement.</p>
+<p>For example, the following (contrived) <code>INSERT</code> would need its arguments to be bound differently depending on whether it is defined as a standalone SQL or as a (part of a) PL/SQL:</p>
+<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
+    INSERT INTO hr.locations
+        (location_id, state_province, city, postal_code, street_address)
+    VALUES
+        (:id, :na, :na, :code, :na)
+&quot;)?;
+stmt.execute( (3333, &quot;N/A&quot;, (), &quot;00000&quot;, ()) )?;
+// :NA'a first pos __^---^
+// while ___________________^^____and____^^
+// are its duplicate positions
+</code></pre>
+<p>The duplicate position can be skipped using <code>()</code> as in the example. However, when it is a part of PL/SQL:</p>
+<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
+  BEGIN
+    INSERT INTO hr.locations
+        (location_id, state_province, city, postal_code, street_address)
+    VALUES
+        (:id, :na, :na, :code, :na);
+  END;
+&quot;)?;
+stmt.execute( ( 3333, &quot;N/A&quot;, &quot;00000&quot; ) )?;
+</code></pre>
+<p>Only 3 position are possible as there are only 3 unique names.</p>
 <p><code>execute</code> also allows execution of statements with OUT (or INOUT) parameters. For example:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
     INSERT INTO hr.departments
