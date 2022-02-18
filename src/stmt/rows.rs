@@ -159,10 +159,9 @@ impl<'a> Row<'a> {
     }
 
     // `get` helper to ensure that the read lock is released when we have the index
-    fn col_index_and_null_indicator(&self, pos: &impl Position) -> Option<(usize, bool)> {
+    fn col_index(&self, pos: &impl Position) -> Option<usize> {
         let cols = self.src.rset().read_columns();
         pos.name().and_then(|name| cols.col_index(name)).or(pos.index())
-            .map(|ix| (ix, cols.is_null(ix)))
     }
 
     /**
@@ -229,16 +228,22 @@ impl<'a> Row<'a> {
     }
 
     /**
-    Returns `Option`-al value of the specified column in the current row.
-    The returned value is `None` when the SQL value is `NULL`
+    Returns value of the specified column in the row.
 
-    This method can be used with any column. Of course, values from `NOT NULL`
-    columns will always be returned as `Some`. See [`Row::get_not_null`] for
-    an alternative way to fetch data from `NOT NULL` columns.
+    The column can be specified either by its numeric index in the row, or by its column name.
+
+    To fetch data from NULL-able columns save the returned data into `Option` of the approrpriate
+    type. If the value in the column was NULL, then the saved value will be `None`.
 
     # Parameters
 
     * `pos` - column name or a zero-based column index
+
+    # Failures
+
+    * `Column does not exist` - the column as specified was not found
+    * `Column is null` - method was used to fetch data from a NULL-able column **and**
+        the column's value was NULL **and** the type of the returned value is not an `Option`
 
     # Example
 
@@ -308,14 +313,14 @@ impl<'a> Row<'a> {
     # }
     ```
     */
-    pub fn get<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<Option<T>> {
-        match self.col_index_and_null_indicator(&pos) {
+    pub fn get<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<T> {
+        match self.col_index(&pos) {
             None => Err(Error::msg(format!("Column {} does not exist", pos))),
-            Some((ix, is_null)) => {
-                if is_null {
-                    Ok(None)
+            Some(index) => {
+                if let Some(result) = self.src.rset().write_columns().col_mut(index).map(|col| FromSql::value(self, col)) {
+                    result
                 } else {
-                    self.src.rset().write_columns().get(self, ix)
+                    Err(Error::msg(format!("Column {} cannot be found", pos)))
                 }
             }
         }
@@ -324,9 +329,8 @@ impl<'a> Row<'a> {
     /**
     Returns value of the specified column in the current row.
 
-    This method provides a friendlier alternative to [`Row::get`] to fetch data
-    from `NOT NULL` columns. While it can be used with any column, it will fail
-    if the current row's value for a NULL-able column is actually NULL.
+    This method used to provides a friendlier alternative to [`get`](Row::get) to fetch data
+    from `NOT NULL` columns at the time when `get` was always returning an `Option`.
 
     # Parameters
 
@@ -334,6 +338,7 @@ impl<'a> Row<'a> {
 
     # Failures
 
+    * `Column does not exist` - the column as specified was not found
     * `Column is null` - method was used to fetch data from a NULL-able column **and**
         the column's value was NULL.
 
@@ -359,7 +364,7 @@ impl<'a> Row<'a> {
     let row = stmt.query_single(2400)?.unwrap();
 
     // CITY is NOT NULL
-    let city : &str = row.get_not_null("CITY")?;
+    let city : &str = row.get("CITY")?;
 
     assert_eq!(city, "London");
 
@@ -374,12 +379,11 @@ impl<'a> Row<'a> {
     let country_id = country_id.unwrap();
     assert_eq!(country_id, "UK");
 
-    // We could have used `get_not_null` to get `COUNTRY_ID` even
-    // if it is NULL-able provided we had a posteriori knowledge
-    // that all country IDs have values despite column being NOT
-    // NULL:
+    // We could have used `get` without `Option` to get `COUNTRY_ID`
+    // even if it is NULL-able provided we had a posteriori knowledge
+    // that all country IDs have values despite column being NOT NULL:
 
-    let country_id : &str = row.get_not_null("COUNTRY_ID")?;
+    let country_id : &str = row.get("COUNTRY_ID")?;
 
     assert_eq!(country_id, "UK");
     # Ok(())
@@ -398,7 +402,7 @@ impl<'a> Row<'a> {
     #      WHERE location_id = :id
     # ").await?;
     # let row = stmt.query_single(2400).await?.unwrap();
-    # let city : &str = row.get_not_null("CITY")?;
+    # let city : &str = row.get("CITY")?;
     # assert_eq!(city, "London");
     # let postal_code    : Option<&str> = row.get("POSTAL_CODE")?;
     # let state_province : Option<&str> = row.get("STATE_PROVINCE")?;
@@ -408,23 +412,15 @@ impl<'a> Row<'a> {
     # assert!(country_id.is_some());
     # let country_id = country_id.unwrap();
     # assert_eq!(country_id, "UK");
-    # let country_id : &str = row.get_not_null("COUNTRY_ID")?;
+    # let country_id : &str = row.get("COUNTRY_ID")?;
     # assert_eq!(country_id, "UK");
     # Ok(()) })
     # }
     ```
     */
+    #[deprecated = "Use [`get`](Row::get) instead."]
     pub fn get_not_null<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<T> {
-        match self.col_index_and_null_indicator(&pos) {
-            None => Err(Error::msg(format!("Column {} does not exist", pos))),
-            Some((ix, is_null)) => {
-                if is_null {
-                    Err(Error::msg(format!("Column {} is null", pos)))
-                } else {
-                    self.src.rset().write_columns().get(self, ix).transpose().unwrap()
-                }
-            }
-        }
+        self.get(pos)
     }
 
     /**
@@ -457,7 +453,7 @@ impl<'a> Row<'a> {
            FOR UPDATE
     ")?;
     let row = stmt.query_single(107)?.unwrap();
-    let manager_id: u32 = row.get_not_null(0)?;
+    let manager_id: u32 = row.get(0)?;
     assert_eq!(manager_id, 103);
 
     let rowid = row.rowid()?;
@@ -490,7 +486,7 @@ impl<'a> Row<'a> {
     #        FOR UPDATE
     # ").await?;
     # let row = stmt.query_single(107).await?.unwrap();
-    # let manager_id: u32 = row.get_not_null(0)?;
+    # let manager_id: u32 = row.get(0)?;
     # assert_eq!(manager_id, 103);
     # let rowid = row.rowid()?;
     # let stmt = session.prepare("
@@ -545,12 +541,12 @@ mod tests {
         let state_province : Option<&str> = row.get("STATE_PROVINCE")?;
         assert!(state_province.is_none());
 
-        let city : &str = row.get_not_null("CITY")?;
+        let city : &str = row.get("CITY")?;
         assert_eq!(city, "London");
-        let country_id : &str = row.get_not_null("COUNTRY_ID")?;
+        let country_id : &str = row.get("COUNTRY_ID")?;
         assert_eq!(country_id, "UK");
 
-        let res : Result<&str> = row.get_not_null("POSTAL_CODE");
+        let res : Result<&str> = row.get("POSTAL_CODE");
         assert!(res.is_err());
         match res {
             Err(Error::Interface(msg)) => assert_eq!(msg, "Column POSTAL_CODE is null"),
@@ -586,7 +582,7 @@ mod tests {
         }
         impl Display for Col {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                static COLS : [&str;4] = ["postal_code", "city", "state_province", "country_id"];
+                static COLS : [&str;4] = ["POSTAL_CODE", "CITY", "STATE_PROVINCE", "COUNTRY_ID"];
                 let i = *self as usize;
                 f.write_str(COLS[i])
             }
@@ -602,15 +598,15 @@ mod tests {
         let state_province : Option<&str> = row.get(Col::StateProvince)?;
         assert!(state_province.is_none());
 
-        let city : &str = row.get_not_null(Col::City)?;
+        let city : &str = row.get(Col::City)?;
         assert_eq!(city, "London");
-        let country_id : &str = row.get_not_null(Col::CountryId)?;
+        let country_id : &str = row.get(Col::CountryId)?;
         assert_eq!(country_id, "UK");
 
-        let res : Result<&str> = row.get_not_null(Col::PostalCode);
+        let res : Result<&str> = row.get(Col::PostalCode);
         assert!(res.is_err());
         match res {
-            Err(Error::Interface(msg)) => assert_eq!(msg, "Column postal_code is null"),
+            Err(Error::Interface(msg)) => assert_eq!(msg, "Column POSTAL_CODE is null"),
             _ => panic!("unexpected result {:?}", res),
         }
 

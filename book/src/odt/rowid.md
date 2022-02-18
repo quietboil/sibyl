@@ -12,7 +12,7 @@ let stmt = session.prepare("
 let row = stmt.query_single(107)?;
 let rowid = row.rowid()?;
 
-let manager_id: u32 = row.get_not_null(0)?;
+let manager_id: u32 = row.get(0)?;
 assert_eq!(manager_id, 103);
 
 let stmt = session.prepare("

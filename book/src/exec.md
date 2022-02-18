@@ -108,8 +108,8 @@ let stmt = session.prepare("
 ")?;
 let rows = stmt.query(103)?;
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(0)?;
-    let last_name : &str  = row.get_not_null(1)?;
+    let employee_id : u32 = row.get(0)?;
+    let last_name : &str  = row.get(1)?;
     let first_name : Option<&str> = row.get(2)?;
     let name = first_name.map_or(last_name.to_string(),
         |first_name| format!("{}, {}", last_name, first_name)
@@ -126,8 +126,8 @@ There are a few notable points of interest in the last example:
 
 ```rust,ignore
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null("EMPLOYEE_ID")?;
-    let last_name : &str  = row.get_not_null("LAST_NAME")?;
+    let employee_id : u32 = row.get("EMPLOYEE_ID")?;
+    let last_name : &str  = row.get("LAST_NAME")?;
     let first_name : Option<&str> = row.get("FIRST_NAME")?;
     let name = first_name.map_or(last_name.to_string(),
         |first_name| format!("{}, {}", last_name, first_name)
@@ -142,8 +142,8 @@ while let Some( row ) = rows.next()? {
 enum Col { EmployeeId, LastName, FirstName }
 
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(Col::EmployeeId as usize)?;
-    let last_name : &str  = row.get_not_null(Col::LastName as usize)?;
+    let employee_id : u32 = row.get(Col::EmployeeId as usize)?;
+    let last_name : &str  = row.get(Col::LastName as usize)?;
     let first_name : Option<&str> = row.get(Col::FirstName as usize)?;
     // ...
 }
@@ -168,8 +168,8 @@ impl std::fmt::Display for Col {
 }
 
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(Col::EmployeeId)?;
-    let last_name : &str  = row.get_not_null(Col::LastName)?;
+    let employee_id : u32 = row.get(Col::EmployeeId)?;
+    let last_name : &str  = row.get(Col::LastName)?;
     let first_name : Option<&str> = row.get(Col::FirstName)?;
     // ...
 }

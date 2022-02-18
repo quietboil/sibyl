@@ -25,13 +25,13 @@ mod tests {
         let row = stmt.query_single(3333)?;
         assert!(row.is_some());
         let row = row.unwrap();
-        let state_province : &str = row.get_not_null(0)?;
+        let state_province : &str = row.get(0)?;
         assert_eq!(state_province, "N/A");
-        let city : &str = row.get_not_null(1)?;
+        let city : &str = row.get(1)?;
         assert_eq!(city, "N/A");
-        let postal_code : &str = row.get_not_null(2)?;
+        let postal_code : &str = row.get(2)?;
         assert_eq!(postal_code, "00000");
-        let street_address : &str = row.get_not_null(3)?;
+        let street_address : &str = row.get(3)?;
         assert_eq!(street_address, "N/A");
 
         Ok(())

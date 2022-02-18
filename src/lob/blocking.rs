@@ -71,7 +71,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         SELECT text FROM test_lobs WHERE rowid = :row_id FOR UPDATE
     ")?;
     let row = stmt.query_single(&rowid)?.unwrap();
-    let mut lob : CLOB = row.get_not_null(0)?;
+    let mut lob : CLOB = row.get(0)?;
 
     let text = [
         "Love seeketh not itself to please,\n",
@@ -1161,7 +1161,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
         SELECT data FROM test_lobs WHERE rowid = :row_id FOR UPDATE
     ")?;
     let row = stmt.query_single(&rowid)?.unwrap();
-    let mut lob : BLOB = row.get_not_null(0)?;
+    let mut lob : BLOB = row.get(0)?;
 
     lob.open()?;
     let chunk_size = lob.chunk_size()?;

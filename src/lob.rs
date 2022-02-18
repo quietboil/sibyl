@@ -251,7 +251,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE
     ")?;
     let row = stmt.query_single(&id)?.unwrap();
-    let lob : CLOB = row.get_not_null(0)?;
+    let lob : CLOB = row.get(0)?;
 
     let text = "
         To Mercy, Pity, Peace, and Love
@@ -269,10 +269,10 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         SELECT text FROM test_lobs WHERE id = :id
     ")?;
     let row = stmt.query_single(&id)?.unwrap();
-    let lob1 : CLOB = row.get_not_null(0)?;
+    let lob1 : CLOB = row.get(0)?;
 
     let row = stmt.query_single(&id)?.unwrap();
-    let lob2 : CLOB = row.get_not_null(0)?;
+    let lob2 : CLOB = row.get(0)?;
 
     // Even though locators are different, they point to
     // the same LOB which makes them "equal"
@@ -310,7 +310,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # stmt.execute(&mut id).await?;
     # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE").await?;
     # let row = stmt.query_single(&id).await?.unwrap();
-    # let lob : CLOB = row.get_not_null(0)?;
+    # let lob : CLOB = row.get(0)?;
     # let text = "
     #     To Mercy, Pity, Peace, and Love
     #     All pray in their distress;
@@ -323,9 +323,9 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # session.commit().await?;
     # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :id").await?;
     # let row = stmt.query_single(&id).await?.unwrap();
-    # let lob1 : CLOB = row.get_not_null(0)?;
+    # let lob1 : CLOB = row.get(0)?;
     # let row = stmt.query_single(&id).await?.unwrap();
-    # let lob2 : CLOB = row.get_not_null(0)?;
+    # let lob2 : CLOB = row.get(0)?;
     # assert!(lob1.is_equal(&lob2)?, "CLOB1 == CLOB2");
     # assert!(lob2.is_equal(&lob1)?, "CLOB2 == CLOB1");
     # Ok(()) })

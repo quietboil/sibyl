@@ -28,8 +28,8 @@ fn main() -> sibyl::Result<()> {
     let rows = stmt.query(&date)?;
     while let Some( row ) = rows.next()? {
         let first_name : Option<&str>  = row.get(0)?;
-        let last_name  : &str          = row.get_not_null(1)?;
-        let hire_date  : oracle::Date  = row.get_not_null(2)?;
+        let last_name  : &str          = row.get(1)?;
+        let hire_date  : oracle::Date  = row.get(2)?;
 
         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
         if first_name.is_some() {

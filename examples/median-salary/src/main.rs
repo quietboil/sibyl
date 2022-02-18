@@ -22,8 +22,8 @@ fn main() -> sibyl::Result<()> {
     let rows = stmt.query(&region)?;
 
     while let Some(row) = rows.next()? {
-        let country_name : &str = row.get_not_null(0)?;
-        let median_salary : u16 = row.get_not_null(1)?;
+        let country_name : &str = row.get(0)?;
+        let median_salary : u16 = row.get(1)?;
         println!("{:25}: {:>5}", country_name, median_salary);
     }
     Ok(())

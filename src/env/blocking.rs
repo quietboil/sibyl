@@ -32,7 +32,7 @@ impl Environment {
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
     let row = stmt.query_single(())?.unwrap();
-    let client_driver : &str = row.get_not_null(0)?;
+    let client_driver : &str = row.get(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
@@ -79,7 +79,7 @@ impl Environment {
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
     let row = stmt.query_single(())?.unwrap();
-    let client_driver : &str = row.get_not_null(0)?;
+    let client_driver : &str = row.get(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
@@ -123,7 +123,7 @@ impl Environment {
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
     let row = stmt.query_single(())?.unwrap();
-    let client_driver : &str = row.get_not_null(0)?;
+    let client_driver : &str = row.get(0)?;
     assert_eq!(client_driver, "sibyl");
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```

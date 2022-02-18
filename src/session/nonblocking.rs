@@ -185,7 +185,7 @@ impl<'a> Session<'a> {
          WHERE hire_date_rank = 1
     ").await?;
     let row = stmt.query_single(()).await?.unwrap();
-    let id : u32 = row.get_not_null(0)?;
+    let id : u32 = row.get(0)?;
     assert_eq!(id, 102);
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```

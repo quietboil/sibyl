@@ -379,7 +379,7 @@ impl Session<'_> {
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
     let row = stmt.query_single(())?.unwrap();
-    let module : &str = row.get_not_null(0)?;
+    let module : &str = row.get(0)?;
     assert_eq!(module, "Sibyl DocTest");
     # Ok(())
     # }
@@ -399,7 +399,7 @@ impl Session<'_> {
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     # ").await?;
     # let row = stmt.query_single(()).await?.unwrap();
-    # let module : &str = row.get_not_null(0)?;
+    # let module : &str = row.get(0)?;
     # assert_eq!(module, "Sibyl DocTest");
     # Ok(()) })
     # }
@@ -440,7 +440,7 @@ impl Session<'_> {
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
     let row = stmt.query_single(())?.unwrap();
-    let action : &str = row.get_not_null(0)?;
+    let action : &str = row.get(0)?;
     assert_eq!(action, "Action Name Test");
     # Ok(())
     # }
@@ -460,7 +460,7 @@ impl Session<'_> {
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     # ").await?;
     # let row = stmt.query_single(()).await?.unwrap();
-    # let action : &str = row.get_not_null(0)?;
+    # let action : &str = row.get(0)?;
     # assert_eq!(action, "Action Name Test");
     # Ok(()) })
     # }
@@ -500,7 +500,7 @@ impl Session<'_> {
             WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
     let row = stmt.query_single(())?.unwrap();
-    let client_identifier : &str = row.get_not_null(0)?;
+    let client_identifier : &str = row.get(0)?;
     assert_eq!(client_identifier, "Test Wielder");
     # Ok(())
     # }
@@ -519,7 +519,7 @@ impl Session<'_> {
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     # ").await?;
     # let row = stmt.query_single(()).await?.unwrap();
-    # let client_identifier : &str = row.get_not_null(0)?;
+    # let client_identifier : &str = row.get(0)?;
     # assert_eq!(client_identifier, "Test Wielder");
     # Ok(()) })
     # }
@@ -559,7 +559,7 @@ impl Session<'_> {
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
     let row = stmt.query_single(())?.unwrap();
-    let client_info : &str = row.get_not_null(0)?;
+    let client_info : &str = row.get(0)?;
     assert_eq!(client_info, "Nothing to see here, move along folks");
     # Ok(())
     # }
@@ -578,7 +578,7 @@ impl Session<'_> {
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     # ").await?;
     # let row = stmt.query_single(()).await?.unwrap();
-    # let client_info : &str = row.get_not_null(0)?;
+    # let client_info : &str = row.get(0)?;
     # assert_eq!(client_info, "Nothing to see here, move along folks");
     # Ok(()) })
     # }
@@ -672,7 +672,7 @@ impl Session<'_> {
          WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     ")?;
     let row = stmt.query_single(())?.unwrap();
-    let schema_name : &str = row.get_not_null(0)?;
+    let schema_name : &str = row.get(0)?;
     assert_eq!(schema_name, "HR");
 
     session.set_current_schema(orig_name)?;
@@ -696,7 +696,7 @@ impl Session<'_> {
     #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
     # ").await?;
     # let row = stmt.query_single(()).await?.unwrap();
-    # let schema_name : &str = row.get_not_null(0)?;
+    # let schema_name : &str = row.get(0)?;
     # assert_eq!(schema_name, "HR");
     # session.set_current_schema(orig_name)?;
     # assert_eq!(session.current_schema()?, orig_name);

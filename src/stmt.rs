@@ -235,7 +235,7 @@ impl<'a> Statement<'a> {
     ")?;
     stmt.set_max_long_size(100_000);
     let row = stmt.query_single(&id)?.unwrap();
-    let txt : &str = row.get_not_null(0)?;
+    let txt : &str = row.get(0)?;
     # assert_eq!(txt, TEXT);
     # Ok(())
     # }
@@ -276,7 +276,7 @@ impl<'a> Statement<'a> {
     # ").await?;
     # stmt.set_max_long_size(100_000);
     # let row = stmt.query_single(&id).await?.unwrap();
-    # let txt : &str = row.get_not_null(0)?;
+    # let txt : &str = row.get(0)?;
     # assert_eq!(txt, TEXT);
     # Ok(()) })
     # }
@@ -373,7 +373,7 @@ impl<'a> Statement<'a> {
     let mut ids = Vec::new();
     while let Some( row ) = rows.next()? {
         // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-        let id : u32 = row.get_not_null(0)?;
+        let id : u32 = row.get(0)?;
         ids.push(id);
     }
     assert_eq!(stmt.row_count()?, 4);
@@ -399,7 +399,7 @@ impl<'a> Statement<'a> {
     # let rows = stmt.query(103).await?;
     # let mut ids = Vec::new();
     # while let Some( row ) = rows.next().await? {
-    #     let id : i32 = row.get_not_null(0)?;
+    #     let id : i32 = row.get(0)?;
     #     ids.push(id);
     # }
     # assert_eq!(stmt.row_count()?, 4);

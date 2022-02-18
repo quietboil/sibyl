@@ -85,22 +85,22 @@ mod blocking {
         let stmt = session.prepare("SELECT text, ntext FROM test_character_data WHERE id = :ID")?;
 
         let row = stmt.query_single(ids[0])?.unwrap();
-        let text : &str = row.get_not_null("TEXT")?;
+        let text : &str = row.get("TEXT")?;
         assert_eq!(text, "Two roads diverged in a yellow wood,");
-        let text : &str = row.get_not_null("NTEXT")?;
+        let text : &str = row.get("NTEXT")?;
         assert_eq!(text, "> Two roads diverged in a yellow wood,");
 
         if let Some(row) = stmt.query_single(ids[1])? {
-            let text : String = row.get_not_null(0)?;
+            let text : String = row.get(0)?;
             assert_eq!(text.as_str(), "And sorry I could not travel both");
-            let text : String = row.get_not_null(1)?;
+            let text : String = row.get(1)?;
             assert_eq!(text.as_str(), "> And sorry I could not travel both");
         }
 
         if let Some(row) = stmt.query_single(ids[2])? {
-            let text : Varchar = row.get_not_null("TEXT")?;
+            let text : Varchar = row.get("TEXT")?;
             assert_eq!(text.as_str(), "And be one traveler, long I stood");
-            let text : Varchar = row.get_not_null("NTEXT")?;
+            let text : Varchar = row.get("NTEXT")?;
             assert_eq!(text.as_str(), "> And be one traveler, long I stood");
         }
 
@@ -217,17 +217,17 @@ mod blocking {
 
         let stmt = session.prepare("SELECT dt, ts, tsz, tsl, iym, ids FROM test_datetime_data WHERE id = :ID")?;
         let row = stmt.query_single(id)?.unwrap();
-        let val : Date = row.get_not_null("DT")?;
+        let val : Date = row.get("DT")?;
         assert_eq!(val.compare(&dt2)?, Equal);
-        let val : Timestamp = row.get_not_null("TS")?;
+        let val : Timestamp = row.get("TS")?;
         assert_eq!(val.compare(&ts2)?, Equal);
-        let val : TimestampTZ = row.get_not_null("TSZ")?;
+        let val : TimestampTZ = row.get("TSZ")?;
         assert_eq!(val.compare(&tsz2)?, Equal);
-        let val : TimestampLTZ = row.get_not_null("TSL")?;
+        let val : TimestampLTZ = row.get("TSL")?;
         assert_eq!(val.compare(&tsl2)?, Equal);
-        let val : IntervalYM = row.get_not_null("IYM")?;
+        let val : IntervalYM = row.get("IYM")?;
         assert_eq!(val.compare(&iym2)?, Equal);
-        let val : IntervalDS = row.get_not_null("IDS")?;
+        let val : IntervalDS = row.get("IDS")?;
         assert_eq!(val.compare(&ids2)?, Equal);
 
         Ok(())
@@ -275,7 +275,7 @@ mod blocking {
         // Can only read BFILEs
         let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID")?;
         let row = stmt.query_single(&id)?.unwrap();
-        let lob : BFile = row.get_not_null("FBIN")?;
+        let lob : BFile = row.get("FBIN")?;
 
         assert!(lob.file_exists()?);
         let (dir, name) = lob.file_name()?; // if we forgot :-)
@@ -294,7 +294,7 @@ mod blocking {
 
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
         let row = stmt.query_single(&id)?.unwrap();
-        let lob : BLOB = row.get_not_null(0)?;
+        let lob : BLOB = row.get(0)?;
 
         lob.open()?;
         let count = lob.append(&data)?;
@@ -305,7 +305,7 @@ mod blocking {
 
         let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID")?;
         let row = stmt.query_single(&id)?.unwrap();
-        let lob : BLOB = row.get_not_null(0)?;
+        let lob : BLOB = row.get(0)?;
         let mut lob_data = Vec::new();
         lob.read(0, 28, &mut lob_data)?;
         assert_eq!(lob_data, data);
@@ -313,7 +313,7 @@ mod blocking {
 
         let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
         let row = stmt.query_single(&id)?.unwrap();
-        let lob : CLOB = row.get_not_null(0)?;
+        let lob : CLOB = row.get(0)?;
         assert!(!lob.is_nclob()?);
 
         let text = "Two roads diverged in a yellow wood, And sorry I could not travel both And be one traveler, long I stood And looked down one as far as I could To where it bent in the undergrowth; Then took the other, as just as fair, And having perhaps the better claim, Because it was grassy and wanted wear; Though as for that the passing there Had worn them really about the same, And both that morning equally lay In leaves no step had trodden black. Oh, I kept the first for another day! Yet knowing how way leads on to way, I doubted if I should ever come back. I shall be telling this with a sigh Somewhere ages and ages hence: Two roads diverged in a wood, and I— I took the one less traveled by, And that has made all the difference.";
@@ -326,7 +326,7 @@ mod blocking {
 
         let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID")?;
         let row = stmt.query_single(&id)?.unwrap();
-        let lob : CLOB = row.get_not_null(0)?;
+        let lob : CLOB = row.get(0)?;
         assert!(!lob.is_nclob()?);
 
         let mut lob_text = String::new();
@@ -336,7 +336,7 @@ mod blocking {
 
         let stmt = session.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID FOR UPDATE")?;
         let row = stmt.query_single(&id)?.unwrap();
-        let lob : CLOB = row.get_not_null(0)?;
+        let lob : CLOB = row.get(0)?;
         assert!(lob.is_nclob()?);
 
         lob.open()?;
@@ -347,7 +347,7 @@ mod blocking {
 
         let stmt = session.prepare("SELECT ntxt FROM test_large_object_data WHERE id = :ID")?;
         let row = stmt.query_single(&id)?.unwrap();
-        let lob : CLOB = row.get_not_null(0)?;
+        let lob : CLOB = row.get(0)?;
         assert!(lob.is_nclob()?);
 
         let mut lob_text = String::new();
@@ -398,8 +398,8 @@ mod blocking {
         let stmt = session.prepare("SELECT bin, text FROM long_and_raw_test_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
         let row = stmt.query_single(&id)?.unwrap();
-        let bin : &[u8] = row.get_not_null("BIN")?;
-        let txt : &str = row.get_not_null("TEXT")?;
+        let bin : &[u8] = row.get("BIN")?;
+        let txt : &str = row.get("TEXT")?;
         assert_eq!(bin, &data[..]);
         assert_eq!(txt, text);
 
@@ -442,7 +442,7 @@ mod blocking {
         let stmt = session.prepare("SELECT bin FROM test_long_raw_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) BIN output is limited to 32768
         let row = stmt.query_single(&id)?.unwrap();
-        let bin : &[u8] = row.get_not_null(0)?;
+        let bin : &[u8] = row.get(0)?;
         assert_eq!(bin, &data[..]);
 
         Ok(())
@@ -501,9 +501,9 @@ mod blocking {
 
         let stmt = session.prepare("SELECT num, flt, dbl FROM test_numeric_data WHERE id = :ID")?;
         let row = stmt.query_single(&id)?.unwrap();
-        let num : Number = row.get_not_null("NUM")?;
-        let flt : f32 = row.get_not_null("FLT")?;
-        let dbl : f64 = row.get_not_null("DBL")?;
+        let num : Number = row.get("NUM")?;
+        let flt : f32 = row.get("FLT")?;
+        let dbl : f64 = row.get("DBL")?;
         assert_eq!(num.compare(&src_num)?, Equal);
         assert!(3.141592653589792 < dbl && dbl < 3.141592653589794);
         assert!(3.1415926 < flt && flt < 3.1415929);
@@ -527,11 +527,11 @@ mod blocking {
         ")?;
         let row = stmt.query_single(107)?.unwrap();
         let implicit_rowid = row.rowid()?;
-        let str_rowid : String = row.get_not_null(0)?;
+        let str_rowid : String = row.get(0)?;
         assert_eq!(str_rowid, implicit_rowid.to_string(&session)?);
-        let explicit_rowid : RowID = row.get_not_null(0)?;
+        let explicit_rowid : RowID = row.get(0)?;
         assert_eq!(explicit_rowid.to_string(&session)?, implicit_rowid.to_string(&session)?);
-        let manager_id: u32 = row.get_not_null(1)?;
+        let manager_id: u32 = row.get(1)?;
         assert_eq!(manager_id, 103, "employee ID of Alexander Hunold");
 
         let stmt = session.prepare("
@@ -596,10 +596,10 @@ mod blocking {
         let rows = lowest_payed_employee.rows()?;
         let row = rows.next()?.unwrap();
 
-        let department_name : &str = row.get_not_null(0)?;
-        let first_name : &str = row.get_not_null(1)?;
-        let last_name : &str = row.get_not_null(2)?;
-        let salary : Number = row.get_not_null(3)?;
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
 
         assert_eq!(department_name, "Shipping");
         assert_eq!(first_name, "TJ");
@@ -612,10 +612,10 @@ mod blocking {
         let rows = median_salary_employees.rows()?;
 
         let row = rows.next()?.unwrap();
-        let department_name : &str = row.get_not_null(0)?;
-        let first_name : &str = row.get_not_null(1)?;
-        let last_name : &str = row.get_not_null(2)?;
-        let salary : Number = row.get_not_null(3)?;
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
 
         assert_eq!(department_name, "Sales");
         assert_eq!(first_name, "Amit");
@@ -624,10 +624,10 @@ mod blocking {
 
         let row = rows.next()?.unwrap();
 
-        let department_name : &str = row.get_not_null(0)?;
-        let first_name : &str = row.get_not_null(1)?;
-        let last_name : &str = row.get_not_null(2)?;
-        let salary : Number = row.get_not_null(3)?;
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
 
         assert_eq!(department_name, "Sales");
         assert_eq!(first_name, "Charles");
@@ -692,10 +692,10 @@ mod blocking {
         let rows = lowest_payed_employee.rows()?;
         let row = rows.next()?.unwrap();
 
-        let department_name : &str = row.get_not_null(0)?;
-        let first_name : &str = row.get_not_null(1)?;
-        let last_name : &str = row.get_not_null(2)?;
-        let salary : Number = row.get_not_null(3)?;
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
 
         assert_eq!(department_name, "Shipping");
         assert_eq!(first_name, "TJ");
@@ -710,10 +710,10 @@ mod blocking {
         let rows = median_salary_employees.rows()?;
 
         let row = rows.next()?.unwrap();
-        let department_name : &str = row.get_not_null(0)?;
-        let first_name : &str = row.get_not_null(1)?;
-        let last_name : &str = row.get_not_null(2)?;
-        let salary : Number = row.get_not_null(3)?;
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
 
         assert_eq!(department_name, "Sales");
         assert_eq!(first_name, "Amit");
@@ -722,10 +722,10 @@ mod blocking {
 
         let row = rows.next()?.unwrap();
 
-        let department_name : &str = row.get_not_null(0)?;
-        let first_name : &str = row.get_not_null(1)?;
-        let last_name : &str = row.get_not_null(2)?;
-        let salary : Number = row.get_not_null(3)?;
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
 
         assert_eq!(department_name, "Sales");
         assert_eq!(first_name, "Charles");
@@ -766,18 +766,18 @@ mod blocking {
                    ) e
         ")?;
         let row = stmt.query_single("King")?.unwrap();
-        let last_name : &str = row.get_not_null(0)?;
+        let last_name : &str = row.get(0)?;
         assert_eq!(last_name, "King");
 
-        let departments : Cursor = row.get_not_null(1)?;
+        let departments : Cursor = row.get(1)?;
         let dept_rows = departments.rows()?;
         let dept_row = dept_rows.next()?.unwrap();
 
-        let department_name : &str = dept_row.get_not_null(0)?;
+        let department_name : &str = dept_row.get(0)?;
         assert_eq!(department_name, "Executive");
 
         let dept_row = dept_rows.next()?.unwrap();
-        let department_name : &str = dept_row.get_not_null(0)?;
+        let department_name : &str = dept_row.get(0)?;
         assert_eq!(department_name, "Sales");
 
         assert!(dept_rows.next()?.is_none());
@@ -882,25 +882,25 @@ mod nonblocking {
 
             let rows = stmt.query(ids[0]).await?;
             let row  = rows.next().await?.unwrap();
-            let text : &str = row.get_not_null("TEXT")?;
+            let text : &str = row.get("TEXT")?;
             assert_eq!(text, "Two roads diverged in a yellow wood,");
-            let text : &str = row.get_not_null("NTEXT")?;
+            let text : &str = row.get("NTEXT")?;
             assert_eq!(text, "> Two roads diverged in a yellow wood,");
             assert!(rows.next().await?.is_none());
 
             let rows = stmt.query(ids[1]).await?;
             let row  = rows.next().await?.unwrap();
-            let text : String = row.get_not_null(0)?;
+            let text : String = row.get(0)?;
             assert_eq!(text.as_str(), "And sorry I could not travel both");
-            let text : String = row.get_not_null(1)?;
+            let text : String = row.get(1)?;
             assert_eq!(text.as_str(), "> And sorry I could not travel both");
             assert!(rows.next().await?.is_none());
 
             let rows = stmt.query(ids[2]).await?;
             let row  = rows.next().await?.unwrap();
-            let text : Varchar = row.get_not_null("TEXT")?;
+            let text : Varchar = row.get("TEXT")?;
             assert_eq!(text.as_str(), "And be one traveler, long I stood");
-            let text : Varchar = row.get_not_null("NTEXT")?;
+            let text : Varchar = row.get("NTEXT")?;
             assert_eq!(text.as_str(), "> And be one traveler, long I stood");
             assert!(rows.next().await?.is_none());
 
@@ -1028,17 +1028,17 @@ mod nonblocking {
             let stmt = session.prepare("SELECT dt, ts, tsz, tsl, iym, ids FROM test_datetime_data WHERE id = :ID").await?;
             let rows = stmt.query(id).await?;
             let row  = rows.next().await?.unwrap();
-            let val : Date = row.get_not_null("DT")?;
+            let val : Date = row.get("DT")?;
             assert_eq!(val.compare(&dt2)?, Equal);
-            let val : Timestamp = row.get_not_null("TS")?;
+            let val : Timestamp = row.get("TS")?;
             assert_eq!(val.compare(&ts2)?, Equal);
-            let val : TimestampTZ = row.get_not_null("TSZ")?;
+            let val : TimestampTZ = row.get("TSZ")?;
             assert_eq!(val.compare(&tsz2)?, Equal);
-            let val : TimestampLTZ = row.get_not_null("TSL")?;
+            let val : TimestampLTZ = row.get("TSL")?;
             assert_eq!(val.compare(&tsl2)?, Equal);
-            let val : IntervalYM = row.get_not_null("IYM")?;
+            let val : IntervalYM = row.get("IYM")?;
             assert_eq!(val.compare(&iym2)?, Equal);
-            let val : IntervalDS = row.get_not_null("IDS")?;
+            let val : IntervalDS = row.get("IDS")?;
             assert_eq!(val.compare(&ids2)?, Equal);
 
             assert!(rows.next().await?.is_none());
@@ -1105,8 +1105,8 @@ mod nonblocking {
             let stmt = session.prepare("SELECT bin, text FROM long_and_raw_test_data WHERE id = :ID").await?;
             // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
             let row = stmt.query_single(&id).await?.unwrap();
-            let bin : &[u8] = row.get_not_null("BIN")?;
-            let txt : &str = row.get_not_null("TEXT")?;
+            let bin : &[u8] = row.get("BIN")?;
+            let txt : &str = row.get("TEXT")?;
             assert_eq!(bin, &data[..]);
             assert_eq!(txt, text);
 
@@ -1159,7 +1159,7 @@ mod nonblocking {
             let stmt = session.prepare("SELECT bin FROM test_long_raw_data WHERE id = :ID").await?;
             // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) BIN output is limited to 32768
             let row = stmt.query_single(&id).await?.unwrap();
-            let bin : &[u8] = row.get_not_null(0)?;
+            let bin : &[u8] = row.get(0)?;
             assert_eq!(bin, &data[..]);
 
             Ok(())
@@ -1227,9 +1227,9 @@ mod nonblocking {
 
             let stmt = session.prepare("SELECT num, flt, dbl FROM test_numeric_data WHERE id = :ID").await?;
             let row = stmt.query_single(&id).await?.unwrap();
-            let num : Number = row.get_not_null("NUM")?;
-            let flt : f32 = row.get_not_null("FLT")?;
-            let dbl : f64 = row.get_not_null("DBL")?;
+            let num : Number = row.get("NUM")?;
+            let flt : f32 = row.get("FLT")?;
+            let dbl : f64 = row.get("DBL")?;
             assert_eq!(num.compare(&src_num)?, Equal);
             assert!(3.141592653589792 < dbl && dbl < 3.141592653589794);
             assert!(3.1415926 < flt && flt < 3.1415929);
@@ -1264,13 +1264,13 @@ mod nonblocking {
             let row = stmt.query_single(107).await?.expect("selected row");
 
             let implicit_rowid = row.rowid()?;
-            let str_rowid : String = row.get_not_null(0)?;
+            let str_rowid : String = row.get(0)?;
             assert_eq!(str_rowid, implicit_rowid.to_string(&session)?);
 
-            let explicit_rowid : RowID = row.get_not_null(0)?;
+            let explicit_rowid : RowID = row.get(0)?;
             assert_eq!(explicit_rowid.to_string(&session)?, implicit_rowid.to_string(&session)?);
 
-            let manager_id: u32 = row.get_not_null(1)?;
+            let manager_id: u32 = row.get(1)?;
             assert_eq!(manager_id, 103, "employee ID of Alexander Hunold");
 
             let stmt = session.prepare("
@@ -1347,10 +1347,10 @@ mod nonblocking {
             let rows = lowest_payed_employee.rows().await?;
             let row = rows.next().await?.unwrap();
 
-            let department_name : &str = row.get_not_null(0)?;
-            let first_name : &str = row.get_not_null(1)?;
-            let last_name : &str = row.get_not_null(2)?;
-            let salary : Number = row.get_not_null(3)?;
+            let department_name : &str = row.get(0)?;
+            let first_name : &str = row.get(1)?;
+            let last_name : &str = row.get(2)?;
+            let salary : Number = row.get(3)?;
 
             assert_eq!(department_name, "Shipping");
             assert_eq!(first_name, "TJ");
@@ -1363,10 +1363,10 @@ mod nonblocking {
             let rows = median_salary_employees.rows().await?;
 
             let row = rows.next().await?.unwrap();
-            let department_name : &str = row.get_not_null(0)?;
-            let first_name : &str = row.get_not_null(1)?;
-            let last_name : &str = row.get_not_null(2)?;
-            let salary : Number = row.get_not_null(3)?;
+            let department_name : &str = row.get(0)?;
+            let first_name : &str = row.get(1)?;
+            let last_name : &str = row.get(2)?;
+            let salary : Number = row.get(3)?;
 
             assert_eq!(department_name, "Sales");
             assert_eq!(first_name, "Amit");
@@ -1375,10 +1375,10 @@ mod nonblocking {
 
             let row = rows.next().await?.unwrap();
 
-            let department_name : &str = row.get_not_null(0)?;
-            let first_name : &str = row.get_not_null(1)?;
-            let last_name : &str = row.get_not_null(2)?;
-            let salary : Number = row.get_not_null(3)?;
+            let department_name : &str = row.get(0)?;
+            let first_name : &str = row.get(1)?;
+            let last_name : &str = row.get(2)?;
+            let salary : Number = row.get(3)?;
 
             assert_eq!(department_name, "Sales");
             assert_eq!(first_name, "Charles");
@@ -1451,10 +1451,10 @@ mod nonblocking {
             let rows = lowest_payed_employee.rows().await?;
             let row = rows.next().await?.unwrap();
 
-            let department_name : &str = row.get_not_null(0)?;
-            let first_name : &str = row.get_not_null(1)?;
-            let last_name : &str = row.get_not_null(2)?;
-            let salary : Number = row.get_not_null(3)?;
+            let department_name : &str = row.get(0)?;
+            let first_name : &str = row.get(1)?;
+            let last_name : &str = row.get(2)?;
+            let salary : Number = row.get(3)?;
 
             assert_eq!(department_name, "Shipping");
             assert_eq!(first_name, "TJ");
@@ -1469,10 +1469,10 @@ mod nonblocking {
             let rows = median_salary_employees.rows().await?;
 
             let row = rows.next().await?.unwrap();
-            let department_name : &str = row.get_not_null(0)?;
-            let first_name : &str = row.get_not_null(1)?;
-            let last_name : &str = row.get_not_null(2)?;
-            let salary : Number = row.get_not_null(3)?;
+            let department_name : &str = row.get(0)?;
+            let first_name : &str = row.get(1)?;
+            let last_name : &str = row.get(2)?;
+            let salary : Number = row.get(3)?;
 
             assert_eq!(department_name, "Sales");
             assert_eq!(first_name, "Amit");
@@ -1481,10 +1481,10 @@ mod nonblocking {
 
             let row = rows.next().await?.unwrap();
 
-            let department_name : &str = row.get_not_null(0)?;
-            let first_name : &str = row.get_not_null(1)?;
-            let last_name : &str = row.get_not_null(2)?;
-            let salary : Number = row.get_not_null(3)?;
+            let department_name : &str = row.get(0)?;
+            let first_name : &str = row.get(1)?;
+            let last_name : &str = row.get(2)?;
+            let salary : Number = row.get(3)?;
 
             assert_eq!(department_name, "Sales");
             assert_eq!(first_name, "Charles");
@@ -1533,18 +1533,18 @@ mod nonblocking {
                     ) e
             ").await?;
             let row = stmt.query_single("King").await?.unwrap();
-            let last_name : &str = row.get_not_null(0)?;
+            let last_name : &str = row.get(0)?;
             assert_eq!(last_name, "King");
 
-            let departments : Cursor = row.get_not_null(1)?;
+            let departments : Cursor = row.get(1)?;
             let dept_rows = departments.rows().await?;
             let dept_row = dept_rows.next().await?.unwrap();
 
-            let department_name : &str = dept_row.get_not_null(0)?;
+            let department_name : &str = dept_row.get(0)?;
             assert_eq!(department_name, "Executive");
 
             let dept_row = dept_rows.next().await?.unwrap();
-            let department_name : &str = dept_row.get_not_null(0)?;
+            let department_name : &str = dept_row.get(0)?;
             assert_eq!(department_name, "Sales");
 
             assert!(dept_rows.next().await?.is_none());
@@ -1605,7 +1605,7 @@ mod nonblocking {
             // Can only read BFILEs
             let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID").await?;
             let row = stmt.query_single(&id).await?.expect("a row from the result set");
-            let lob : BFile = row.get_not_null("FBIN")?;
+            let lob : BFile = row.get("FBIN")?;
 
             assert!(lob.file_exists().await?);
             let (dir, name) = lob.file_name()?; // if we forgot :-)
@@ -1624,7 +1624,7 @@ mod nonblocking {
 
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
             let row = stmt.query_single(&id).await?.expect("a row from the result set");
-            let lob : BLOB = row.get_not_null(0)?;
+            let lob : BLOB = row.get(0)?;
 
             lob.open().await?;
             let count = lob.append(&data).await?;
@@ -1637,7 +1637,7 @@ mod nonblocking {
 
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
             let row = stmt.query_single(&id).await?.expect("a row from the result set");
-            let lob : BLOB = row.get_not_null(0)?;
+            let lob : BLOB = row.get(0)?;
             let mut lob_data = Vec::new();
             let num_read = lob.read(0, 100, &mut lob_data).await?;
             assert_eq!(num_read, 28);
@@ -1646,7 +1646,7 @@ mod nonblocking {
 
             let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
             let row = stmt.query_single(&id).await?.expect("a row from the result set");
-            let lob : CLOB = row.get_not_null(0)?;
+            let lob : CLOB = row.get(0)?;
             assert!(!lob.is_nclob()?);
 
             let text = "Two roads diverged in a yellow wood, And sorry I could not travel both And be one traveler, long I stood And looked down one as far as I could To where it bent in the undergrowth; Then took the other, as just as fair, And having perhaps the better claim, Because it was grassy and wanted wear; Though as for that the passing there Had worn them really about the same, And both that morning equally lay In leaves no step had trodden black. Oh, I kept the first for another day! Yet knowing how way leads on to way, I doubted if I should ever come back. I shall be telling this with a sigh Somewhere ages and ages hence: Two roads diverged in a wood, and I— I took the one less traveled by, And that has made all the difference.";
@@ -1662,7 +1662,7 @@ mod nonblocking {
 
             let stmt = session.prepare("SELECT text FROM test_large_object_data WHERE id = :ID").await?;
             let row = stmt.query_single(&id).await?.expect("a row from the result set");
-            let lob : CLOB = row.get_not_null(0)?;
+            let lob : CLOB = row.get(0)?;
             let mut lob_text = String::new();
             let num_read = lob.read(0, 800, &mut lob_text).await?;
             assert_eq!(num_read, 726);

@@ -128,13 +128,13 @@ impl<'a> Statement<'a> {
     let mut subs = HashMap::new();
     while let Some( row ) = rows.next().await? {
         // EMPLOYEE_ID is NOT NULL, so we can safely unwrap it
-        let id : u32 = row.get_not_null(0)?;
+        let id : u32 = row.get(0)?;
         // Same for the LAST_NAME.
         // Note that `last_name` is retrieved as a slice. This is fast as it
         // borrows directly from the column buffer, but it can only live until
         // the end of the current scope, i.e. only during the lifetime of the
         // current row.
-        let last_name : &str = row.get_not_null(1)?;
+        let last_name : &str = row.get(1)?;
         // FIRST_NAME is NULL-able...
         let first_name : Option<&str> = row.get(2)?;
         let name = first_name.map_or(last_name.to_string(),
@@ -212,11 +212,11 @@ impl<'a> Statement<'a> {
 
     assert!(row.is_some());
     let row = row.unwrap();
-    let country_id     : &str = row.get_not_null(0)?;
-    let state_province : &str = row.get_not_null(1)?;
-    let city           : &str = row.get_not_null(2)?;
-    let postal_code    : &str = row.get_not_null(3)?;
-    let street_address : &str = row.get_not_null(4)?;
+    let country_id     : &str = row.get(0)?;
+    let state_province : &str = row.get(1)?;
+    let city           : &str = row.get(2)?;
+    let postal_code    : &str = row.get(3)?;
+    let street_address : &str = row.get(4)?;
     assert_eq!(country_id, "CA");
     assert_eq!(state_province, "Ontario");
     assert_eq!(city, "Toronto");
@@ -313,10 +313,10 @@ impl<'a> Statement<'a> {
     let rows = lowest_payed_employee.rows().await?;
     let row = rows.next().await?.unwrap();
 
-    let department_name : &str = row.get_not_null(0)?;
-    let first_name : &str = row.get_not_null(1)?;
-    let last_name : &str = row.get_not_null(2)?;
-    let salary : Number = row.get_not_null(3)?;
+    let department_name : &str = row.get(0)?;
+    let first_name : &str = row.get(1)?;
+    let last_name : &str = row.get(2)?;
+    let salary : Number = row.get(3)?;
 
     assert_eq!(department_name, "Shipping");
     assert_eq!(first_name, "TJ");
@@ -331,10 +331,10 @@ impl<'a> Statement<'a> {
     let rows = median_salary_employees.rows().await?;
 
     let row = rows.next().await?.unwrap();
-    let department_name : &str = row.get_not_null(0)?;
-    let first_name : &str = row.get_not_null(1)?;
-    let last_name : &str = row.get_not_null(2)?;
-    let salary : Number = row.get_not_null(3)?;
+    let department_name : &str = row.get(0)?;
+    let first_name : &str = row.get(1)?;
+    let last_name : &str = row.get(2)?;
+    let salary : Number = row.get(3)?;
 
     assert_eq!(department_name, "Sales");
     assert_eq!(first_name, "Amit");
@@ -343,10 +343,10 @@ impl<'a> Statement<'a> {
 
     let row = rows.next().await?.unwrap();
 
-    let department_name : &str = row.get_not_null(0)?;
-    let first_name : &str = row.get_not_null(1)?;
-    let last_name : &str = row.get_not_null(2)?;
-    let salary : Number = row.get_not_null(3)?;
+    let department_name : &str = row.get(0)?;
+    let first_name : &str = row.get(1)?;
+    let last_name : &str = row.get(2)?;
+    let salary : Number = row.get(3)?;
 
     assert_eq!(department_name, "Sales");
     assert_eq!(first_name, "Charles");
@@ -396,7 +396,7 @@ mod tests {
                  WHERE hire_date_rank = 1
             ").await?;
             let row = stmt.query_single(()).await?.unwrap();
-            let id : usize = row.get_not_null(0)?;
+            let id : usize = row.get(0)?;
             assert_eq!(id, 102);
 
             Ok(())
@@ -605,11 +605,11 @@ mod tests {
             let row = stmt.query_single(1800).await?;
             assert!(row.is_some());
             let row = row.unwrap();
-            let country_id     : &str = row.get_not_null(0)?;
-            let state_province : &str = row.get_not_null(1)?;
-            let city           : &str = row.get_not_null(2)?;
-            let postal_code    : &str = row.get_not_null(3)?;
-            let street_address : &str = row.get_not_null(4)?;
+            let country_id     : &str = row.get(0)?;
+            let state_province : &str = row.get(1)?;
+            let city           : &str = row.get(2)?;
+            let postal_code    : &str = row.get(3)?;
+            let street_address : &str = row.get(4)?;
             assert_eq!(country_id, "CA");
             assert_eq!(state_province, "Ontario");
             assert_eq!(city, "Toronto");
@@ -625,11 +625,11 @@ mod tests {
             let row = stmt.query_single("CA").await?;
             assert!(row.is_some());
             let row = row.unwrap();
-            let location_id    : u16  = row.get_not_null(0)?;
-            let state_province : &str = row.get_not_null(1)?;
-            let city           : &str = row.get_not_null(2)?;
-            let postal_code    : &str = row.get_not_null(3)?;
-            let street_address : &str = row.get_not_null(4)?;
+            let location_id    : u16  = row.get(0)?;
+            let state_province : &str = row.get(1)?;
+            let city           : &str = row.get(2)?;
+            let postal_code    : &str = row.get(3)?;
+            let street_address : &str = row.get(4)?;
             assert_eq!(location_id, 1800);
             assert_eq!(state_province, "Ontario");
             assert_eq!(city, "Toronto");

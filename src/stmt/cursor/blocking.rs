@@ -37,18 +37,18 @@ impl<'a> Cursor<'a> {
     ")?;
     let row = stmt.query_single("King")?.unwrap();
 
-    let last_name : &str = row.get_not_null(0)?;
+    let last_name : &str = row.get(0)?;
     assert_eq!(last_name, "King");
 
-    let departments : Cursor = row.get_not_null(1)?;
+    let departments : Cursor = row.get(1)?;
     let mut dept_rows = departments.rows()?;
     let dept_row = dept_rows.next()?.unwrap();
 
-    let department_name : &str = dept_row.get_not_null(0)?;
+    let department_name : &str = dept_row.get(0)?;
     assert_eq!(department_name, "Executive");
 
     let dept_row = dept_rows.next()?.unwrap();
-    let department_name : &str = dept_row.get_not_null(0)?;
+    let department_name : &str = dept_row.get(0)?;
     assert_eq!(department_name, "Sales");
 
     assert!(dept_rows.next()?.is_none());

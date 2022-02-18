@@ -44,9 +44,9 @@ fn main() -> sibyl::Result<()> {
             ")?;
             if let Some( row ) = stmt.query_single(())? {
                 let first_name : Option<&str> = row.get(0)?;
-                let last_name : &str = row.get_not_null(1)?;
+                let last_name : &str = row.get(1)?;
                 let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-                let hire_date : Date = row.get_not_null(2)?;
+                let hire_date : Date = row.get(2)?;
                 let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
 
                 Ok(Some((name, hire_date)))
