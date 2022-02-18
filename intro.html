@@ -165,8 +165,8 @@
     let rows = stmt.query(&quot;Europe&quot;)?;
 
     while let Some(row) = rows.next()? {
-        let country_name : &amp;str = row.get_not_null(0)?;
-        let median_salary : u16 = row.get_not_null(1)?;
+        let country_name : &amp;str = row.get(0)?;
+        let median_salary : u16 = row.get(1)?;
         println!(&quot;{:25}: {:&gt;5}&quot;, country_name, median_salary);
     }
     Ok(())
@@ -201,8 +201,8 @@ United Kingdom           :  8800
     let rows = stmt.query(&quot;Europe&quot;).await?;
 
     while let Some(row) = rows.next().await? {
-        let country_name : &amp;str = row.get_not_null(0)?;
-        let median_salary : u16 = row.get_not_null(1)?;
+        let country_name : &amp;str = row.get(0)?;
+        let median_salary : u16 = row.get(1)?;
         println!(&quot;{:25}: {:&gt;5}&quot;, country_name, median_salary);
     }
     Ok(())

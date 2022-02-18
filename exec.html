@@ -223,8 +223,8 @@ let stmt = session.prepare(&quot;
 &quot;)?;
 let rows = stmt.query(103)?;
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(0)?;
-    let last_name : &amp;str  = row.get_not_null(1)?;
+    let employee_id : u32 = row.get(0)?;
+    let last_name : &amp;str  = row.get(1)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(2)?;
     let name = first_name.map_or(last_name.to_string(),
         |first_name| format!(&quot;{}, {}&quot;, last_name, first_name)
@@ -241,8 +241,8 @@ while let Some( row ) = rows.next()? {
 <p>Note that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:</p>
 </blockquote>
 <pre><code class="language-rust ignore">while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(&quot;EMPLOYEE_ID&quot;)?;
-    let last_name : &amp;str  = row.get_not_null(&quot;LAST_NAME&quot;)?;
+    let employee_id : u32 = row.get(&quot;EMPLOYEE_ID&quot;)?;
+    let last_name : &amp;str  = row.get(&quot;LAST_NAME&quot;)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(&quot;FIRST_NAME&quot;)?;
     let name = first_name.map_or(last_name.to_string(),
         |first_name| format!(&quot;{}, {}&quot;, last_name, first_name)
@@ -254,8 +254,8 @@ while let Some( row ) = rows.next()? {
 <pre><code class="language-rust ignore">enum Col { EmployeeId, LastName, FirstName }
 
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(Col::EmployeeId as usize)?;
-    let last_name : &amp;str  = row.get_not_null(Col::LastName as usize)?;
+    let employee_id : u32 = row.get(Col::EmployeeId as usize)?;
+    let last_name : &amp;str  = row.get(Col::LastName as usize)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(Col::FirstName as usize)?;
     // ...
 }
@@ -277,8 +277,8 @@ impl std::fmt::Display for Col {
 }
 
 while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get_not_null(Col::EmployeeId)?;
-    let last_name : &amp;str  = row.get_not_null(Col::LastName)?;
+    let employee_id : u32 = row.get(Col::EmployeeId)?;
+    let last_name : &amp;str  = row.get(Col::LastName)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(Col::FirstName)?;
     // ...
 }

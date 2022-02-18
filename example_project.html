@@ -172,8 +172,8 @@ sibyl = { version=&quot;0.6&quot;, features=[&quot;blocking&quot;] }
     let rows = stmt.query(&amp;region)?;
 
     while let Some(row) = rows.next()? {
-        let country_name : &amp;str = row.get_not_null(0)?;
-        let median_salary : u16 = row.get_not_null(1)?;
+        let country_name : &amp;str = row.get(0)?;
+        let median_salary : u16 = row.get(1)?;
         println!(&quot;{:25}: {:&gt;5}&quot;, country_name, median_salary);
     }
     Ok(())
