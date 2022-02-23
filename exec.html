@@ -75,7 +75,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="example_project.html"><strong aria-hidden="true">2.</strong> Example Project</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">3.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">4.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html"><strong aria-hidden="true">4.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">4.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">4.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html" class="active"><strong aria-hidden="true">5.</strong> SQL Statement Execution</a></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">6.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">6.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">6.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">6.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">6.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">6.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">6.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">6.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">6.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">6.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">7.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">8.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">9.</strong> Testing</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li class="chapter-item expanded "><a href="example_project.html"><strong aria-hidden="true">2.</strong> Example Project</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">3.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">4.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html"><strong aria-hidden="true">4.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">4.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">4.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html" class="active"><strong aria-hidden="true">5.</strong> SQL Statement Execution</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="args.html"><strong aria-hidden="true">5.1.</strong> Statement Arguments</a></li><li class="chapter-item expanded "><a href="slices.html"><strong aria-hidden="true">5.2.</strong> Slices as Arguments</a></li></ol></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">6.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">6.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">6.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">6.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">6.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">6.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">6.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">6.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">6.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">6.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">7.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">8.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">9.</strong> Testing</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -152,68 +152,8 @@
 <li><code>query_single</code> is a variant of <code>query</code> that returns a single row. It's a convenience method that allows skipping boilerplate of extracting only one row from a result set when it is known upfront that only one row (or none) is expected.</li>
 <li><code>execute</code> is used for all other, non-SELECT, DML and DDL.</li>
 </ul>
-<h2 id="arguments"><a class="header" href="#arguments">Arguments</a></h2>
-<p><code>query</code>, <code>query_single</code> and <code>execute</code> take a tuple of arguments (or a single argument). The latter can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call <code>query</code> using a positional argument as:</p>
-<pre><code class="language-rust ignore">let row = stmt.query_single(103)?;
-</code></pre>
-<p>or bind a value to <code>:id</code> by name as:</p>
-<pre><code class="language-rust ignore">let row = stmt.query_single((&quot;:ID&quot;, 103))?;
-</code></pre>
-<blockquote>
-<p>Note one caveat - until <a href="https://doc.rust-lang.org/stable/unstable-book/language-features/min-specialization.html#min_specialization">min_specialization</a> is stabilized Sibyl has no way of distinguishing whether a 2-item tuple is used to pass a single named argument or 2 positional arguments. For the moment you must use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is skipped, so effectively only first 2 arguments are used. For example:</p>
-</blockquote>
-<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
-    SELECT department_id, manager_id
-      FROM hr.departments
-     WHERE department_name = :DEPARTMENT_NAME
-       AND location_id = :LOCATION_ID
-&quot;)?;
-let rows = stmt.query(( &quot;Administration&quot;, 1700, () ))?;
-</code></pre>
-<p>In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicates. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one &quot;duplicate&quot; name in a statement.</p>
-<p>For example, the following (contrived) <code>INSERT</code> would need its arguments to be bound differently depending on whether it is defined as a standalone SQL or as a (part of a) PL/SQL:</p>
-<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
-    INSERT INTO hr.locations
-        (location_id, state_province, city, postal_code, street_address)
-    VALUES
-        (:id, :na, :na, :code, :na)
-&quot;)?;
-stmt.execute( (3333, &quot;N/A&quot;, (), &quot;00000&quot;, ()) )?;
-// :NA'a first pos __^---^
-// while ___________________^^____and____^^
-// are its duplicate positions
-</code></pre>
-<p>The duplicate position can be skipped using <code>()</code> as in the example. However, when it is a part of PL/SQL:</p>
-<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
-  BEGIN
-    INSERT INTO hr.locations
-        (location_id, state_province, city, postal_code, street_address)
-    VALUES
-        (:id, :na, :na, :code, :na);
-  END;
-&quot;)?;
-stmt.execute( ( 3333, &quot;N/A&quot;, &quot;00000&quot; ) )?;
-</code></pre>
-<p>Only 3 position are possible as there are only 3 unique names.</p>
-<p><code>execute</code> also allows execution of statements with OUT (or INOUT) parameters. For example:</p>
-<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
-    INSERT INTO hr.departments
-           ( department_id, department_name, manager_id, location_id )
-    VALUES ( hr.departments_seq.nextval, :department_name, :manager_id, :location_id )
- RETURNING department_id
-      INTO :department_id
-&quot;)?;
-let mut department_id: u32 = 0;
-let num_inserted = stmt.execute(
-    (
-        (&quot;:DEPARTMENT_NAME&quot;, &quot;Security&quot;         ),
-        (&quot;:MANAGER_ID&quot;,      &quot;&quot;                 ),
-        (&quot;:LOCATION_ID&quot;,     1700               ),
-        (&quot;:DEPARTMENT_ID&quot;,   &amp;mut department_id ),
-    )
-)?;
-</code></pre>
-<p><code>execute</code> returns the number of rows affected by the statement. <code>query</code> returns what is colloquially called a &quot;streaming iterator&quot; which is typically iterated using <code>while</code>. For example (continuing the SELECT example from above):</p>
+<p><code>execute</code> returns the number of rows affected by the statement.</p>
+<p><code>query</code> returns what is colloquially called a &quot;streaming iterator&quot; which is typically iterated using <code>while</code>. For example (continuing the SELECT example from above):</p>
 <pre><code class="language-rust ignore">let mut employees = HashMap::new();
 let stmt = session.prepare(&quot;
     SELECT employee_id, last_name, first_name
@@ -292,7 +232,7 @@ while let Some( row ) = rows.next()? {
                             <a rel="prev" href="conn_pool.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
-                            <a rel="next" href="odt.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="args.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
                         <div style="clear: both"></div>
@@ -304,7 +244,7 @@ while let Some( row ) = rows.next()? {
                     <a rel="prev" href="conn_pool.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
-                    <a rel="next" href="odt.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="args.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
