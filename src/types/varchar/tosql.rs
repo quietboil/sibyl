@@ -28,3 +28,37 @@ impl ToSql for &mut Varchar<'_> {
         Ok(pos + 1)
     }
 }
+
+impl ToSql for &[Varchar<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter() {
+            let len = item.len() + size_of::<u32>();
+            params.bind(pos, SQLT_LVC, item.txt.get() as _, len, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &[&Varchar<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter() {
+            let len = item.len() + size_of::<u32>();
+            params.bind(pos, SQLT_LVC, item.txt.get() as _, len, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &mut [&mut Varchar<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            let len = item.len() + size_of::<u32>();
+            let cap = item.capacity()? + size_of::<u32>();
+            params.bind_out(pos, SQLT_LVC, item.txt.get() as _, len, cap, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}

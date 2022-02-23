@@ -1,7 +1,7 @@
 /*!
 Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databases. Sibyl supports both sync (blocking) and async (nonblocking) API.
 
-# Blocking Mode Example
+## Blocking Mode Example
 
 ```
 # #[cfg(feature="blocking")]
@@ -38,12 +38,13 @@ fn main() -> sibyl::Result<()> {
 # fn main() {}
 ```
 
-# Nonblocking Mode Example
+## Nonblocking Mode Example
 
 ```
 # #[cfg(feature="nonblocking")]
 fn main() -> sibyl::Result<()> {
-  sibyl::block_on(async {
+# use sibyl::block_on;
+  block_on(async {
     let oracle = sibyl::env()?;
 
     let dbname = std::env::var("DBNAME").expect("database name");
@@ -77,9 +78,41 @@ fn main() -> sibyl::Result<()> {
 # fn main() {}
 ```
 
-> Note that `sibyl::block_on` is an abstraction over `block_on` of different async executors. It is intended only to help running Sibyl's tests and examples.
+> Note that `block_on` in the example is an internal abstraction over `block_on` of different async executors. It is intended only to help running Sibyl's own tests and examples.
+
+# Features
+
+Sibyl has 2 main features - `blocking` and `nonblocking`. They are **exclusive** and **one** must be explicitly selected as neither is the default.
+
+Sibyl compiled with a `nonblocking` feature needs to integrate with the async executor that the application uses. At the moment Sybil supports
+[Tokio][2], [Actix][3], [async-std][4], and [async-global-executor][5]. One (and only one) of those must be selected together with a `nonblocking` feature:
+
+| Feature | async Runtime |
+| ------- | ------------- |
+| `tokio` | [Tokio][2] |
+| `actix` | [Actix][3] |
+| `async-std` | [async-std][4] |
+| `async-global` | [async-global-executor][5] |
+
+Thus, for example, when Sibyl is used as a dependency, it might be included as:
+
+```toml
+[dependencies]
+sibyl = { version = "0.6", features = ["blocking"] }
+```
+
+Or, when Sibyl is used in nonblocking mode as:
+
+```toml
+[dependencies]
+sibyl = { version = "0.6", features = ["nonblocking", "tokio"] }
+```
 
 [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html
+[2]: https://crates.io/crates/tokio
+[3]: https://crates.io/crates/actix-rt
+[4]: https://crates.io/crates/async-std
+[5]: https://crates.io/crates/async-global-executor
 */
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
@@ -106,7 +139,7 @@ mod lob;
 pub use pool::ConnectionPool;
 
 #[cfg(feature="nonblocking")]
-#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
+#[doc(hidden)]
 pub use task::{spawn, block_on};
 
 pub use err::Error;

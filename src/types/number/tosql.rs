@@ -32,3 +32,36 @@ impl ToSql for &mut Number<'_> {
         Ok(pos + 1)
     }
 }
+
+impl ToSql for &[Number<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = size_of::<OCINumber>();
+        for item in self.iter() {
+            params.bind(pos, SQLT_VNU, &item.num as *const OCINumber as _, len, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &[&Number<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = size_of::<OCINumber>();
+        for item in self.iter() {
+            params.bind(pos, SQLT_VNU, &item.num as *const OCINumber as _, len, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &mut [&mut Number<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = size_of::<OCINumber>();
+        for item in self.iter_mut() {
+            params.bind_out(pos, SQLT_VNU, &mut item.num as *mut OCINumber as _, len, len, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}

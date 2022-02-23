@@ -30,3 +30,33 @@ impl ToSql for &mut Date<'_> {
         Ok(pos + 1)
     }
 }
+
+impl ToSql for &[Date<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter() {
+            params.bind(pos, SQLT_ODT, &item.date as *const OCIDate as _, size_of::<OCIDate>(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &[&Date<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter() {
+            params.bind(pos, SQLT_ODT, &item.date as *const OCIDate as _, size_of::<OCIDate>(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &mut [&mut Date<'_>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            params.bind_out(pos, SQLT_ODT, &mut item.date as *mut OCIDate as _, size_of::<OCIDate>(), size_of::<OCIDate>(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}

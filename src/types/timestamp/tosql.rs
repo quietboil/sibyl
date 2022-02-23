@@ -25,6 +25,36 @@ macro_rules! impl_ts_to_sql {
                     Ok(pos + 1)
                 }
             }
+            impl ToSql for &[DateTime<'_, $ts>] {
+                fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                    let len = std::mem::size_of::<*mut <$ts as DescriptorType>::OCIType>();
+                    for item in self.iter() {
+                        params.bind(pos, <$ts>::sql_type(), item.datetime.as_ptr() as _, len, stmt, err)?;
+                        pos += 1;
+                    }
+                    Ok(pos)
+                }
+            }
+            impl ToSql for &[&DateTime<'_, $ts>] {
+                fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                    let len = std::mem::size_of::<*mut <$ts as DescriptorType>::OCIType>();
+                    for item in self.iter() {
+                        params.bind(pos, <$ts>::sql_type(), item.datetime.as_ptr() as _, len, stmt, err)?;
+                        pos += 1;
+                    }
+                    Ok(pos)
+                }
+            }
+            impl ToSql for &mut [&mut DateTime<'_, $ts>] {
+                fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                    let len = std::mem::size_of::<*mut <$ts as DescriptorType>::OCIType>();
+                    for item in self.iter_mut() {
+                        params.bind_out(pos, <$ts>::sql_type(), item.datetime.as_mut_ptr() as _, len, len, stmt, err)?;
+                        pos += 1;
+                    }
+                    Ok(pos)
+                }
+            }
         )+
     };
 }

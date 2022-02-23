@@ -2,18 +2,18 @@
 
 Sibyl needs an installed Oracle client in order to link either `OCI.DLL` on Windows or `libclntsh.so` on Linux. The minimal supported client is 12.2 as Sibyl uses some API functions that are not available in earlier clients.
 
-> *Note* that while suporting 12.1 and older clients is definitely feasible, it was not a priority.
+> *Note* that while supporting 12.1 and older clients is definitely feasible, it was not a priority.
 
 # Using Sibyl In A Project
 
-Sibyl has 2 features - `blocking` and `nonblocking`. They are **exclusive** and **one** must be explictly selected as neither is the default. Thus, when Sibyl is used as a dependency, it might be included as:
+Sibyl has 2 features - `blocking` and `nonblocking`. They are **exclusive** and **one** must be explicitly selected as neither is the default. Thus, when Sibyl is used as a dependency, it might be included as:
 
 ```toml
 [dependencies]
 sibyl = { version = "0.6", features = ["blocking"] }
 ```
 
-A `nonblocking` mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controled by a set of exclusive features. For now, Sibyl supports `tokio`, `actix`, `async-std`, and `async-global`. One of these must be specified with the `nonblocking` feature. For example:
+A `nonblocking` mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controlled by a set of exclusive features. For now, Sibyl supports `tokio`, `actix`, `async-std`, and `async-global`. One of these must be specified with the `nonblocking` feature. For example:
 
 ```toml
 [dependencies]

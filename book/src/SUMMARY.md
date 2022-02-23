@@ -13,6 +13,8 @@
   - [Session Pool](session_pool.md)
   - [Connection Pool](conn_pool.md)
 - [SQL Statement Execution](exec.md)
+  - [Statement Arguments](args.md)
+  - [Slices as Arguments](slices.md)
 
 - [Oracle Data Types](odt.md)
   - [Varchar](odt/varchar.md)

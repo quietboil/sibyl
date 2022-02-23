@@ -72,6 +72,39 @@ impl ToSql for &mut RowID {
     }
 }
 
+impl ToSql for &[RowID] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = std::mem::size_of::<*mut OCIRowid>();
+        for item in self.iter() {
+            params.bind(pos, SQLT_RDD, item.0.as_ptr() as _, len, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &[&RowID] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = std::mem::size_of::<*mut OCIRowid>();
+        for item in self.iter() {
+            params.bind(pos, SQLT_RDD, item.0.as_ptr() as _, len, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &mut [&mut RowID] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let len = std::mem::size_of::<*mut OCIRowid>();
+        for item in self.iter_mut() {
+            params.bind_out(pos, SQLT_RDD, item.0.as_mut_ptr() as _, len, len, stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
 impl AttrGetInto for RowID {
     fn as_mut_ptr(&mut self) -> *mut c_void {
         self.0.get_ptr().get() as _

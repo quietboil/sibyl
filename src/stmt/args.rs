@@ -75,6 +75,52 @@ impl_num_to_sql!{ u8, u16, u32, u64, usize => SQLT_UIN }
 impl_num_to_sql!{ f32 => SQLT_BFLOAT }
 impl_num_to_sql!{ f64 => SQLT_BDOUBLE }
 
+// impl ToSql for &[&mut i8] {
+//     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+//         for &mut num in self.iter_mut() {
+//             let ptr = num as *mut i8;
+//             let len = size_of::<i8>();
+//             params.bind_out(pos, SQLT_INT, ptr as _, len, len, stmt, err)?;
+//             pos += 1;
+//         }
+//         Ok(pos)
+//     }
+// }
+
+macro_rules! impl_num_slice_to_sql {
+    ($($t:ty),+ => $sqlt:ident) => {
+        $(
+            impl ToSql for &[$t] {
+                fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                    for num in self.iter() {
+                        let ptr = num as *const $t;
+                        let len = size_of::<$t>();
+                        params.bind(pos, $sqlt, ptr as _, len, stmt, err)?;
+                        pos += 1;
+                    }
+                    Ok(pos)
+                }
+            }
+            impl ToSql for &mut [&mut $t] {
+                fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                    for num in self.iter_mut() {
+                        let ptr = *num as *mut $t;
+                        let len = size_of::<$t>();
+                        params.bind_out(pos, $sqlt, ptr as _, len, len, stmt, err)?;
+                        pos += 1;
+                    }
+                    Ok(pos)
+                }
+            }
+        )+
+    };
+}
+
+impl_num_slice_to_sql!{ i8, i16, i32, i64, isize => SQLT_INT }
+impl_num_slice_to_sql!{ u16, u32, u64, usize => SQLT_UIN }
+impl_num_slice_to_sql!{ f32 => SQLT_BFLOAT }
+impl_num_slice_to_sql!{ f64 => SQLT_BDOUBLE }
+
 impl ToSql for &str {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_CHR, (*self).as_ptr() as _, (*self).len(), stmt, err)?;
@@ -89,6 +135,16 @@ impl ToSql for &&str {
     }
 }
 
+impl ToSql for &[&str] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for &txt in self.iter() {
+            params.bind(pos, SQLT_CHR, txt.as_ptr() as _, txt.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
 impl ToSql for String {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_CHR, self.as_ptr() as _, self.len(), stmt, err)?;
@@ -100,6 +156,78 @@ impl ToSql for &String {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_CHR, (*self).as_ptr() as _, (*self).len(), stmt, err)?;
         Ok(pos + 1)
+    }
+}
+
+impl ToSql for &[String] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for txt in self.iter() {
+            params.bind(pos, SQLT_CHR, txt.as_ptr() as _, txt.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &[&String] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for &txt in self.iter() {
+            params.bind(pos, SQLT_CHR, txt.as_ptr() as _, txt.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &mut String {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        params.bind_out(pos, SQLT_CHR, unsafe { self.as_mut_vec().as_mut_ptr() } as _, self.len(), self.capacity(), stmt, err)?;
+        Ok(pos + 1)
+    }
+
+    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {        
+        let new_len = params.out_data_len(pos);
+        unsafe {
+            self.as_mut_vec().set_len(new_len)
+        }
+    }
+}
+
+impl ToSql for &mut [String] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for txt in self.iter_mut() {
+            params.bind_out(pos, SQLT_CHR, unsafe { txt.as_mut_vec().as_mut_ptr() } as _, txt.len(), txt.capacity(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {        
+        for txt in self.iter_mut() {
+            let new_len = params.out_data_len(pos);
+            unsafe {
+                (*txt).as_mut_vec().set_len(new_len)
+            }
+        }
+    }
+}
+
+impl ToSql for &mut [&mut String] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for txt in self.iter_mut() {
+            params.bind_out(pos, SQLT_CHR, unsafe { (*txt).as_mut_vec().as_mut_ptr() } as _, (*txt).len(), (*txt).capacity(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {        
+        for txt in self.iter_mut() {
+            let new_len = params.out_data_len(pos);
+            unsafe {
+                (*txt).as_mut_vec().set_len(new_len)
+            }
+        }
     }
 }
 
@@ -128,20 +256,6 @@ impl ToSql for &Vec<u8> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_LBI, (*self).as_ptr() as _, (*self).len(), stmt, err)?;
         Ok(pos + 1)
-    }
-}
-
-impl ToSql for &mut String {
-    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        params.bind_out(pos, SQLT_CHR, unsafe { self.as_mut_vec().as_mut_ptr() } as _, self.len(), self.capacity(), stmt, err)?;
-        Ok(pos + 1)
-    }
-
-    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {        
-        let new_len = params.out_data_len(pos);
-        unsafe {
-            self.as_mut_vec().set_len(new_len)
-        }
     }
 }
 
