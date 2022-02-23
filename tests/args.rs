@@ -36,4 +36,39 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn num_args() -> Result<()> {
+        let oracle = env()?;
+        let dbname = std::env::var("DBNAME").expect("database name");
+        let dbuser = std::env::var("DBUSER").expect("user name");
+        let dbpass = std::env::var("DBPASS").expect("password");
+        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+
+        let stmt = session.prepare("
+            INSERT INTO hr.locations (location_id, state_province, city, postal_code, street_address)
+            VALUES (:1, :2, :2, :3, :2)
+        ")?;
+        let num_rows = stmt.execute((3333, "N/A", (), "00000", ()))?;
+        assert_eq!(num_rows, 1);
+
+        let stmt = session.prepare("
+            SELECT state_province, city, postal_code, street_address
+              FROM hr.locations
+             WHERE location_id = :id
+        ")?;
+        let row = stmt.query_single(3333)?;
+        assert!(row.is_some());
+        let row = row.unwrap();
+        let state_province : &str = row.get(0)?;
+        assert_eq!(state_province, "N/A");
+        let city : &str = row.get(1)?;
+        assert_eq!(city, "N/A");
+        let postal_code : &str = row.get(2)?;
+        assert_eq!(postal_code, "00000");
+        let street_address : &str = row.get(3)?;
+        assert_eq!(street_address, "N/A");
+
+        Ok(())
+    }
 }
