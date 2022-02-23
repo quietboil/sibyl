@@ -223,23 +223,25 @@ impl<T1,T2> ToSql for ((&str, T1), (&str, T2)) where T1: ToSql, T2: ToSql {
 }
 
 macro_rules! impl_tuple_args {
-    ($($name:ident)+) => {
-        impl<$($name),+> ToSql for ($($name),+) where $($name: ToSql),+ {
+    ($head:ident $($tail:ident)+) => {
+        impl<$head $(, $tail)*> ToSql for ($head $(, $tail)*) where $head: ToSql $(, $tail: ToSql)* {
             #[allow(non_snake_case)]
             fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                let ($(ref mut $name),+) = *self;
+                let (ref mut $head $(, ref mut $tail)*) = *self;
+                let pos = $head.bind_to(pos, params, stmt, err)?;
                 $(
-                    let pos = $name.bind_to(pos, params, stmt, err)?;
-                )+
+                    let pos = $tail.bind_to(pos, params, stmt, err)?;
+                )*
                 Ok(pos)
             }
-            #[allow(non_snake_case,unused_assignments)]
+            #[allow(non_snake_case)]
             fn set_len_from_bind(&mut self, mut pos: usize, params: &Params) {
-                let ($(ref mut $name),+) = *self;
+                let (ref mut $head $(, ref mut $tail)*) = *self;
+                $head.set_len_from_bind(pos, params);
                 $(
-                    $name.set_len_from_bind(pos, params);
                     pos += 1;
-                )+
+                    $tail.set_len_from_bind(pos, params);
+                )*
             }
         }
     };
