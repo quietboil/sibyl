@@ -70,13 +70,23 @@ impl Params {
         }
     }
 
+    /// Returns the bind name without an optional leading colon
+    fn strip_colon(name: &str) -> &str {
+        if name.starts_with(':') {
+            &name[1..]
+        } else {
+            name
+        }
+    }
+
     /// Returns index of the parameter placeholder.
     pub(crate) fn index_of(&self, name: &str) -> Result<usize> {
         // Assume `name` is already uppercase and use it as-is first.
         // Explicitly convert to uppercase only if as-is search fails.
-        if let Some(&ix) = self.idxs.get(&name[1..]) {
+        let name = Self::strip_colon(name);
+        if let Some(&ix) = self.idxs.get(name) {
             Ok(ix)
-        } else if let Some(&ix) = self.idxs.get(name[1..].to_uppercase().as_str()) {
+        } else if let Some(&ix) = self.idxs.get(name.to_uppercase().as_str()) {
             Ok(ix)
         } else {
             Err(Error::msg(format!("Statement does not define parameter placeholder {}", name)))
@@ -154,13 +164,14 @@ impl Params {
     }
 
     /// Checks whether the value returned for the output parameter is NULL.
-    pub(super) fn is_null(&self, pos: impl Position) -> Result<bool> {
+    pub(super) fn is_null(&self, pos: impl Position) -> Result<bool> {        
         pos.name()
-            .and_then(|name|
+            .and_then(|name| {
+                let name = Self::strip_colon(name);
                 self.idxs
-                    .get(&name[1..])
-                    .or(self.idxs.get(name[1..].to_uppercase().as_str()))
-            )
+                    .get(name)
+                    .or(self.idxs.get(name.to_uppercase().as_str()))
+            })
             .map(|ix| *ix)
             .or(pos.index())
             .map(|ix|
@@ -218,6 +229,44 @@ mod tests {
         assert_eq!(params.index_of(":NA")?, 1);
         assert_eq!(params.index_of(":CODE")?, 2);
 
+        Ok(())
+    }
+
+    #[test]
+    fn no_colon_arg_names() -> std::result::Result<(),Box<dyn std::error::Error>> {
+        let dbname = std::env::var("DBNAME")?;
+        let dbuser = std::env::var("DBUSER")?;
+        let dbpass = std::env::var("DBPASS")?;
+        let oracle = Environment::new()?;
+        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+
+        let stmt = session.prepare("
+            UPDATE hr.employees
+               SET salary = Round(salary * :rate, -2)
+             WHERE employee_id = :id
+            RETURN salary INTO :new_salary
+        ")?;
+        let mut new_salary = 0u16;
+        let num_updated = stmt.execute((
+            ("ID",         107             ),
+            ("RATE",       1.07            ),
+            ("NEW_SALARY", &mut new_salary ),
+        ))?;
+
+        assert_eq!(num_updated, 1);
+        assert!(!stmt.is_null("NEW_SALARY")?);
+        assert_eq!(new_salary, 4500);
+
+        let num_updated = stmt.execute((
+            ("ID",         99              ),
+            ("RATE",       1.03            ),
+            ("NEW_SALARY", &mut new_salary ),
+        ))?;
+
+        assert_eq!(num_updated, 0);
+        assert!(stmt.is_null("NEW_SALARY")?);
+
+        session.rollback()?;
         Ok(())
     }
 }

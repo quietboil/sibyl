@@ -12,6 +12,12 @@ or bind a value to `:id` by name as:
 let row = stmt.query_single((":ID", 103))?;
 ```
 
+The leading colon in name part of the name-value argument tuple is optional. Depending on your preferences and/or tooling you might specify parameter placeholder name to bind argument value to without a colon:
+
+```rust,ignore
+let row = stmt.query_single(("ID", 103))?;
+```
+
 > Note one caveat - until [min_specialization][1] is stabilized Sibyl has no way of distinguishing whether a 2-item tuple is used to pass a single named argument or 2 positional arguments. For the moment you must use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is skipped, so effectively only first 2 arguments are used. For example:
 
 ```rust,ignore
