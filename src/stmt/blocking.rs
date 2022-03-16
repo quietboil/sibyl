@@ -52,7 +52,7 @@ impl<'a> Statement<'a> {
     - a value: `val` (IN)
     - a reference: `&val` (IN)
     - a mutable reference: `&mut val` (OUT or INOUT)
-    - a 2-item tuple where first item is a parameter name: `(":NAME", arg)`
+    - a 2-item tuple where first item is a parameter name: `(":NAME", val)`
 
     # Example
 
@@ -112,7 +112,7 @@ impl<'a> Statement<'a> {
     Where each argument can be represented by:
     - a value: `val` (IN)
     - a reference: `&val` (IN)
-    - a 2-item tuple where first item is a parameter name: `(":NAME", arg)`
+    - a 2-item tuple where first item is a parameter name: `(":NAME", val)`
 
     # Example
 
@@ -193,7 +193,7 @@ impl<'a> Statement<'a> {
     Where each argument can be represented by:
     - a value: `val` (IN)
     - a reference: `&val` (IN)
-    - a 2-item tuple where first item is a parameter name: `(":NAME", arg)`
+    - a 2-item tuple where first item is a parameter name: `(":NAME", val)`
 
     # Returns
 
