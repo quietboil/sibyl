@@ -39,14 +39,13 @@ impl<'a> SessionPool<'a> {
             };
             Ok(name)
         }).await??;
-        Ok(Self {env: env.get_env(), err, pool, name, phantom_env: PhantomData})
+        Ok(Self {env: env.get_env(), err, info, pool, name, phantom_env: PhantomData})
     }
 
-    pub(crate) async fn get_svc_ctx(&self) -> Result<Ptr<OCISvcCtx>> {
+    pub(crate) async fn get_svc_ctx(&self, auth_info: &OCIAuthInfo) -> Result<Ptr<OCISvcCtx>> {
         let env_ptr = self.env.get_ptr();
         let err_ptr = self.err.get_ptr();
-
-        let inf = Handle::<OCIAuthInfo>::new(&env_ptr)?;
+        let inf_ptr = Ptr::<OCIAuthInfo>::from(auth_info);
 
         let pool_name_ptr = Ptr::new(self.name.as_ptr() as *mut u8);
         let pool_name_len = self.name.len() as u32;
@@ -55,7 +54,7 @@ impl<'a> SessionPool<'a> {
             let mut svc = Ptr::<OCISvcCtx>::null();
             let mut found = 0u8;
             oci::session_get(
-                &env_ptr, &err_ptr, svc.as_mut_ptr(), &inf,
+                &env_ptr, &err_ptr, svc.as_mut_ptr(), &inf_ptr,
                 pool_name_ptr.as_ref(), pool_name_len, &mut found,
                 OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
             )?;

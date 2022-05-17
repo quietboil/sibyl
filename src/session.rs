@@ -18,6 +18,7 @@ use crate::task;
 /// drop to allow statements and cursors to be dropped asynchronously.
 pub(crate) struct SvcCtx {
     svc: Ptr<OCISvcCtx>,
+    inf: Handle<OCIAuthInfo>,
     err: Handle<OCIError>,
     env: Arc<Handle<OCIEnv>>,
     #[cfg(feature="nonblocking")]
@@ -27,6 +28,7 @@ pub(crate) struct SvcCtx {
 impl Drop for SvcCtx {
     #[cfg(feature="blocking")]
     fn drop(&mut self) {
+        let _ = self.inf;
         let svc : &OCISvcCtx = self.as_ref();
         let err : &OCIError  = self.as_ref();
         oci_trans_rollback(svc, err);
@@ -35,6 +37,7 @@ impl Drop for SvcCtx {
 
     #[cfg(feature="nonblocking")]
     fn drop(&mut self) {
+        let _ = self.inf;
         let mut svc = Ptr::<OCISvcCtx>::null();
         svc.swap(&mut self.svc);
         let err = Handle::take(&mut self.err);

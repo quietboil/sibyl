@@ -25,15 +25,14 @@ impl<'a> SessionPool<'a> {
             OCI_SPC_HOMOGENEOUS | OCI_SPC_STMTCACHE
         )?;
         let name = unsafe { std::slice::from_raw_parts(pool_name_ptr, pool_name_len as usize) };
-        Ok(Self {env: env.get_env(), err, pool, name, phantom_env: PhantomData})
+        Ok(Self {env: env.get_env(), err, info, pool, name, phantom_env: PhantomData})
     }
 
-    pub(crate) fn get_svc_ctx(&self) -> Result<Ptr<OCISvcCtx>> {
-        let inf = Handle::<OCIAuthInfo>::new(self.env.as_ref())?;
+    pub(crate) fn get_svc_ctx(&self, auth_info: &OCIAuthInfo) -> Result<Ptr<OCISvcCtx>> {
         let mut svc = Ptr::<OCISvcCtx>::null();
         let mut found = 0u8;
         oci::session_get(
-            self.env.as_ref(), &self.err, svc.as_mut_ptr(), &inf,
+            self.env.as_ref(), &self.err, svc.as_mut_ptr(), &auth_info,
             self.name.as_ptr(), self.name.len() as u32, &mut found,
             OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
         )?;

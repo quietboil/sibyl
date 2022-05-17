@@ -17,21 +17,27 @@ impl SvcCtx {
             env.as_ref(), &err, svc.as_mut_ptr(), &inf, dblink.as_ptr(), dblink.len() as u32,
             &mut found, OCI_SESSGET_STMTCACHE
         )?;
-        Ok(SvcCtx { env: env.get_env(), err, svc })
+        Ok(SvcCtx { env: env.get_env(), err, inf, svc })
     }
 
     pub(crate) fn from_session_pool(pool: &SessionPool) -> Result<Self> {
         let env = pool.get_env();
         let err = Handle::<OCIError>::new(env.as_ref())?;
-        let svc = pool.get_svc_ctx()?;
-        Ok(SvcCtx { env, err, svc })
+        let inf = Handle::<OCIAuthInfo>::new(env.as_ref())?;
+        let svc = pool.get_svc_ctx(&inf)?;
+        Ok(SvcCtx { env, err, inf, svc })
     }
 
-    pub(crate) fn from_connection_pool(pool: &ConnectionPool, user: &str, pass: &str) -> Result<Self> {
+    pub(crate) fn from_connection_pool(pool: &ConnectionPool, username: &str, password: &str) -> Result<Self> {
         let env = pool.get_env();
         let err = Handle::<OCIError>::new(env.as_ref())?;
-        let svc = pool.get_svc_ctx(user, pass)?;
-        Ok(SvcCtx { env, err, svc })
+        let inf = Handle::<OCIAuthInfo>::new(env.as_ref())?;
+        inf.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", &err)?;
+        inf.set_attr(OCI_ATTR_USERNAME, username, &err)?;
+        inf.set_attr(OCI_ATTR_PASSWORD, password, &err)?;
+
+        let svc = pool.get_svc_ctx(&inf)?;
+        Ok(SvcCtx { env, err, inf, svc })
     }
 }
 

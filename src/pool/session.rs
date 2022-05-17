@@ -22,6 +22,7 @@ it is returned to the pool.
 */
 pub struct SessionPool<'a> {
     pool: Handle<OCISPool>,
+    info: Handle::<OCIAuthInfo>,
     err:  Handle<OCIError>,
     env:  Arc<Handle<OCIEnv>>,
     name: &'a [u8],
@@ -30,6 +31,7 @@ pub struct SessionPool<'a> {
 
 impl Drop for SessionPool<'_> {
     fn drop(&mut self) {
+        let _ = self.info;
         oci_session_pool_destroy(&self.pool, &self.err);
     }
 }

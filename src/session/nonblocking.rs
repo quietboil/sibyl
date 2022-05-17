@@ -16,18 +16,19 @@ impl SvcCtx {
 
         let env_ptr = Ptr::<OCIEnv>::from(env.as_ref());
         let err_ptr = Ptr::<OCIError>::from(err.as_ref());
+        let inf_ptr = Ptr::<OCIAuthInfo>::from(inf.as_ref());
         let dblink_ptr = Ptr::new(dblink.as_ptr() as *mut u8);
         let dblink_len = dblink.len() as u32;
         let svc = task::execute_blocking(move || -> Result<Ptr<OCISvcCtx>> {
             let mut svc = Ptr::<OCISvcCtx>::null();
             let mut found = 0u8;
             oci::session_get(
-                &env_ptr, &err_ptr, svc.as_mut_ptr(), inf.as_ref(), dblink_ptr.as_ref() as _, dblink_len,
+                &env_ptr, &err_ptr, svc.as_mut_ptr(), &inf_ptr, dblink_ptr.as_ref() as _, dblink_len,
                 &mut found, OCI_SESSGET_STMTCACHE
             )?;
             Ok(svc)
         }).await??;
-        Ok(Self { env: env.get_env(), err, svc, active_future: AtomicUsize::new(0) })
+        Ok(Self { env: env.get_env(), err, inf, svc, active_future: AtomicUsize::new(0) })
     }
 
     fn set_nonblocking_mode(&self) -> Result<()> {
@@ -38,8 +39,9 @@ impl SvcCtx {
     async fn from_session_pool(pool: &SessionPool<'_>) -> Result<Self> {
         let env = pool.get_env();
         let err = Handle::<OCIError>::new(env.as_ref())?;
-        let svc = pool.get_svc_ctx().await?;
-        Ok(Self { env, err, svc, active_future: AtomicUsize::new(0) })
+        let inf = Handle::<OCIAuthInfo>::new(env.as_ref())?;
+        let svc = pool.get_svc_ctx(&inf).await?;
+        Ok(Self { env, err, inf, svc, active_future: AtomicUsize::new(0) })
     }
 
     pub(crate) fn lock(&self, id: usize) -> bool {

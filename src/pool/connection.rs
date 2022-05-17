@@ -53,15 +53,11 @@ impl<'a> ConnectionPool<'a> {
         Ok(Self {env: env.get_env(), err, pool, name, phantom_env: PhantomData})
     }
 
-    pub(crate) fn get_svc_ctx(&self, username: &str, password: &str) -> Result<Ptr<OCISvcCtx>> {
-        let inf = Handle::<OCIAuthInfo>::new(self.env.as_ref())?;
-        inf.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", &self.err)?;
-        inf.set_attr(OCI_ATTR_USERNAME, username, &self.err)?;
-        inf.set_attr(OCI_ATTR_PASSWORD, password, &self.err)?;
+    pub(crate) fn get_svc_ctx(&self, auth_info: &OCIAuthInfo) -> Result<Ptr<OCISvcCtx>> {
         let mut svc = Ptr::<OCISvcCtx>::null();
         let mut found = 0u8;
         oci::session_get(
-            self.env.as_ref(), &self.err, svc.as_mut_ptr(), &inf,
+            self.env.as_ref(), &self.err, svc.as_mut_ptr(), &auth_info,
             self.name.as_ptr(), self.name.len() as u32, &mut found,
             OCI_SESSGET_CPOOL | OCI_SESSGET_STMTCACHE
         )?;

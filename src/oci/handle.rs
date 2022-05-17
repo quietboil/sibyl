@@ -26,13 +26,7 @@ impl<T: HandleType> AsRef<T> for Handle<T> {
     }
 }
 
-unsafe impl Sync for Handle<OCIEnv> {}
-unsafe impl Sync for Handle<OCIError> {}
-unsafe impl Sync for Handle<OCISPool> {}
-unsafe impl Sync for Handle<OCICPool> {}
-unsafe impl Sync for Handle<OCIServer> {}
-unsafe impl Sync for Handle<OCISvcCtx> {}
-unsafe impl Sync for Handle<OCISession> {}
+unsafe impl<T: HandleType> Sync for Handle<T> {}
 
 impl<T: HandleType> Drop for Handle<T> {
     fn drop(&mut self) {
