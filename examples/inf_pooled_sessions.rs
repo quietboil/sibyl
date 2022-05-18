@@ -28,13 +28,14 @@ fn main() -> sibyl::Result<()> {
     for i in 0..workers.capacity() {
         let pool = pool.clone();
         let handle = thread::spawn(move || -> Result<()> {
-            for n in 1..1_000_000 {
+            for n in 1..10_000 {
                 for _ in 0..1000 {
                     let report = select_latest_hire(&pool)?;
                     assert_eq!(report, "Amit Banda was hired on April 21, 2008");
                 }
                 println!("{}:{}", i, n);
             }
+            Ok(())
         });
         workers.push(handle);
     }

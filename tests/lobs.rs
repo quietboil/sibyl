@@ -657,16 +657,26 @@ mod nonblocking {
     }
 
     #[test]
-    fn temp_blob() -> Result<()> {
+    fn temp_blob_api() -> Result<()> {
         block_on(async {
             let oracle = sibyl::env()?;
             let session = connect(&oracle).await?;
-            check_or_create_test_table(&session).await?;
 
             let lob = BLOB::temp(&session, Cache::No).await?;
 
             let is_temp = lob.is_temp().await?;
             assert!(is_temp);
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn temp_blob_dbms() -> Result<()> {
+        block_on(async {
+            let oracle = sibyl::env()?;
+            let session = connect(&oracle).await?;
+            check_or_create_test_table(&session).await?;
 
             let mut lob = BLOB::empty(&session)?;
             let is_temp = lob.is_temp().await?;
