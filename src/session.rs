@@ -606,6 +606,8 @@ impl Session<'_> {
     # let dbpass = std::env::var("DBPASS").expect("password");
     # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
     let orig_name = session.current_schema()?;
+    // Workaround for 19.15 client isssue - `current_schema` returns empty string until set by `set_current_schema`
+    let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
     session.set_current_schema("HR")?;
 
     let current_schema = session.current_schema()?;
@@ -625,6 +627,7 @@ impl Session<'_> {
     # let dbpass = std::env::var("DBPASS").expect("password");
     # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
     # let orig_name = session.current_schema()?;
+    # let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
     # session.set_current_schema("HR")?;
     # let current_schema = session.current_schema()?;
     # assert_eq!(current_schema, "HR");
@@ -665,10 +668,12 @@ impl Session<'_> {
     # let dbpass = std::env::var("DBPASS").expect("password");
     # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
     let orig_name = session.current_schema()?;
+    // Workaround for 19.15 client isssue - `current_schema` returns empty string until set by `set_current_schema`
+    let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
 
     session.set_current_schema("HR")?;
 
-    assert_eq!(session.current_schema()?, "HR");
+    assert_eq!(session.current_schema()?, "HR", "current schema is HR now");
     let stmt = session.prepare("
         SELECT schemaname
           FROM v$session
@@ -676,10 +681,10 @@ impl Session<'_> {
     ")?;
     let row = stmt.query_single(())?.unwrap();
     let schema_name : &str = row.get(0)?;
-    assert_eq!(schema_name, "HR");
+    assert_eq!(schema_name, "HR", "v$session reports schema as HR");
 
     session.set_current_schema(orig_name)?;
-    assert_eq!(session.current_schema()?, orig_name);
+    assert_eq!(session.current_schema()?, orig_name, "current schema is restored");
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
@@ -691,6 +696,7 @@ impl Session<'_> {
     # let dbpass = std::env::var("DBPASS").expect("password");
     # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
     # let orig_name = session.current_schema()?;
+    # let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
     # session.set_current_schema("HR")?;
     # assert_eq!(session.current_schema()?, "HR");
     # let stmt = session.prepare("

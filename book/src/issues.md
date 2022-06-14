@@ -2,6 +2,8 @@
 
 12.2 client does not support `OCI_ATTR_SPOOL_MAX_USE_SESSION` and thus `SessionPool`'s `session_max_use_count` and `set_session_max_use_count` will fail on it with `ORA-24315: illegal attribute type`.
 
+19.15 client does not return current schema (via `Session::current_schema`) until it is explicitly set via `Session::set_current_schema`. `Session::current_schema` works as expected in 19.13 client.
+
 21.4 client (at least with 19.3 database) is strangely picky about names of parameter placeholders for LOB columns. For example, if a table was created with the following LOB column:
 
 ```sql
