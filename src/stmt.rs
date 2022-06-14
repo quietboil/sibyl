@@ -16,6 +16,7 @@ mod blocking;
 mod nonblocking;
 
 pub use args::ToSql;
+pub use data::FromSql;
 pub use bind::Params;
 pub use cursor::Cursor;
 pub use rows::{Row, Rows};

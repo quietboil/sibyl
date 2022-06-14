@@ -146,9 +146,10 @@ pub use err::Error;
 pub use env::Environment;
 pub use session::Session;
 pub use pool::{SessionPool, SessionPoolGetMode};
-pub use stmt::{Statement, Cursor, Rows, Row, ToSql, ColumnType, Position};
+pub use stmt::{Statement, Cursor, Rows, Row, ToSql, FromSql, ColumnType, Position};
 pub use types::{Date, Raw, Number, Varchar, RowID, DateTime, Interval};
-pub use oci::{Cache, CharSetForm};
+pub use types::number::Integer;
+pub use oci::{Cache, CharSetForm, client_version};
 pub use lob::LOB;
 
 /// A specialized `Result` type for Sibyl.

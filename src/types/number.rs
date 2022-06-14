@@ -4,7 +4,8 @@
 mod convert;
 mod tosql;
 
-pub(crate) use self::convert::{Integer, Real, from_number, to_string, to_real};
+pub use self::convert::Integer;
+pub(crate) use self::convert::{Real, from_number, to_string, to_real};
 
 use super::{Ctx, interval::Interval};
 use crate::{Result, oci::{self, *}};

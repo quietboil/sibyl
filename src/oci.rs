@@ -511,6 +511,15 @@ extern "C" {
 }
 
 extern "C" {
+    // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/miscellaneous-functions.html#GUID-83879DA9-768D-4ED6-AFFE-F9D216E4D9B8
+    fn OCIClientVersion(
+        feature_release:         *mut i32,
+        release_update:          *mut i32,
+        release_update_revision: *mut i32,
+        increment:               *mut i32,
+        ext:                     *mut i32,
+    );
+
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/miscellaneous-functions.html#GUID-4B99087C-74F6-498A-8310-D6645172390A
     pub(crate) fn OCIErrorGet(
         hndlp:      *const c_void,
@@ -1987,6 +1996,36 @@ extern "C" {
 
 // ================================================================================================
 
+/**
+Returns the 5 digit tuple with the Oracle database version number of the client library at run time.
+
+The 5 digits of the version number are: <feature release>, <release update>, <release update revision>, 
+<release update increment>, <extension>. 
+*/
+pub fn client_version() -> (i32, i32, i32, i32, i32) {
+    let mut release  = std::mem::MaybeUninit::<i32>::uninit();
+    let mut update   = std::mem::MaybeUninit::<i32>::uninit();
+    let mut revision = std::mem::MaybeUninit::<i32>::uninit();
+    let mut incr     = std::mem::MaybeUninit::<i32>::uninit();
+    let mut ext      = std::mem::MaybeUninit::<i32>::uninit();
+    unsafe {
+        OCIClientVersion(
+            release.as_mut_ptr(),
+            update.as_mut_ptr(),
+            revision.as_mut_ptr(),
+            incr.as_mut_ptr(),
+            ext.as_mut_ptr(),
+        );
+    }
+    unsafe { (
+        release.assume_init(),
+        update.assume_init(),
+        revision.assume_init(),
+        incr.assume_init(),
+        ext.assume_init(),
+    ) }
+}
+
 pub(crate) fn oci_session_release(svc: &OCISvcCtx, err: &OCIError) -> i32 {
     unsafe { OCISessionRelease(svc, err, std::ptr::null(), 0, OCI_DEFAULT) }
 }
@@ -2006,7 +2045,6 @@ pub(crate) fn oci_stmt_release(stmt: &OCIStmt, err: &OCIError) -> i32 {
 pub(crate) fn oci_trans_rollback(svchp: &OCISvcCtx, errhp: &OCIError) -> i32 {
     unsafe { OCITransRollback(svchp, errhp, OCI_DEFAULT) }
 }
-
 
 // ================================================================================================
 

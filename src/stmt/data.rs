@@ -10,13 +10,14 @@ use crate::{
     lob::{ self, LOB },
 };
 
-/// A trait for types which instances can be created from the returned Oracle values.
+/// A trait for types which values can be created from the returned Oracle data.
 pub trait FromSql<'a> : Sized {
     /**
         Converts, if possible, data stored in the column buffer into the requested
-        type and returns the instance of it. Returns error if the conversion fails
-        or conversion from the type of the column buffer into a requested type is
-        not defined.
+        type and returns the created value.
+        
+        Returns error if the conversion fails or conversion from the type of the
+        column buffer into a requested type is not defined.
     */
     fn value(row: &'a Row<'a>, col: &mut Column) -> Result<Self>;
 }

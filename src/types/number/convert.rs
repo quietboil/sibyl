@@ -168,6 +168,8 @@ impl_int_into_num!(u8, u16, u32, u64, usize => u128);
 
 /// Trait for types that can be created from `OCINumber`
 pub trait FromNumber : Sized + Copy {
+    /// Creates a value of the implementing type from the referenced `OCINumber`.
+    /// Returns `Error` if the conversion fails.
     fn from_number(num: &OCINumber, err: &OCIError) -> Result<Self>;
 }
 
@@ -301,6 +303,12 @@ mod tests {
         assert_eq!("-31415926535897932384626433832795028842", txt);
         let val = num.to_int::<i128>()?;
         assert_eq!(-31415926535897932384626433832795028842i128, val);
+        let arg = Number::from_int(-100, &env)?;
+        let num = num.div(&arg)?;
+        let txt = num.to_string("TM")?;
+        assert_eq!(txt, "314159265358979323846264338327950288.42");
+        let val : i128 = num.to_int()?;
+        assert_eq!(val, 314159265358979323846264338327950288i128);
 
         let num = Number::from_int(std::u128::MAX, &env)?;
         let txt = num.to_string("TM")?;
