@@ -139,6 +139,7 @@
                     <main>
                         <h1 id="known-issues-with-some-clients"><a class="header" href="#known-issues-with-some-clients">Known Issues with Some Clients</a></h1>
 <p>12.2 client does not support <code>OCI_ATTR_SPOOL_MAX_USE_SESSION</code> and thus <code>SessionPool</code>'s <code>session_max_use_count</code> and <code>set_session_max_use_count</code> will fail on it with <code>ORA-24315: illegal attribute type</code>.</p>
+<p>19.15 client does not return current schema (via <code>Session::current_schema</code>) until it is explicitly set via <code>Session::set_current_schema</code>. <code>Session::current_schema</code> works as expected in 19.13 client.</p>
 <p>21.4 client (at least with 19.3 database) is strangely picky about names of parameter placeholders for LOB columns. For example, if a table was created with the following LOB column:</p>
 <pre><code class="language-sql">CREATE TABLE table_with_lob (
     id   NUMBER GENERATED ALWAYS AS IDENTITY,
