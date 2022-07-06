@@ -6,7 +6,7 @@ Sibyl is an [OCI][1]-based interface (a.k.a. a driver) between Rust applications
 
 Assuming an [HR sample schema][2] is installed, the following example program would report median salaries for each country in the specified region.
 
-### Bloking Mode Version
+### Blocking Mode Version
 
 ```rust,noplayground
 {{#include ../../examples/book_intro.rs:5:}}

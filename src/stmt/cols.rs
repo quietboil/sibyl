@@ -351,12 +351,13 @@ impl Columns {
         let mut names = HashMap::with_capacity(num_columns);
         let mut cols  = Vec::with_capacity(num_columns);
 
+        let utf8_factor = std::env::var("ORACLE_UTF8_CONV_FACTOR").ok().and_then(|val| val.parse::<u32>().ok()).unwrap_or(1);
         for i in 0..num_columns {
             let col_info = param::get((i + 1) as u32, OCI_HTYPE_STMT, stmt.as_ref(), err.as_ref())?;
             let data_type = col_info.get_attr::<u16>(OCI_ATTR_DATA_TYPE, err.as_ref())?;
             let data_size = match data_type {
                 SQLT_LNG | SQLT_LBI => max_long_fetch_size,
-                _ => col_info.get_attr::<u16>(OCI_ATTR_DATA_SIZE, err.as_ref())? as u32,
+                _ => col_info.get_attr::<u16>(OCI_ATTR_DATA_SIZE, err.as_ref())? as u32 * utf8_factor,
             };
             cols.push(Column::new(ColumnBuffer::new(data_type, data_size, &env, &err)?, col_info));
 
