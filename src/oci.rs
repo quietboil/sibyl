@@ -19,6 +19,31 @@ use libc::{size_t, c_void};
 
 use crate::{Error, Result};
 
+#[repr(align(4))]
+pub(crate) struct Aligned<T>(T);
+
+impl<T> Aligned<T> {
+    pub(crate) fn new(val: T) -> Self {
+        Self(val)
+    }
+    pub(crate) fn as_mut_ptr(&mut self) -> *mut T {
+        &mut self.0 as _
+    }
+}
+
+macro_rules! impl_from_aligned {
+    ($($t:ty),+) => {
+        $(
+            impl From<Aligned<$t>> for $t {
+                fn from(aligned: Aligned<$t>) -> Self {
+                    aligned.0
+                }
+            }
+        )+
+    };
+}
+
+impl_from_aligned![i8, u8, i16, u16];
 
 pub(crate) const OCI_DEFAULT                : u32 = 0;
 

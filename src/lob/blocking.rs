@@ -132,9 +132,9 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     because the operating system file on the server side must be checked to see if it is open.
     */
     pub fn is_open(&self) -> Result<bool> {
-        let mut flag = 0u8;
-        oci::lob_is_open(self.as_ref(), self.as_ref(), self.as_ref(), &mut flag)?;
-        Ok( flag != 0 )
+        let mut flag = oci::Aligned::new(0u8);
+        oci::lob_is_open(self.as_ref(), self.as_ref(), self.as_ref(), flag.as_mut_ptr())?;
+        Ok( <u8>::from(flag) != 0 )
     }
 
     /**
@@ -1506,9 +1506,9 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     */
     pub fn file_exists(&self) -> Result<bool> {
-        let mut exists = 0u8;
-        oci::lob_file_exists(self.as_ref(), self.as_ref(), self.as_ref(), &mut exists)?;
-        Ok( exists != 0 )
+        let mut exists = oci::Aligned::new(0u8);
+        oci::lob_file_exists(self.as_ref(), self.as_ref(), self.as_ref(), exists.as_mut_ptr())?;
+        Ok( <u8>::from(exists) != 0 )
     }
 
     /**
@@ -1539,9 +1539,9 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     */
     pub fn is_file_open(&self) -> Result<bool> {
-        let mut is_open = 0u8;
-        oci::lob_file_is_open(self.as_ref(), self.as_ref(), self.as_ref(), &mut is_open)?;
-        Ok( is_open != 0 )
+        let mut is_open = oci::Aligned::new(0u8);
+        oci::lob_file_is_open(self.as_ref(), self.as_ref(), self.as_ref(), is_open.as_mut_ptr())?;
+        Ok( <u8>::from(is_open) != 0 )
     }
 
     /**

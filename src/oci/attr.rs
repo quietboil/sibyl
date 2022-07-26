@@ -19,14 +19,31 @@ pub(crate) trait AttrGetInto {
     fn set_len(&mut self, _new_len: usize) {}
 }
 
+#[repr(align(8))]
+struct AttrVal<T>(mem::MaybeUninit<T>);
+
+impl<T> AttrVal<T> {
+    fn new() -> Self {
+        Self(mem::MaybeUninit::<T>::uninit())
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut T {
+        self.0.as_mut_ptr()
+    }
+
+    fn get(self) -> T {
+        unsafe { self.0.assume_init() }
+    }
+}
+
 pub(crate) fn get<O, A>(attr_type: u32, obj_type: u32, obj: &O, err: &OCIError) -> Result<A> 
 where O: OCIStruct
     , A: AttrGet
 {
-    let mut attr_val  = mem::MaybeUninit::<A::ValueType>::uninit();
+    let mut attr_val  = AttrVal::<A::ValueType>::new();
     let mut attr_size = 0u32;
     oci::attr_get(obj, obj_type, attr_val.as_mut_ptr() as _, &mut attr_size, attr_type, err)?;
-    Ok( AttrGet::new( unsafe { attr_val.assume_init() }, attr_size as usize) )
+    Ok( AttrGet::new(attr_val.get(), attr_size as usize) )
 }
 
 pub(crate) fn get_into<O, A>(attr_type: u32, into: &mut A, obj_type: u32, obj: &O, err: &OCIError) -> Result<()> 

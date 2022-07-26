@@ -335,11 +335,11 @@ impl<'a, T> DateTime<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
         ```
     */
     pub fn date(&self) -> Result<(i16, u8, u8)> {
-        let mut year  = 0i16;
-        let mut month = 0u8;
-        let mut day   = 0u8;
-        oci::date_time_get_date(self.ctx.as_context(), self.ctx.as_ref(), self, &mut year, &mut month, &mut day)?;
-        Ok( (year, month, day) )
+        let mut year  = oci::Aligned::new(0i16);
+        let mut month = oci::Aligned::new(0u8);
+        let mut day   = oci::Aligned::new(0u8);
+        oci::date_time_get_date(self.ctx.as_context(), self.ctx.as_ref(), self, year.as_mut_ptr(), month.as_mut_ptr(), day.as_mut_ptr())?;
+        Ok( (year.into(), month.into(), day.into()) )
     }
 
     /**
@@ -357,12 +357,12 @@ impl<'a, T> DateTime<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
         ```
     */
     pub fn time(&self) -> Result<(u8, u8, u8, u32)> {
-        let mut hour = 0u8;
-        let mut min  = 0u8;
-        let mut sec  = 0u8;
+        let mut hour = oci::Aligned::new(0u8);
+        let mut min  = oci::Aligned::new(0u8);
+        let mut sec  = oci::Aligned::new(0u8);
         let mut fsec = 0u32;
-        oci::date_time_get_time(self.ctx.as_context(), self.ctx.as_ref(), self, &mut hour, &mut min, &mut sec, &mut fsec)?;
-        Ok( (hour, min, sec, fsec) )
+        oci::date_time_get_time(self.ctx.as_context(), self.ctx.as_ref(), self, hour.as_mut_ptr(), min.as_mut_ptr(), sec.as_mut_ptr(), &mut fsec)?;
+        Ok( (hour.into(), min.into(), sec.into(), fsec) )
     }
 
     /**
@@ -429,10 +429,10 @@ impl<'a, T> DateTime<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
         ```
     */
     pub fn tz_offset(&self) -> Result<(i8, i8)> {
-        let mut hours = 0i8;
-        let mut min   = 0i8;
-        oci::date_time_get_time_zone_offset(self.ctx.as_context(), self.ctx.as_ref(), self, &mut hours, &mut min)?;
-        Ok( (hours, min) )
+        let mut hours = 0i32;
+        let mut min   = 0i32;
+        oci::date_time_get_time_zone_offset(self.ctx.as_context(), self.ctx.as_ref(), self, &mut hours as *mut i32 as _, &mut min as *mut i32 as _)?;
+        Ok( (hours as _, min as _) )
     }
 
     /**

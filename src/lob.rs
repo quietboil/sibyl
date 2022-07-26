@@ -21,9 +21,9 @@ impl InternalLob for OCIBLobLocator {}
 pub(crate) fn is_initialized<T>(locator: &Descriptor<T>, env: &OCIEnv, err: &OCIError) -> Result<bool>
 where T: DescriptorType<OCIType=OCILobLocator>
 {
-    let mut flag = 0u8;
-    oci::lob_locator_is_init(env, err, locator, &mut flag)?;
-    Ok( flag != 0 )
+    let mut flag = oci::Aligned::new(0u8);
+    oci::lob_locator_is_init(env, err, locator, flag.as_mut_ptr())?;
+    Ok( <u8>::from(flag) != 0 )
 }
 
 pub(crate) const LOB_IS_TEMP       : u32 = 1;
@@ -58,8 +58,8 @@ impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 's
                 OCILobFreeTemporary(svc, err, loc);
             }
         } else {
-            let mut flag = 0u8;
-            if oci::lob_is_temporary(svc, err, loc, &mut flag).is_ok() && flag != 0 {
+            let mut flag = oci::Aligned::new(0u8);
+            if oci::lob_is_temporary(svc, err, loc, flag.as_mut_ptr()).is_ok() && <u8>::from(flag) != 0 {
                 unsafe {
                     OCILobFreeTemporary(svc, err, loc);
                 }
@@ -335,9 +335,9 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     pub fn is_equal<U>(&self, other: &LOB<'a,U>) -> Result<bool>
     where U: DescriptorType<OCIType=OCILobLocator>
     {
-        let mut flag = 0u8;
-        oci::lob_is_equal(self.as_ref(), self.as_ref(), other.as_ref(), &mut flag)?;
-        Ok( flag != 0 )
+        let mut flag = oci::Aligned::new(0u8);
+        oci::lob_is_equal(self.as_ref(), self.as_ref(), other.as_ref(), flag.as_mut_ptr())?;
+        Ok( <u8>::from(flag) != 0 )
     }
 
     /**
@@ -346,9 +346,9 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     LOBs or binary files.
     */
     pub fn charset_form(&self) -> Result<CharSetForm> {
-        let mut csform = 0u8;
-        oci::lob_char_set_form(self.as_ref(), self.as_ref(), self.as_ref(), &mut csform)?;
-        let csform = match csform {
+        let mut csform = oci::Aligned::new(0u8);
+        oci::lob_char_set_form(self.as_ref(), self.as_ref(), self.as_ref(), csform.as_mut_ptr())?;
+        let csform = match csform.into() {
             SQLCS_IMPLICIT => CharSetForm::Implicit,
             SQLCS_NCHAR    => CharSetForm::NChar,
             _              => CharSetForm::Undefined
@@ -361,9 +361,9 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     it returns 0 because there is no concept of a character set for binary LOBs or binary files.
     */
     pub fn charset_id(&self) -> Result<u16> {
-        let mut csid = 0u16;
-        oci::lob_char_set_id(self.as_ref(), self.as_ref(), self.as_ref(), &mut csid)?;
-        Ok( csid )
+        let mut csid = oci::Aligned::new(0u16);
+        oci::lob_char_set_id(self.as_ref(), self.as_ref(), self.as_ref(), csid.as_mut_ptr())?;
+        Ok( csid.into() )
     }
 }
 
@@ -575,18 +575,18 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     pub fn file_name(&self) -> Result<(String,String)> {
         let mut dir  = String::with_capacity(30);
         let mut name = String::with_capacity(255);
-        let mut dir_len  = dir.capacity() as u16;
-        let mut name_len = name.capacity() as u16;
+        let mut dir_len  = oci::Aligned::new(dir.capacity() as u16);
+        let mut name_len = oci::Aligned::new(name.capacity() as u16);
         unsafe {
             let dir  = dir.as_mut_vec();
             let name = name.as_mut_vec();
             oci::lob_file_get_name(
                 self.as_ref(), self.as_ref(), self.as_ref(),
-                dir.as_mut_ptr(),  &mut dir_len  as *mut u16,
-                name.as_mut_ptr(), &mut name_len as *mut u16
+                dir.as_mut_ptr(),  dir_len.as_mut_ptr(),
+                name.as_mut_ptr(), name_len.as_mut_ptr(),
             )?;
-            dir.set_len(dir_len as usize);
-            name.set_len(name_len as usize);
+            dir.set_len(<u16>::from(dir_len) as usize);
+            name.set_len(<u16>::from(name_len) as usize);
         }
         Ok( ( dir, name ) )
     }

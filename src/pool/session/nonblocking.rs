@@ -52,10 +52,10 @@ impl<'a> SessionPool<'a> {
 
         task::execute_blocking(move || -> Result<Ptr<OCISvcCtx>> {
             let mut svc = Ptr::<OCISvcCtx>::null();
-            let mut found = 0u8;
+            let mut found = oci::Aligned::new(0u8);
             oci::session_get(
                 &env_ptr, &err_ptr, svc.as_mut_ptr(), &inf_ptr,
-                pool_name_ptr.as_ref(), pool_name_len, &mut found,
+                pool_name_ptr.as_ref(), pool_name_len, found.as_mut_ptr(),
                 OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
             )?;
             Ok(svc)

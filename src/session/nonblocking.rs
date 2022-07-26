@@ -21,10 +21,10 @@ impl SvcCtx {
         let dblink_len = dblink.len() as u32;
         let svc = task::execute_blocking(move || -> Result<Ptr<OCISvcCtx>> {
             let mut svc = Ptr::<OCISvcCtx>::null();
-            let mut found = 0u8;
+            let mut found = oci::Aligned::new(0u8);
             oci::session_get(
                 &env_ptr, &err_ptr, svc.as_mut_ptr(), &inf_ptr, dblink_ptr.as_ref() as _, dblink_len,
-                &mut found, OCI_SESSGET_STMTCACHE
+                found.as_mut_ptr(), OCI_SESSGET_STMTCACHE
             )?;
             Ok(svc)
         }).await??;

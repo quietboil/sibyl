@@ -6,10 +6,10 @@ use libc::c_void;
 pub(crate) fn to_string(rowid: &OCIRowid, err: &OCIError) -> Result<String> {
     let mut text = String::with_capacity(20);
     let txt = unsafe { text.as_mut_vec() };
-    let mut len = txt.capacity() as u16;
-    oci::rowid_to_char(rowid, txt.as_mut_ptr(), &mut len, err)?;
+    let mut len = txt.capacity();
+    oci::rowid_to_char(rowid, txt.as_mut_ptr(), &mut len as *mut usize as _, err)?;
     unsafe {
-        txt.set_len(len as usize);
+        txt.set_len(len);
     }
     Ok( text )
 }

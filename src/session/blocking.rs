@@ -12,10 +12,10 @@ impl SvcCtx {
         inf.set_attr(OCI_ATTR_USERNAME, user, &err)?;
         inf.set_attr(OCI_ATTR_PASSWORD, pass, &err)?;
         let mut svc = Ptr::<OCISvcCtx>::null();
-        let mut found = 0u8;
+        let mut found = oci::Aligned::new(0u8);
         oci::session_get(
             env.as_ref(), &err, svc.as_mut_ptr(), &inf, dblink.as_ptr(), dblink.len() as u32,
-            &mut found, OCI_SESSGET_STMTCACHE
+            found.as_mut_ptr(), OCI_SESSGET_STMTCACHE
         )?;
         Ok(SvcCtx { env: env.get_env(), err, inf, svc })
     }
