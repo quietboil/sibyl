@@ -1,6 +1,6 @@
 [package]
 name = "sibyl"
-version = "0.6.8"
+version = "0.6.9"
 edition = "2018"
 description = "An OCI-based (synchronous or asynchronous) interface between Rust applications and Oracle databases"
 authors = ["Alex Demenchuk <alexander.demenchuk@gmail.com>"]
@@ -13,12 +13,12 @@ documentation = "https://docs.rs/sibyl"
 
 [dependencies]
 libc = "0.2"
-once_cell = "1.12"
+once_cell = "1.13"
 parking_lot = "0.12"
 tokio-rt = { version = "1", features = ["rt"], optional = true, package = "tokio" }
 actix-rt = { version = "2.7", default-features = false, optional = true }
-async-rt = { version = "1.11", features = ["unstable"], optional = true, package = "async-std" }
-async-global-executor = { version = "2.1", optional = true }
+async-rt = { version = "1.12", features = ["unstable"], optional = true, package = "async-std" }
+async-global-executor = { version = "2.2", optional = true }
 
 [dev-dependencies]
 tokio-rt = { version = "1", features = ["rt", "rt-multi-thread"], package = "tokio" }
@@ -34,3 +34,6 @@ async-global = ["async-global-executor"]
 [package.metadata.docs.rs]
 features = ["blocking", "nonblocking", "tokio"]
 rustdoc-args = ["--cfg", "docsrs"]
+
+[profile.test]
+opt-level = 2
