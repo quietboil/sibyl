@@ -2024,8 +2024,12 @@ extern "C" {
 /**
 Returns the 5 digit tuple with the Oracle database version number of the client library at run time.
 
-The 5 digits of the version number are: <feature release>, <release update>, <release update revision>, 
-<release update increment>, <extension>. 
+The 5 digits of the version number are:
+ - feature release,
+ - release update,
+ - release update revision,
+ - release update increment,
+ - extension.
 */
 pub fn client_version() -> (i32, i32, i32, i32, i32) {
     let mut release  = std::mem::MaybeUninit::<i32>::uninit();
