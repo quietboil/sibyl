@@ -58,13 +58,26 @@ fn main() -> sibyl::Result<()> {
         let mut n = 1;
         for handle in workers {
             let worker_result = handle.await;
-            #[cfg(any(feature="tokio", feature="actix"))]
-            let worker_result = worker_result.expect("completed task result");
-
-            if let Some((name,hire_date)) = worker_result? {
-                println!("{:?}: {} was hired on {}", n, name, hire_date);
-            } else {
-                println!("{:?}: did not find the latest hire", n);
+            #[cfg(any(feature="tokio", feature="actix"))]        
+            let worker_result = match worker_result {
+                Err(err) => {
+                    println!("cannot join {:?} - {:?}", n, err);
+                    Ok(None)
+                },
+                Ok(res) => {
+                    res
+                }
+            };
+            match worker_result {
+                Err(err) => {
+                    println!("{:?} failed - {}", n, err);
+                },
+                Ok(None) => {
+                    println!("{:?}: did not find the latest hire", n);
+                },
+                Ok(Some((name,hire_date))) => {
+                    println!("{:?}: {} was hired on {}", n, name, hire_date);
+                }
             }
             n += 1;
         }

@@ -51,10 +51,19 @@ fn main() -> sibyl::Result<()> {
     }
     for handle in workers {
         let worker_id = handle.thread().id();
-        if let Some((name,hire_date)) = handle.join().expect("result from worker thread")? {
-            println!("{:?}: {} was hired on {}", worker_id, name, hire_date);
-        } else {
-            println!("{:?}: did not find the latest hire", worker_id);
+        match handle.join() {
+            Err(err) => {
+                println!("cannot join {:?} - {:?}", worker_id, err);
+            },
+            Ok(Err(err)) => {
+                println!("{:?} failed - {:?}", worker_id, err);
+            },
+            Ok(Ok(None)) => {
+                println!("{:?}: did not find the latest hire", worker_id);
+            }
+            Ok(Ok(Some((name,hire_date)))) => {
+                println!("{:?}: {} was hired on {}", worker_id, name, hire_date);
+            },
         }
     }
     println!("There are {} open sessions in the pool.", pool.open_count()?);
