@@ -1,12 +1,12 @@
 //! Abstraction over actix task functions
 
-use std::future::Future;
+use std::{future::Future, sync::{Weak, Arc}};
 
 pub use actix_rt::spawn;
 
-use actix_rt::task::{self, JoinHandle};
+use actix_rt::{task, Runtime};
 use parking_lot::Mutex;
-use crate::{Result, Error};
+use crate::{Result, Error, oci::{Handle, OCIEnv}};
 
 pub(crate) async fn execute_blocking<F, R>(f: F) -> Result<R>
 where
@@ -19,40 +19,33 @@ where
     }
 }
 
-/// List of currently active async drop tasks.
-struct AsyncDrops(Vec<JoinHandle<()>>);
-
-impl AsyncDrops {
-    const fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    fn push<F>(&mut self, async_drop: F) where F: Future<Output = ()> + Send + 'static {
-        self.0.retain(|task| !task.is_finished());
-        self.0.push(spawn(async_drop))
-    }
-
-    fn is_empty(&mut self) -> bool {
-        self.0.retain(|task| !task.is_finished());
-        self.0.is_empty()
-    }
+pub fn spawn_detached<F>(f: F)
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let _ = spawn(f);
 }
 
-static ASYNC_DROPS : Mutex<AsyncDrops> = Mutex::new(AsyncDrops::new());
+static OCI_ENVIRONMENTS : Mutex<Vec<Weak<Handle<OCIEnv>>>> = Mutex::new(Vec::new());
 
-pub fn spawn_detached<F>(f: F) where F: Future<Output = ()> + Send + 'static {
-    ASYNC_DROPS.lock().push(f);
+pub(crate) fn register_env(env: &Arc<Handle<OCIEnv>>) {
+    OCI_ENVIRONMENTS.lock().push(Arc::downgrade(env));
 }
 
-/// Builds a new actix runtime and runs a future to completion on it.
-///
-/// This function is included to run Sibyl's tests and examples.
+fn any_oci_env_is_in_use() -> bool {
+    OCI_ENVIRONMENTS.lock().iter().any(|rc| rc.strong_count() > 1)
+}
+
+/// Builds a new Actix runtime and runs a future to completion on it.
+/// 
+/// This function ensures that all async drops have run to completion.
 ///
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 pub fn block_on<F: Future>(future: F) -> F::Output {
-    actix_rt::Runtime::new().unwrap().block_on(async move {
+    Runtime::new().unwrap().block_on(async move {
         let res = future.await;
-        while !ASYNC_DROPS.lock().is_empty() {
+        while any_oci_env_is_in_use() {
             task::yield_now().await;
         }
         res

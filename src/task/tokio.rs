@@ -1,12 +1,12 @@
 //! Abstraction over tokio task functions
 
-use std::future::Future;
+use std::{future::Future, sync::{Weak, Arc}};
 
 use parking_lot::Mutex;
 pub use tokio_rt::task::spawn;
 
-use tokio_rt::task::{self, JoinHandle};
-use crate::{Result, Error};
+use tokio_rt::{task, runtime};
+use crate::{Result, Error, oci::{Handle, OCIEnv}};
 
 pub(crate) async fn execute_blocking<F, R>(f: F) -> Result<R>
 where
@@ -19,41 +19,33 @@ where
     }
 }
 
-/// List of currently active async drop tasks.
-struct AsyncDrops(Vec<JoinHandle<()>>);
-
-impl AsyncDrops {
-    const fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    fn push<F>(&mut self, async_drop: F) where F: Future<Output = ()> + Send + 'static {
-        self.0.retain(|task| !task.is_finished());
-        self.0.push(spawn(async_drop))
-    }
-
-    fn is_empty(&mut self) -> bool {
-        self.0.retain(|task| !task.is_finished());
-        self.0.is_empty()
-    }
+pub fn spawn_detached<F>(f: F)
+where
+    F: Future + Send + 'static,
+    F::Output: Send + 'static,
+{
+    let _ = spawn(f);
 }
 
-static ASYNC_DROPS : Mutex<AsyncDrops> = Mutex::new(AsyncDrops::new());
+static OCI_ENVIRONMENTS : Mutex<Vec<Weak<Handle<OCIEnv>>>> = Mutex::new(Vec::new());
 
-pub(crate) fn spawn_detached<F>(f: F) where F: Future<Output = ()> + Send + 'static
-{
-    ASYNC_DROPS.lock().push(f);
+pub(crate) fn register_env(env: &Arc<Handle<OCIEnv>>) {
+    OCI_ENVIRONMENTS.lock().push(Arc::downgrade(env));
+}
+
+fn any_oci_env_is_in_use() -> bool {
+    OCI_ENVIRONMENTS.lock().iter().any(|rc| rc.strong_count() > 1)
 }
 
 /// Builds a new multi-thread Tokio runtime and runs a future to completion on it.
-///
-/// This function is included to run Sibyl's tests and examples.
+/// 
+/// This function ensures that all async drops have run to completion.
 ///
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 pub fn block_on<F: Future>(future: F) -> F::Output {
-    tokio_rt::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async move {
+    runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async move {
         let res = future.await;
-        while !ASYNC_DROPS.lock().is_empty() {
+        while any_oci_env_is_in_use() {
             task::yield_now().await;
         }
         res
