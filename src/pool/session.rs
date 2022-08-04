@@ -13,6 +13,37 @@ use std::{sync::Arc, marker::PhantomData};
 use crate::{Error, Result, oci::*, Environment};
 
 /**
+Internal (Arc protected) details of a session pool.
+
+This ensures that the OCI pool is still accessible when nonblocking [`SessionPool::get_svc_ctx()`]
+is still running while the task that called [`SessionPool::get_session()`] has been already destroyed.
+*/
+pub(crate) struct SPool {
+    name: Vec<u8>,
+    pool: Handle<OCISPool>,
+    info: Handle<OCIAuthInfo>,
+    err:  Handle<OCIError>,
+    env:  Arc<Handle<OCIEnv>>,
+}
+
+impl Drop for SPool {
+    fn drop(&mut self) {
+        let _ = &self.info;
+        oci_session_pool_destroy(&self.pool, &self.err);
+    }
+}
+
+impl SPool {
+    pub(crate) fn get_env(&self) -> Arc<Handle<OCIEnv>> {
+        self.env.clone()
+    }
+
+    pub(crate) fn get_name(&self) -> &[u8] {
+        &self.name
+    }
+}
+
+/**
 Session pool creates and maintains a group of stateless sessions to the database.
 
 These sessions are provided to the application as requested. If no sessions are
@@ -21,19 +52,8 @@ can increase dynamically. When the application is done (DROPS) with the session,
 it is returned to the pool.
 */
 pub struct SessionPool<'a> {
-    pool: Handle<OCISPool>,
-    info: Handle::<OCIAuthInfo>,
-    err:  Handle<OCIError>,
-    env:  Arc<Handle<OCIEnv>>,
-    name: &'a [u8],
+    inner: Arc<SPool>,
     phantom_env: PhantomData<&'a Environment>
-}
-
-impl Drop for SessionPool<'_> {
-    fn drop(&mut self) {
-        let _ = self.info;
-        oci_session_pool_destroy(&self.pool, &self.err);
-    }
 }
 
 /**
@@ -59,10 +79,6 @@ pub enum SessionPoolGetMode {
 }
 
 impl SessionPool<'_> {
-    pub(crate) fn get_env(&self) -> Arc<Handle<OCIEnv>> {
-        self.env.clone()
-    }
-
     /**
     Returns the number of sessions checked out from the pool.
 
@@ -103,7 +119,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn busy_count(&self) -> Result<usize> {
-        let count : u32 = self.pool.get_attr(OCI_ATTR_SPOOL_BUSY_COUNT, &self.err)?;
+        let count : u32 = self.inner.pool.get_attr(OCI_ATTR_SPOOL_BUSY_COUNT, &self.inner.err)?;
         Ok(count as usize)
     }
 
@@ -147,7 +163,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn open_count(&self) -> Result<usize> {
-        let count : u32 = self.pool.get_attr(OCI_ATTR_SPOOL_OPEN_COUNT, &self.err)?;
+        let count : u32 = self.inner.pool.get_attr(OCI_ATTR_SPOOL_OPEN_COUNT, &self.inner.err)?;
         Ok(count as usize)
     }
 
@@ -194,7 +210,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn get_mode(&self) -> Result<SessionPoolGetMode> {
-        let mode : u8 = self.pool.get_attr(OCI_ATTR_SPOOL_GETMODE, &self.err)?;
+        let mode : u8 = self.inner.pool.get_attr(OCI_ATTR_SPOOL_GETMODE, &self.inner.err)?;
         match mode {
             OCI_SPOOL_ATTRVAL_WAIT      => Ok(SessionPoolGetMode::Wait),
             OCI_SPOOL_ATTRVAL_NOWAIT    => Ok(SessionPoolGetMode::NoWait),
@@ -252,7 +268,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn set_get_mode(&self, mode: SessionPoolGetMode) -> Result<()> {
-        self.pool.set_attr(OCI_ATTR_SPOOL_GETMODE, mode as u8, &self.err)
+        self.inner.pool.set_attr(OCI_ATTR_SPOOL_GETMODE, mode as u8, &self.inner.err)
     }
 
     /**
@@ -299,7 +315,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn wait_timeout(&self) -> Result<u32> {
-        self.pool.get_attr(OCI_ATTR_SPOOL_WAIT_TIMEOUT, &self.err)
+        self.inner.pool.get_attr(OCI_ATTR_SPOOL_WAIT_TIMEOUT, &self.inner.err)
     }
 
     /**
@@ -348,7 +364,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn set_wait_timeout(&self, milliseconds: u32) -> Result<()> {
-        self.pool.set_attr(OCI_ATTR_SPOOL_WAIT_TIMEOUT, milliseconds, &self.err)
+        self.inner.pool.set_attr(OCI_ATTR_SPOOL_WAIT_TIMEOUT, milliseconds, &self.inner.err)
     }
 
     /**
@@ -391,7 +407,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn idle_timeout(&self) -> Result<u32> {
-        self.pool.get_attr(OCI_ATTR_SPOOL_TIMEOUT, &self.err)
+        self.inner.pool.get_attr(OCI_ATTR_SPOOL_TIMEOUT, &self.inner.err)
     }
 
     /**
@@ -444,7 +460,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn set_idle_timeout(&self, seconds: u32) -> Result<()> {
-        self.pool.set_attr(OCI_ATTR_SPOOL_TIMEOUT, seconds, &self.err)
+        self.inner.pool.set_attr(OCI_ATTR_SPOOL_TIMEOUT, seconds, &self.inner.err)
     }
 
     /**
@@ -489,7 +505,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn session_max_lifetime(&self) -> Result<u32> {
-        self.pool.get_attr(OCI_ATTR_SPOOL_MAX_LIFETIME_SESSION, &self.err)
+        self.inner.pool.get_attr(OCI_ATTR_SPOOL_MAX_LIFETIME_SESSION, &self.inner.err)
     }
 
     /**
@@ -539,7 +555,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn set_session_max_lifetime(&self, seconds: u32) -> Result<()> {
-        self.pool.set_attr(OCI_ATTR_SPOOL_MAX_LIFETIME_SESSION, seconds, &self.err)
+        self.inner.pool.set_attr(OCI_ATTR_SPOOL_MAX_LIFETIME_SESSION, seconds, &self.inner.err)
     }
 
     /**
@@ -584,7 +600,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn session_max_use_count(&self) -> Result<u32> {
-        self.pool.get_attr(OCI_ATTR_SPOOL_MAX_USE_SESSION, &self.err)
+        self.inner.pool.get_attr(OCI_ATTR_SPOOL_MAX_USE_SESSION, &self.inner.err)
     }
 
     /**
@@ -632,7 +648,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn set_session_max_use_count(&self, count: u32) -> Result<()> {
-        self.pool.set_attr(OCI_ATTR_SPOOL_MAX_USE_SESSION, count, &self.err)
+        self.inner.pool.set_attr(OCI_ATTR_SPOOL_MAX_USE_SESSION, count, &self.inner.err)
     }
 
     /**
@@ -677,7 +693,7 @@ impl SessionPool<'_> {
     ```
     */
     pub fn statement_cache_size(&self) -> Result<u32> {
-        self.pool.get_attr(OCI_ATTR_SPOOL_STMTCACHESIZE, &self.err)
+        self.inner.pool.get_attr(OCI_ATTR_SPOOL_STMTCACHESIZE, &self.inner.err)
     }
 
     /**
@@ -727,6 +743,6 @@ impl SessionPool<'_> {
     ```
     */
     pub fn set_statement_cache_size(&self, size: u32) -> Result<()> {
-        self.pool.set_attr(OCI_ATTR_SPOOL_STMTCACHESIZE, size, &self.err)
+        self.inner.pool.set_attr(OCI_ATTR_SPOOL_STMTCACHESIZE, size, &self.inner.err)
     }
 }

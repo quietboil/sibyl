@@ -1,6 +1,6 @@
 //! Session and Connection Pools
 
-mod session;
+pub(crate) mod session;
 
 pub use session::{SessionPool, SessionPoolGetMode};
 

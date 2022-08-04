@@ -12,6 +12,8 @@ use std::{sync::Arc, marker::PhantomData};
 use crate::{Result, Environment, oci::*, types::Ctx};
 #[cfg(feature="nonblocking")]
 use crate::task;
+#[cfg(feature="nonblocking")]
+use crate::pool::session::SPool;
 
 /// Representation of the service context.
 /// It will be behinfd `Arc` as it needs to survive the `Session`
@@ -20,6 +22,8 @@ pub(crate) struct SvcCtx {
     svc: Ptr<OCISvcCtx>,
     inf: Handle<OCIAuthInfo>,
     err: Handle<OCIError>,
+    #[cfg(feature="nonblocking")]
+    spool: Option<Arc<SPool>>,
     env: Arc<Handle<OCIEnv>>,
     #[cfg(feature="nonblocking")]
     active_future: std::sync::atomic::AtomicUsize,
@@ -28,7 +32,7 @@ pub(crate) struct SvcCtx {
 impl Drop for SvcCtx {
     #[cfg(feature="blocking")]
     fn drop(&mut self) {
-        let _ = self.inf;
+        let _ = &self.inf;
         let svc : &OCISvcCtx = self.as_ref();
         let err : &OCIError  = self.as_ref();
         oci_trans_rollback(svc, err);
@@ -37,12 +41,12 @@ impl Drop for SvcCtx {
 
     #[cfg(feature="nonblocking")]
     fn drop(&mut self) {
-        let _ = self.inf;
+        let _ = &self.inf;
         let mut svc = Ptr::<OCISvcCtx>::null();
         svc.swap(&mut self.svc);
         let err = Handle::take(&mut self.err);
         let env = self.env.clone();
-        task::spawn_detached(futures::SessionRelease::new(svc, err, env));
+        task::spawn_detached(futures::SessionRelease::new(svc, err, env, self.spool.clone()));
     }
 }
 

@@ -1,65 +1,52 @@
 //! Session pool nonblocking mode implementation
 
-use super::SessionPool;
+use super::{SessionPool, SPool};
 use crate::{Session, Result, oci::{self, *}, Environment, task};
-use std::{ptr, slice, str, marker::PhantomData};
+use std::{ptr, slice, str, marker::PhantomData, sync::Arc};
 
-impl<'a> SessionPool<'a> {
-    pub(crate) async fn new(env: &'a Environment, dblink: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<SessionPool<'a>> {
-        let err = Handle::<OCIError>::new(&env)?;
+impl SPool {
+    pub(crate) async fn new(env: &Environment, dblink: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<Self> {
+        let err  = Handle::<OCIError>::new(&env)?;
         let pool = Handle::<OCISPool>::new(&env)?;
         let info = Handle::<OCIAuthInfo>::new(&env)?;
         info.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", &err)?;
         pool.set_attr(OCI_ATTR_SPOOL_AUTH, info.get_ptr(), &err)?;
 
-        let env_ptr = Ptr::<OCIEnv>::from(env.as_ref());
-        let err_ptr = err.get_ptr();
-        let pool_ptr = pool.get_ptr();
-        let dblink_ptr = Ptr::new(dblink.as_ptr() as *mut u8);
-        let dblink_len = dblink.len() as u32;
-        let username_ptr = Ptr::new(username.as_ptr() as *mut u8);
-        let username_len = username.len() as u32;
-        let password_ptr = Ptr::new(password.as_ptr() as *mut u8);
-        let password_len = password.len() as u32;
+        let mut spool = Self { pool, info, err, env: env.get_env(), name: Vec::new() };
+        let dblink = String::from(dblink);
+        let username = String::from(username);
+        let password = String::from(password);
 
-        let name = task::execute_blocking(move || -> Result<&[u8]> {
+        task::execute_blocking(move || -> Result<Self> {
             let mut pool_name_ptr = ptr::null::<u8>();
             let mut pool_name_len = 0u32;
             oci::session_pool_create(
-                &env_ptr, &err_ptr, &pool_ptr,
+                spool.env.as_ref(), spool.err.as_ref(), spool.pool.as_ref(),
                 &mut pool_name_ptr, &mut pool_name_len,
-                dblink_ptr.as_ref(), dblink_len,
-                min as u32, max as u32, inc as u32,
-                username_ptr.as_ref(), username_len,
-                password_ptr.as_ref(), password_len,
+                dblink.as_ptr(), dblink.len() as _,
+                min as _, max as _, inc as _,
+                username.as_ptr(), username.len() as _,
+                password.as_ptr(), password.len() as _,
                 OCI_SPC_HOMOGENEOUS | OCI_SPC_STMTCACHE
             )?;
             let name = unsafe {
                 slice::from_raw_parts(pool_name_ptr, pool_name_len as usize)
             };
-            Ok(name)
-        }).await??;
-        Ok(Self {env: env.get_env(), err, info, pool, name, phantom_env: PhantomData})
+            spool.name.extend_from_slice(name);
+            Ok(spool)
+        }).await?
+    }
+}
+
+impl<'a> SessionPool<'a> {
+    pub(crate) async fn new(env: &'a Environment, dblink: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<SessionPool<'a>> {
+        let inner = SPool::new(env, dblink, username, password, min, inc, max).await?;
+        let inner = Arc::new(inner);
+        Ok(Self { inner, phantom_env: PhantomData })
     }
 
-    pub(crate) async fn get_svc_ctx(&self, auth_info: &OCIAuthInfo) -> Result<Ptr<OCISvcCtx>> {
-        let env_ptr = self.env.get_ptr();
-        let err_ptr = self.err.get_ptr();
-        let inf_ptr = Ptr::<OCIAuthInfo>::from(auth_info);
-
-        let pool_name_ptr = Ptr::new(self.name.as_ptr() as *mut u8);
-        let pool_name_len = self.name.len() as u32;
-
-        task::execute_blocking(move || -> Result<Ptr<OCISvcCtx>> {
-            let mut svc = Ptr::<OCISvcCtx>::null();
-            let mut found = oci::Aligned::new(0u8);
-            oci::session_get(
-                &env_ptr, &err_ptr, svc.as_mut_ptr(), &inf_ptr,
-                pool_name_ptr.as_ref(), pool_name_len, found.as_mut_ptr(),
-                OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
-            )?;
-            Ok(svc)
-        }).await?
+    pub(crate) fn get_spool(&self) -> Arc<SPool> {
+        self.inner.clone()
     }
 
     /**

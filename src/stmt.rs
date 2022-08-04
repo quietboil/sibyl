@@ -63,7 +63,7 @@ pub struct Statement<'a> {
 impl Drop for Statement<'_> {
     #[cfg(feature="blocking")]
     fn drop(&mut self) {
-        let _ = self.svc;
+        let _ = &self.svc;
         oci_stmt_release(&self.stmt, &self.err);
     }
 

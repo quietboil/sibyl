@@ -1,6 +1,6 @@
 //! Futures for OCI functions that might return `OCI_STILL_EXECUTING`
 
-use crate::{session::SvcCtx, lob::{LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP}};
+use crate::{session::SvcCtx, lob::{LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP}, pool::session::SPool};
 use super::{*, ptr::Ptr};
 use std::{future::Future, pin::Pin, task::{Context, Poll}, sync::Arc};
 
@@ -141,12 +141,13 @@ pub(crate) struct SessionRelease {
     svc: Ptr<OCISvcCtx>,
     err: Handle<OCIError>,
     env: Arc<Handle<OCIEnv>>,
+    spool: Option<Arc<SPool>>,
     step: SessionReleaseSteps,
 }
 
 impl SessionRelease {
-    pub(crate) fn new(svc: Ptr<OCISvcCtx>, err: Handle<OCIError>, env: Arc<Handle<OCIEnv>>) -> Self {
-        Self { svc, err, env, step: SessionReleaseSteps::TransRollback }
+    pub(crate) fn new(svc: Ptr<OCISvcCtx>, err: Handle<OCIError>, env: Arc<Handle<OCIEnv>>, spool: Option<Arc<SPool>>) -> Self {
+        Self { svc, err, env, spool, step: SessionReleaseSteps::TransRollback }
     }
 }
 
