@@ -10,10 +10,9 @@ mod nonblocking;
 
 use std::{sync::Arc, marker::PhantomData};
 use crate::{Result, Environment, oci::*, types::Ctx};
+use crate::pool::session::SPool;
 #[cfg(feature="nonblocking")]
 use crate::task;
-#[cfg(feature="nonblocking")]
-use crate::pool::session::SPool;
 
 /// Representation of the service context.
 /// It will be behinfd `Arc` as it needs to survive the `Session`
@@ -22,7 +21,6 @@ pub(crate) struct SvcCtx {
     svc: Ptr<OCISvcCtx>,
     inf: Handle<OCIAuthInfo>,
     err: Handle<OCIError>,
-    #[cfg(feature="nonblocking")]
     spool: Option<Arc<SPool>>,
     env: Arc<Handle<OCIEnv>>,
     #[cfg(feature="nonblocking")]
@@ -33,6 +31,7 @@ impl Drop for SvcCtx {
     #[cfg(feature="blocking")]
     fn drop(&mut self) {
         let _ = &self.inf;
+        let _ = &self.spool;
         let svc : &OCISvcCtx = self.as_ref();
         let err : &OCIError  = self.as_ref();
         oci_trans_rollback(svc, err);

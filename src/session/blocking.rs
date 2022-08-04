@@ -17,7 +17,7 @@ impl SvcCtx {
             env.as_ref(), &err, svc.as_mut_ptr(), &inf, dblink.as_ptr(), dblink.len() as u32,
             found.as_mut_ptr(), OCI_SESSGET_STMTCACHE
         )?;
-        Ok(SvcCtx { env: env.get_env(), err, inf, svc })
+        Ok(SvcCtx { env: env.get_env(), err, inf, svc, spool: None })
     }
 
     pub(crate) fn from_session_pool(pool: &SessionPool) -> Result<Self> {
@@ -25,7 +25,7 @@ impl SvcCtx {
         let err = Handle::<OCIError>::new(env.as_ref())?;
         let inf = Handle::<OCIAuthInfo>::new(env.as_ref())?;
         let svc = pool.get_svc_ctx(&inf)?;
-        Ok(SvcCtx { env, err, inf, svc })
+        Ok(Self { svc, inf, err, env, spool: Some(pool.get_spool()) })
     }
 
     pub(crate) fn from_connection_pool(pool: &ConnectionPool, username: &str, password: &str) -> Result<Self> {
@@ -37,7 +37,7 @@ impl SvcCtx {
         inf.set_attr(OCI_ATTR_PASSWORD, password, &err)?;
 
         let svc = pool.get_svc_ctx(&inf)?;
-        Ok(SvcCtx { env, err, inf, svc })
+        Ok(SvcCtx { env, err, inf, svc, spool: None })
     }
 }
 

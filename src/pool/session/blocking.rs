@@ -1,11 +1,11 @@
 //! Session pool blocking mode implementation
 
-use super::SessionPool;
+use super::{SessionPool, SPool};
 use crate::{Result, oci::{self, *}, Environment, Session};
-use std::{ptr, marker::PhantomData};
+use std::{ptr, marker::PhantomData, sync::Arc};
 
-impl<'a> SessionPool<'a> {
-    pub(crate) fn new(env: &'a Environment, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<Self> {
+impl SPool {
+    pub(crate) fn new(env: &Environment, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<Self> {
         let err = Handle::<OCIError>::new(env)?;
         let info = Handle::<OCIAuthInfo>::new(env)?;
         info.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", &err)?;
@@ -25,15 +25,24 @@ impl<'a> SessionPool<'a> {
             OCI_SPC_HOMOGENEOUS | OCI_SPC_STMTCACHE
         )?;
         let name = unsafe { std::slice::from_raw_parts(pool_name_ptr, pool_name_len as usize) };
-        Ok(Self {env: env.get_env(), err, info, pool, name, phantom_env: PhantomData})
+        let name = name.to_vec();
+        Ok(Self {env: env.get_env(), err, info, pool, name})
+    }
+}
+
+impl<'a> SessionPool<'a> {
+    pub(crate) fn new(env: &'a Environment, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<Self> {
+        let inner = SPool::new(env, dbname, username, password, min, inc, max)?;
+        let inner = Arc::new(inner);
+        Ok(Self { inner, phantom_env: PhantomData })
     }
 
     pub(crate) fn get_svc_ctx(&self, auth_info: &OCIAuthInfo) -> Result<Ptr<OCISvcCtx>> {
         let mut svc = Ptr::<OCISvcCtx>::null();
         let mut found = oci::Aligned::new(0u8);
         oci::session_get(
-            self.env.as_ref(), &self.err, svc.as_mut_ptr(), &auth_info,
-            self.name.as_ptr(), self.name.len() as u32, found.as_mut_ptr(),
+            &self.inner.env, &self.inner.err, svc.as_mut_ptr(), &auth_info,
+            self.inner.name.as_ptr(), self.inner.name.len() as u32, found.as_mut_ptr(),
             OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
         )?;
         Ok(svc)

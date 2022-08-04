@@ -40,7 +40,7 @@ impl SvcCtx {
         let inf = Handle::<OCIAuthInfo>::new(env.as_ref())?;
 
         task::execute_blocking(move || -> Result<Self> {
-            let name = spool.get_name();   
+            let name = spool.get_name();
             let mut svc = Ptr::<OCISvcCtx>::null();
             let mut found = oci::Aligned::new(0u8);
             oci::session_get(
@@ -50,7 +50,6 @@ impl SvcCtx {
             )?;
             Ok(Self { svc, inf, err, env, spool: Some(spool), active_future: AtomicUsize::new(0) })
         }).await?
-
     }
 
     pub(crate) fn lock(&self, id: usize) -> bool {

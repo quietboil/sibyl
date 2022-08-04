@@ -45,10 +45,6 @@ impl<'a> SessionPool<'a> {
         Ok(Self { inner, phantom_env: PhantomData })
     }
 
-    pub(crate) fn get_spool(&self) -> Arc<SPool> {
-        self.inner.clone()
-    }
-
     /**
         Returns a new session with a new underlyng connection from this pool.
 

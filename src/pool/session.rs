@@ -33,6 +33,7 @@ impl Drop for SPool {
     }
 }
 
+#[cfg(feature="nonblocking")]
 impl SPool {
     pub(crate) fn get_env(&self) -> Arc<Handle<OCIEnv>> {
         self.env.clone()
@@ -79,6 +80,15 @@ pub enum SessionPoolGetMode {
 }
 
 impl SessionPool<'_> {
+    pub(crate) fn get_spool(&self) -> Arc<SPool> {
+        self.inner.clone()
+    }
+
+    #[cfg(feature="blocking")]
+    pub(crate) fn get_env(&self) -> Arc<Handle<OCIEnv>> {
+        self.inner.env.clone()
+    }
+
     /**
     Returns the number of sessions checked out from the pool.
 
