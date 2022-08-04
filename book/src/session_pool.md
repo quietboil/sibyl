@@ -1,6 +1,6 @@
 # Session Pool
 
-[Session pool][1] can be used in both `blocking` and `nonblocking` mode applicaitons.
+[Session pool][1] can be used in both `blocking` and `nonblocking` mode applications.
 
 ## Blocking Mode Pool
 
