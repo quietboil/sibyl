@@ -2,7 +2,7 @@
 
 use crate::oci::*;
 use std::{ptr, cmp, fmt, error, io, ffi::CStr};
-use libc::c_void;
+use libc::{c_void, c_char};
 
 #[cfg(all(feature="nonblocking",feature="tokio"))]
 use tokio_rt::task::JoinError;
@@ -19,7 +19,7 @@ fn get_oracle_error(rc: i32, errhp: *mut c_void, htype: u32) -> (i32, String) {
         OCIErrorGet(errhp, 1, ptr::null(), &mut errcode, errmsg_ptr, OCI_ERROR_MAXMSG_SIZE as u32, htype)
     };
     let msg = if res == OCI_SUCCESS {
-        let msg = unsafe { CStr::from_ptr(errmsg_ptr as *const i8) };
+        let msg = unsafe { CStr::from_ptr(errmsg_ptr as *const c_char) };
         msg.to_string_lossy().trim_end().to_string()
     } else {
         match errcode {
