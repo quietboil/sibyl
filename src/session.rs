@@ -27,6 +27,7 @@ pub(crate) struct SvcCtx {
     active_future: std::sync::atomic::AtomicUsize,
 }
 
+#[cfg(not(docsrs))]
 impl Drop for SvcCtx {
     #[cfg(feature="blocking")]
     fn drop(&mut self) {

@@ -60,6 +60,7 @@ pub struct Statement<'a> {
     max_long: u32,
 }
 
+#[cfg(not(docsrs))]
 impl Drop for Statement<'_> {
     #[cfg(feature="blocking")]
     fn drop(&mut self) {

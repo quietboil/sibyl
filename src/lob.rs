@@ -36,6 +36,7 @@ struct LobInner<T> where T: DescriptorType<OCIType=OCILobLocator>  + 'static {
     status_flags: AtomicU32,
 }
 
+#[cfg(not(docsrs))]
 impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 'static {
     #[cfg(feature="blocking")]
     fn drop(&mut self) {
@@ -673,6 +674,7 @@ impl LOB<'_,OCICLobLocator> {
     }
 }
 
+#[cfg(not(docsrs))]
 impl std::fmt::Debug for LOB<'_,OCICLobLocator> {
     #[cfg(feature="blocking")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -703,6 +705,7 @@ impl LOB<'_,OCIBLobLocator> {
     }
 }
 
+#[cfg(not(docsrs))]
 impl std::fmt::Debug for LOB<'_,OCIBLobLocator> {
     #[cfg(feature="blocking")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -733,6 +736,7 @@ impl LOB<'_,OCIBFileLocator> {
     }
 }
 
+#[cfg(not(docsrs))]
 impl std::fmt::Debug for LOB<'_,OCIBFileLocator> {
     #[cfg(feature="blocking")]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
