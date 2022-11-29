@@ -6,7 +6,6 @@
         <title>Sibyl User Manual</title>
         <meta name="robots" content="noindex" />
         <!-- Custom HTML head -->
-        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
@@ -29,13 +28,13 @@
     </head>
     <body>
         <!-- Provide site root to javascript -->
-        <script type="text/javascript">
+        <script>
             var path_to_root = "";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
         </script>
 
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
-        <script type="text/javascript">
+        <script>
             try {
                 var theme = localStorage.getItem('mdbook-theme');
                 var sidebar = localStorage.getItem('mdbook-sidebar');
@@ -51,7 +50,7 @@
         </script>
 
         <!-- Set the theme before any content is loaded, prevents flash -->
-        <script type="text/javascript">
+        <script>
             var theme;
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
@@ -63,7 +62,7 @@
         </script>
 
         <!-- Hide / unhide sidebar before it is displayed -->
-        <script type="text/javascript">
+        <script>
             var html = document.querySelector('html');
             var sidebar = 'hidden';
             if (document.body.clientWidth >= 1080) {
@@ -94,7 +93,7 @@
                             <i class="fa fa-paint-brush"></i>
                         </button>
                         <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
-                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
@@ -128,7 +127,7 @@
                     </div>
                 </div>
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
-                <script type="text/javascript">
+                <script>
                     document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
                     document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
                     Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
@@ -171,8 +170,7 @@
         println!(&quot;{:25}: {:&gt;5}&quot;, country_name, median_salary);
     }
     Ok(())
-}
-</code></pre>
+}</code></pre>
 <p>When executed it prints:</p>
 <pre><code class="language-plaintext">Germany                  : 10000
 United Kingdom           :  8800
@@ -208,8 +206,7 @@ United Kingdom           :  8800
     }
     Ok(())
   })
-}
-</code></pre>
+}</code></pre>
 <blockquote>
 <p>Note the only difference between this and the blocking mode program is that <code>async</code> method calls need to be <code>await</code>ed. Otherwise the <code>async</code> version of the program is a verbatim copy of the non-async one.</p>
 </blockquote>
@@ -236,9 +233,18 @@ cargo build --examples --features=blocking
 <pre><code class="language-plaintext">set OCI_LIB_DIR=%ORACLE_HOME%\bin
 cargo build --examples --features=blocking
 </code></pre>
+<blockquote>
+<p><em>Note</em> that for <code>gnu</code> targets the build script will try to locate <code>OCI.DLL</code> by searching it on the current <code>PATH</code> if the <code>OCI_LIB_DIR</code> is not specified.</p>
+</blockquote>
 <p>However, for <code>msvc</code> environment the <code>OCI_LIB_DIR</code> must point to the directory with <code>oci.lib</code>. For example, you might build those examples as:</p>
 <pre><code class="language-plaintext">set OCI_LIB_DIR=%ORACLE_HOME%\oci\lib\msvc
 cargo build --examples --features=blocking
+</code></pre>
+<blockquote>
+<p><em>Note</em> that for <code>msvc</code> targets, that need <code>oci.lib</code>, the <code>OCI_LIB_DIR</code> is required. The build will fail if it is not set.</p>
+</blockquote>
+<p>Because of the above requirement, that the <code>OCI_LIB_DIR</code> must be set for <code>msvc</code> targets, it also must be specified for the <code>rust-analyser</code>. For example, in VS Code this can be done in <code>.vscode\settings.json</code>:</p>
+<pre><code class="language-json">&quot;rust-analyzer.server.extraEnv&quot;: { &quot;OCI_LIB_DIR&quot;: &quot;C:\\Path\\To\\Oracle\\instantclient\\sdk\\lib\\msvc&quot; }
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="example-project"><a class="header" href="#example-project">Example Project</a></h1>
 <p>Let's say we need to write a program to generate a report for the <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/comsc/installing-sample-schemas.html#GUID-1E645D09-F91F-4BA6-A286-57C5EC66321D">demo HR schema</a>. This report shall list median salaries for each country of the specified region. The name of the region and the connection parameters shall be specified as environment variables (maybe because our program will be executed in a container).</p>
@@ -280,8 +286,7 @@ sibyl = { version=&quot;0.6&quot;, features=[&quot;blocking&quot;] }
         println!(&quot;{:25}: {:&gt;5}&quot;, country_name, median_salary);
     }
     Ok(())
-}
-</code></pre>
+}</code></pre>
 <h2 id="build-and-run"><a class="header" href="#build-and-run">Build and Run</a></h2>
 <pre><code class="language-shell">cargo build
 </code></pre>
@@ -297,21 +302,18 @@ United States of America :  3250
 <pre><code class="language-rust ignore">fn main() {
     let oracle = sibyl::env().expect(&quot;Oracle OCI environment&quot;);
     // ...
-}
-</code></pre>
+}</code></pre>
 <p>Note however that some functions will need a direct reference to this handle, so instead of passing it around some applications might prefer to create it statically:</p>
 <pre><code class="language-rust ignore">use sibyl::Environment;
 use lazy_static::lazy_static;
 
 lazy_static!{
     pub static ref ORACLE : Environment = sibyl::env().expect(&quot;Oracle OCI environment&quot;);
-}
-</code></pre>
+}</code></pre>
 <p>Then later one would be able to create, for example, a current timestamp as:</p>
 <pre><code class="language-rust ignore">use sibyl::TimestampTZ;
 
-let current_timestamp = TimestampTZ::from_systimestamp(&amp;ORACLE)?;
-</code></pre>
+let current_timestamp = TimestampTZ::from_systimestamp(&amp;ORACLE)?;</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="connections"><a class="header" href="#connections">Connections</a></h1>
 <p>Depending on the application and its needs there are several ways to obtain a database sesssion:</p>
 <ul>
@@ -330,8 +332,7 @@ let current_timestamp = TimestampTZ::from_systimestamp(&amp;ORACLE)?;
     let session = oracle.connect(&amp;dbname, &amp;dbuser, &amp;dbpass)?;
     // ...
     Ok(())
-}
-</code></pre>
+}</code></pre>
 <p>Where <code>dbname</code> can be any name that is acceptable to Oracle clients - from local TNS name to EZConnect identifier to a connect descriptor.</p>
 <p>Or with multiple threads:</p>
 <pre><code class="language-rust noplayground">use std::{env, thread, sync::Arc};
@@ -359,8 +360,7 @@ fn main() -&gt; Result&lt;()&gt; {
         let _ = handle.join();
     }
     Ok(())
-}
-</code></pre>
+}</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="session-pool"><a class="header" href="#session-pool">Session Pool</a></h1>
 <p><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/session-and-connection-pooling.html#GUID-F9662FFB-EAEF-495C-96FC-49C6D1D9625C">Session pool</a> can be used in both <code>blocking</code> and <code>nonblocking</code> mode applications.</p>
 <h2 id="blocking-mode-pool"><a class="header" href="#blocking-mode-pool">Blocking Mode Pool</a></h2>
@@ -399,8 +399,7 @@ fn main() -&gt; sibyl::Result&lt;()&gt; {
         let _ = handle.join();
     }
     Ok(())
-}
-</code></pre>
+}</code></pre>
 <h2 id="nonblocking-mode-pool"><a class="header" href="#nonblocking-mode-pool">Nonblocking Mode Pool</a></h2>
 <pre><code class="language-rust noplayground">use std::{env, thread, sync::Arc};
 use once_cell::sync::OnceCell;
@@ -434,8 +433,7 @@ async fn main() -&gt; sibyl::Result&lt;()&gt; {
         let _ = handle.await;
     }
     Ok(())
-}
-</code></pre>
+}</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="connection-pool"><a class="header" href="#connection-pool">Connection Pool</a></h1>
 <p><a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/session-and-connection-pooling.html#GUID-1C9A6E8F-EF5A-478D-B65E-CE39D4F00683">Connection pool</a> can only be used in <code>blocking</code> mode applications.</p>
 <pre><code class="language-rust noplayground">use std::{env, thread, sync::Arc};
@@ -480,8 +478,7 @@ fn main() -&gt; sibyl::Result&lt;()&gt; {
         let _ = handle.join();
     }
     Ok(())
-}
-</code></pre>
+}</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="sql-statement-execution"><a class="header" href="#sql-statement-execution">SQL Statement Execution</a></h1>
 <p>All SQL or PL/SQL statements must be prepared before they can be executed:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
@@ -489,8 +486,7 @@ fn main() -&gt; sibyl::Result&lt;()&gt; {
       FROM hr.employees
      WHERE manager_id = :id
   ORDER BY employee_id
-&quot;)?;
-</code></pre>
+&quot;)?;</code></pre>
 <p>A prepared statement can be executed either with the <code>query</code>, <code>query_single</code> or <code>execute</code> methods:</p>
 <ul>
 <li><code>query</code> is used for <code>SELECT</code> statements. In fact, Sibyl will complain if you try to <code>query</code> any other statement.</li>
@@ -515,8 +511,7 @@ while let Some( row ) = rows.next()? {
         |first_name| format!(&quot;{}, {}&quot;, last_name, first_name)
     );
     employees.insert(employee_id, name);
-}
-</code></pre>
+}</code></pre>
 <p>There are a few notable points of interest in the last example:</p>
 <ul>
 <li>Sibyl uses 0-based column indexing in a projection.</li>
@@ -533,8 +528,7 @@ while let Some( row ) = rows.next()? {
         |first_name| format!(&quot;{}, {}&quot;, last_name, first_name)
     );
     employees.insert(employee_id, name);
-}
-</code></pre>
+}</code></pre>
 <p><strong>Note</strong> that all examples use all upper case column and parameter names. This is not really necessary as Sibyl treat them as case-insensitive. However, using all upper case gives Sibyl a chance to locate a column (or a parameter placeholder) without converting the name to upper case first (to match the Oracle reported names), thus avoiding temporary string allocation and upper case conversion. Of course, you can always maintain an <code>enum</code> for a select list, thus using indexes, which are the speediest way to get to the data anyway.</p>
 <pre><code class="language-rust ignore">enum Col { EmployeeId, LastName, FirstName }
 
@@ -543,8 +537,7 @@ while let Some( row ) = rows.next()? {
     let last_name : &amp;str  = row.get(Col::LastName as usize)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(Col::FirstName as usize)?;
     // ...
-}
-</code></pre>
+}</code></pre>
 <p>Or to be extra fancy:</p>
 <pre><code class="language-rust ignore">#[derive(Clone,Copy)]
 enum Col { EmployeeId, LastName, FirstName }
@@ -566,19 +559,15 @@ while let Some( row ) = rows.next()? {
     let last_name : &amp;str  = row.get(Col::LastName)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(Col::FirstName)?;
     // ...
-}
-</code></pre>
+}</code></pre>
 <p>Of course, that's a lot of boilerplate, which would benefit from a <code>derive</code> macro. Maybe we'll get to that eventually :-)</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="statement-arguments"><a class="header" href="#statement-arguments">Statement Arguments</a></h1>
 <p><code>query</code>, <code>query_single</code> and <code>execute</code> take a tuple of arguments (or a single argument). The latter can be specified as positional arguments or as name-value tuples. For example, to execute the above SELECT we can call <code>query</code> using a positional argument as:</p>
-<pre><code class="language-rust ignore">let row = stmt.query_single(103)?;
-</code></pre>
+<pre><code class="language-rust ignore">let row = stmt.query_single(103)?;</code></pre>
 <p>or bind a value to <code>:id</code> by name as:</p>
-<pre><code class="language-rust ignore">let row = stmt.query_single((&quot;:ID&quot;, 103))?;
-</code></pre>
+<pre><code class="language-rust ignore">let row = stmt.query_single((&quot;:ID&quot;, 103))?;</code></pre>
 <p>The leading colon in name part of the name-value argument tuple is optional. Depending on your preferences and/or tooling you might specify parameter placeholder name to bind argument value to without a colon:</p>
-<pre><code class="language-rust ignore">let row = stmt.query_single((&quot;ID&quot;, 103))?;
-</code></pre>
+<pre><code class="language-rust ignore">let row = stmt.query_single((&quot;ID&quot;, 103))?;</code></pre>
 <blockquote>
 <p>Note one caveat - until [min_specialization][1] is stabilized Sibyl has no way of distinguishing whether a 2-item tuple is used to pass a single named argument or 2 positional arguments. For the moment you must use a 3-item tuple with a unit type as the last item when you are passing 2 positional arguments. The unit type is skipped, so effectively only first 2 arguments are used. For example:</p>
 </blockquote>
@@ -588,8 +577,7 @@ while let Some( row ) = rows.next()? {
      WHERE department_name = :DEPARTMENT_NAME
        AND location_id = :LOCATION_ID
 &quot;)?;
-let rows = stmt.query(( &quot;Administration&quot;, 1700, () ))?;
-</code></pre>
+let rows = stmt.query(( &quot;Administration&quot;, 1700, () ))?;</code></pre>
 <p>In most cases which binding style to use is a matter of convenience and/or personal preferences. However, in some cases named arguments would be preferable and less ambiguous. For example, statement might change during development and thus force the change in argument positions. Also SQL and PL/SQL statements have different interpretation of a parameter position. SQL statements create positions for every parameter but allow a single argument to be used for the primary parameter and all its duplicates. PL/SQL on the other hand creates positions for unique parameter names and this might make positioning arguments correctly a bit awkward when there is more than one &quot;duplicate&quot; name in a statement.</p>
 <p>For example, the following (contrived) <code>INSERT</code> would need its arguments to be bound differently depending on whether it is defined as a standalone SQL or as a (part of a) PL/SQL:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
@@ -601,8 +589,7 @@ let rows = stmt.query(( &quot;Administration&quot;, 1700, () ))?;
 stmt.execute( (3333, &quot;N/A&quot;, (), &quot;00000&quot;, ()) )?;
 // :NA'a first pos __^---^
 // while ___________________^^____and____^^
-// are its duplicate positions
-</code></pre>
+// are its duplicate positions</code></pre>
 <p>The duplicate position can be skipped using <code>()</code> as in the example. However, when it is a part of PL/SQL:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
   BEGIN
@@ -612,8 +599,7 @@ stmt.execute( (3333, &quot;N/A&quot;, (), &quot;00000&quot;, ()) )?;
         (:id, :na, :na, :code, :na);
   END;
 &quot;)?;
-stmt.execute( ( 3333, &quot;N/A&quot;, &quot;00000&quot; ) )?;
-</code></pre>
+stmt.execute( ( 3333, &quot;N/A&quot;, &quot;00000&quot; ) )?;</code></pre>
 <p>Only 3 position are possible as there are only 3 unique names.</p>
 <p><code>execute</code> also allows execution of statements with OUT (or INOUT) parameters. For example:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
@@ -631,8 +617,7 @@ let num_inserted = stmt.execute(
         (&quot;:LOCATION_ID&quot;,     1700               ),
         (&quot;:DEPARTMENT_ID&quot;,   &amp;mut department_id ),
     )
-)?;
-</code></pre>
+)?;</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="using-slices-as-statement-arguments"><a class="header" href="#using-slices-as-statement-arguments">Using Slices as Statement Arguments</a></h1>
 <p>Sibyl accepts a collection of values (as a slice) as a single positional or a named argument. The primary target of this feature is to make passing arguments for IN-list parameters easier. However, as Sibyl simply unrolls a slice into consecutive arguments, this feature can also be &quot;abused&quot; :-) to pass multiple consecutive arguments of the same type when it is convenient.</p>
 <h2 id="example-1"><a class="header" href="#example-1">Example</a></h2>
@@ -659,8 +644,7 @@ let num_inserted = stmt.execute(
             (&quot;:MIN_EMPLOYEES&quot;, 5),
             (&quot;:HIRE_RANGE&quot;,    [date_from, date_thru].as_slice()),
         )
-    )?;
-</code></pre>
+    )?;</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="character-sets"><a class="header" href="#character-sets">Character Sets</a></h1>
 <p>When a database character set is anything other than AL32UTF8, UTF8, or US7ASCII, the reported by Oracle character column data size most likely will be smaller than what is required to store the retrieved text encoded as UTF-8 in Rust. To address this issue Sibyl applies a <em>database character set to UTF-8 worst case conversion factor</em> when it allocates memory for column buffers. By default this factor is 1, which works with AL32UTF8, UTF8, and US7ASCII.</p>
 <p>In cases when conversion of the database character set to UTF-8 requires more bytes for each character, in the worst case, than is used by the original encoding this conversion factor should be provided to the application via environment variable <code>ORACLE_UTF8_CONV_FACTOR</code>. The factor is an unsigned integer. However, the most likely values for it would be 2, 3, or 4.</p>
@@ -679,8 +663,7 @@ let env = sibyl::env()?;
 let txt = Varchar::from(&quot;Hello, World!&quot;, &amp;env)?;
 
 assert_eq!(txt.as_str(), &quot;Hello, World!&quot;);
-<span class="boring">}
-</span></code></pre>
+<span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="number"><a class="header" href="#number">Number</a></h1>
 <pre><code class="language-rust ignore">use sibyl::Number;
 
@@ -695,8 +678,7 @@ let hbar = h.div(&amp;two_pi)?;
 assert_eq!(
     hbar.to_string(&quot;TME&quot;)?,
     &quot;1.05457180013911265115394106872506677375E-34&quot;
-);
-</code></pre>
+);</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="raw"><a class="header" href="#raw">RAW</a></h1>
 <pre><code class="language-rust noplayground"><span class="boring">fn main() -&gt; sibyl::Result&lt;()&gt; {
 </span>use sibyl::Raw;
@@ -706,16 +688,14 @@ let env = sibyl::env()?;
 let raw = Raw::from_bytes(&amp;[1u8,2,3,4,5], &amp;env)?;
 
 assert_eq!(raw.as_bytes(), &amp;[1u8,2,3,4,5]);
-<span class="boring">}
-</span></code></pre>
+<span class="boring">}</span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="date"><a class="header" href="#date">Date</a></h1>
 <pre><code class="language-rust ignore">use sibyl::Date;
 
 let mar28_1996 = Date::from_string(&quot;28-MAR-1996&quot;, &quot;DD-MON-YYYY&quot;, &amp;oracle)?;
 let next_monday = mar28_1996.next_week_day(&quot;MONDAY&quot;)?;
 
-assert_eq!(next_monday.to_string(&quot;DL&quot;)?, &quot;Monday, April 01, 1996&quot;);
-</code></pre>
+assert_eq!(next_monday.to_string(&quot;DL&quot;)?, &quot;Monday, April 01, 1996&quot;);</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="timestamp"><a class="header" href="#timestamp">Timestamp</a></h1>
 <p>There are 3 types of timestamps:</p>
 <ul>
@@ -733,8 +713,7 @@ let ts = oracle::TimestampTZ::from_string(
 assert_eq!(
     ts.to_string(&quot;YYYY-MM-DD HH24:MI:SS.FF TZR&quot;, 3)?,
     &quot;1969-07-20 20:18:04.160 UTC&quot;
-);
-</code></pre>
+);</code></pre>
 <blockquote>
 <p>Note that if you are getting <code>ORA-01805</code> when timestamp with time zone is used, then most likely your local client and the server it is connected to are using different versions of the time zone file. This <a href="https://stackoverflow.com/questions/69381749/where-is-the-oracle-instant-client-timezone-file-located">stackoverflow answer</a> should help you in setting up your local client with the correct time zone file.</p>
 </blockquote>
@@ -750,8 +729,7 @@ let launch  = TimestampTZ::with_date_and_time(1969, 7, 16, 13, 32,  0, 0, &quot;
 let landing = TimestampTZ::with_date_and_time(1969, 7, 24, 16, 50, 35, 0, &quot;UTC&quot;, &amp;oracle)?;
 let duration : IntervalDS = landing.subtract(&amp;launch)?;
 
-assert_eq!(duration.to_string(1,3)?, &quot;+8 03:18:35.000&quot;);
-</code></pre>
+assert_eq!(duration.to_string(1,3)?, &quot;+8 03:18:35.000&quot;);</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="row-id"><a class="header" href="#row-id">Row ID</a></h1>
 <p>Oracle ROWID can be selected and retrieved explicitly into an instance of the <code>RowID</code>. However, one interesting case is SELECT FOR UPDATE queries where Oracle returns ROWIDs implicitly. Those can be retrieved using <code>Row::rowid</code> method.</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
@@ -775,8 +753,7 @@ let num_updated = stmt.execute((
     ( &quot;:MANAGER_ID&quot;, 102 ),
     ( &quot;:ROW_ID&quot;,  &amp;rowid ),
 ))?;
-assert_eq!(num_updated, 1);
-</code></pre>
+assert_eq!(num_updated, 1);</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="cursor"><a class="header" href="#cursor">Cursor</a></h1>
 <p>Cursors can be returned explicitly:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
@@ -791,8 +768,7 @@ assert_eq!(num_updated, 1);
 let mut cursor = Cursor::new(&amp;stmt)?;
 stmt.execute(&amp;mut cursor)?;
 let rows = cursor.rows()?;
-// ...
-</code></pre>
+// ...</code></pre>
 <p>Or, beginning with Oracle 12.1, implicitly:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
     DECLARE
@@ -811,8 +787,7 @@ stmt.execute(())?;
 if let Some( cursor ) = stmt.next_result()? {
     let rows = cursor.rows()?;
     // ...
-}
-</code></pre>
+}</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="clobs-blobs-bfiles"><a class="header" href="#clobs-blobs-bfiles">CLOBs, BLOBs, BFILEs</a></h1>
 <p>Let's assume a table was created:</p>
 <pre><code class="language-sql">CREATE TABLE lob_example (
@@ -850,8 +825,7 @@ lob.open()?;
 let num_bytes_written = lob.write(0, &amp;data)?;
 lob.close()?;
 
-session.commit()?;
-</code></pre>
+session.commit()?;</code></pre>
 <p>And then later it could be read as:</p>
 <pre><code class="language-rust ignore">let id: usize = 1234; // assume it was retrieved from somewhere...
 let stmt = session.prepare(&quot;SELECT bin FROM lob_example WHERE id = :ID&quot;)?;
@@ -870,8 +844,7 @@ fn read_blob(lob: BLOB&lt;'_&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
     let offset = 0;
     lob.read(offset, lob_len, &amp;mut data)?;
     Ok(data)
-}
-</code></pre>
+}</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="known-issues-with-some-clients"><a class="header" href="#known-issues-with-some-clients">Known Issues with Some Clients</a></h1>
 <p>12.2 client does not support <code>OCI_ATTR_SPOOL_MAX_USE_SESSION</code> and thus <code>SessionPool</code>'s <code>session_max_use_count</code> and <code>set_session_max_use_count</code> will fail on it with <code>ORA-24315: illegal attribute type</code>.</p>
 <p>19.15 client does not return current schema (via <code>Session::current_schema</code>) until it is explicitly set via <code>Session::set_current_schema</code>. <code>Session::current_schema</code> works as expected in 19.13 client.</p>
@@ -884,13 +857,11 @@ fn read_blob(lob: BLOB&lt;'_&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
 <p>and if an SQL parameter name is the same as the LOB column name (as in this example):</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
     INSERT INTO table_with_lob (txt) VALUES (:TXT) RETURNING id INTO :ID
-&quot;)?;
-</code></pre>
+&quot;)?;</code></pre>
 <p>Then 21.4 client will fail executing this SQL with <code>ORA-03120: two-task conversion routine: integer overflow</code>. Renaming the parameter placeholder resolves this:</p>
 <pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
     INSERT INTO table_with_lob (txt) VALUES (:NEW_TXT) RETURNING id INTO :ID
-&quot;)?;
-</code></pre>
+&quot;)?;</code></pre>
 <p>21.4 also does not &quot;like&quot; some specific parameter names like <code>:NAME</code> which makes it fail with the same <code>ORA-03120</code>.</p>
 <blockquote>
 <p>Note that 12.2 through 19.13 clients (as far as Sibyl's tests showed) do not exhibit this issue.</p>
@@ -938,18 +909,18 @@ fn read_blob(lob: BLOB&lt;'_&gt;) -&gt; Result&lt;Vec&lt;u8&gt;&gt; {
 
         </div>
 
-        <script type="text/javascript">
+        <script>
             window.playground_copyable = true;
         </script>
-        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
-        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
-        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
 
         <!-- Custom JS scripts -->
-        <script type="text/javascript">
+        <script>
         window.addEventListener('load', function() {
             window.setTimeout(window.print, 100);
         });

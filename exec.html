@@ -5,7 +5,6 @@
         <meta charset="UTF-8">
         <title>SQL Statement Execution - Sibyl User Manual</title>
         <!-- Custom HTML head -->
-        <meta content="text/html; charset=utf-8" http-equiv="Content-Type">
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff" />
@@ -28,13 +27,13 @@
     </head>
     <body>
         <!-- Provide site root to javascript -->
-        <script type="text/javascript">
+        <script>
             var path_to_root = "";
             var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
         </script>
 
         <!-- Work around some values being stored in localStorage wrapped in quotes -->
-        <script type="text/javascript">
+        <script>
             try {
                 var theme = localStorage.getItem('mdbook-theme');
                 var sidebar = localStorage.getItem('mdbook-sidebar');
@@ -50,7 +49,7 @@
         </script>
 
         <!-- Set the theme before any content is loaded, prevents flash -->
-        <script type="text/javascript">
+        <script>
             var theme;
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
@@ -62,7 +61,7 @@
         </script>
 
         <!-- Hide / unhide sidebar before it is displayed -->
-        <script type="text/javascript">
+        <script>
             var html = document.querySelector('html');
             var sidebar = 'hidden';
             if (document.body.clientWidth >= 1080) {
@@ -93,7 +92,7 @@
                             <i class="fa fa-paint-brush"></i>
                         </button>
                         <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
-                            <li role="none"><button role="menuitem" class="theme" id="light">Light (default)</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
                             <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
@@ -127,7 +126,7 @@
                     </div>
                 </div>
                 <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
-                <script type="text/javascript">
+                <script>
                     document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
                     document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
                     Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
@@ -144,8 +143,7 @@
       FROM hr.employees
      WHERE manager_id = :id
   ORDER BY employee_id
-&quot;)?;
-</code></pre>
+&quot;)?;</code></pre>
 <p>A prepared statement can be executed either with the <code>query</code>, <code>query_single</code> or <code>execute</code> methods:</p>
 <ul>
 <li><code>query</code> is used for <code>SELECT</code> statements. In fact, Sibyl will complain if you try to <code>query</code> any other statement.</li>
@@ -170,8 +168,7 @@ while let Some( row ) = rows.next()? {
         |first_name| format!(&quot;{}, {}&quot;, last_name, first_name)
     );
     employees.insert(employee_id, name);
-}
-</code></pre>
+}</code></pre>
 <p>There are a few notable points of interest in the last example:</p>
 <ul>
 <li>Sibyl uses 0-based column indexing in a projection.</li>
@@ -188,8 +185,7 @@ while let Some( row ) = rows.next()? {
         |first_name| format!(&quot;{}, {}&quot;, last_name, first_name)
     );
     employees.insert(employee_id, name);
-}
-</code></pre>
+}</code></pre>
 <p><strong>Note</strong> that all examples use all upper case column and parameter names. This is not really necessary as Sibyl treat them as case-insensitive. However, using all upper case gives Sibyl a chance to locate a column (or a parameter placeholder) without converting the name to upper case first (to match the Oracle reported names), thus avoiding temporary string allocation and upper case conversion. Of course, you can always maintain an <code>enum</code> for a select list, thus using indexes, which are the speediest way to get to the data anyway.</p>
 <pre><code class="language-rust ignore">enum Col { EmployeeId, LastName, FirstName }
 
@@ -198,8 +194,7 @@ while let Some( row ) = rows.next()? {
     let last_name : &amp;str  = row.get(Col::LastName as usize)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(Col::FirstName as usize)?;
     // ...
-}
-</code></pre>
+}</code></pre>
 <p>Or to be extra fancy:</p>
 <pre><code class="language-rust ignore">#[derive(Clone,Copy)]
 enum Col { EmployeeId, LastName, FirstName }
@@ -221,8 +216,7 @@ while let Some( row ) = rows.next()? {
     let last_name : &amp;str  = row.get(Col::LastName)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(Col::FirstName)?;
     // ...
-}
-</code></pre>
+}</code></pre>
 <p>Of course, that's a lot of boilerplate, which would benefit from a <code>derive</code> macro. Maybe we'll get to that eventually :-)</p>
 
                     </main>
@@ -251,15 +245,15 @@ while let Some( row ) = rows.next()? {
 
         </div>
 
-        <script type="text/javascript">
+        <script>
             window.playground_copyable = true;
         </script>
-        <script src="elasticlunr.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="mark.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="searcher.js" type="text/javascript" charset="utf-8"></script>
-        <script src="clipboard.min.js" type="text/javascript" charset="utf-8"></script>
-        <script src="highlight.js" type="text/javascript" charset="utf-8"></script>
-        <script src="book.js" type="text/javascript" charset="utf-8"></script>
+        <script src="elasticlunr.min.js"></script>
+        <script src="mark.min.js"></script>
+        <script src="searcher.js"></script>
+        <script src="clipboard.min.js"></script>
+        <script src="highlight.js"></script>
+        <script src="book.js"></script>
 
         <!-- Custom JS scripts -->
     </body>
