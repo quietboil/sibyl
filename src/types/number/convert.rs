@@ -257,7 +257,8 @@ pub(crate) fn to_real<T: Real>(num: &OCINumber, err: &OCIError) -> Result<T> {
 }
 
 pub(crate) fn to_string(fmt: &str, num: &OCINumber, err: &OCIError) -> Result<String> {
-    let mut txt: [u8; 64] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let txt = mem::MaybeUninit::<[u8;64]>::uninit();
+    let mut txt = unsafe { txt.assume_init() };
     let mut txt_len = txt.len() as u32;
     oci::number_to_text(err, num, fmt.as_ptr(), fmt.len() as u32, &mut txt_len, txt.as_mut_ptr())?;
     let txt = &txt[0..txt_len as usize];

@@ -8,7 +8,8 @@ use libc::size_t;
 use std::{mem, cmp::Ordering, ops::{Deref, DerefMut}};
 
 pub(crate) fn to_string(int: &OCIInterval, lfprec: u8, fsprec: u8, ctx: &dyn Ctx) -> Result<String> {
-    let mut name: [u8;32] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let name = mem::MaybeUninit::<[u8;32]>::uninit();
+    let mut name = unsafe { name.assume_init() };
     let mut size = mem::MaybeUninit::<size_t>::uninit();
     oci::interval_to_text(ctx.as_context(), ctx.as_ref(), int, lfprec, fsprec, name.as_mut_ptr(), name.len(), size.as_mut_ptr())?;
     let size = unsafe { size.assume_init() } as usize;

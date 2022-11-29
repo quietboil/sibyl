@@ -13,7 +13,8 @@ pub(crate) fn new() -> OCIDate {
 }
 
 pub(crate) fn to_string(fmt: &str, date: &OCIDate, err: &OCIError) -> Result<String> {
-    let mut txt : [u8;128] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let txt = mem::MaybeUninit::<[u8;128]>::uninit();
+    let mut txt = unsafe { txt.assume_init() };
     let mut txt_len = txt.len() as u32;
     oci::date_to_text(err, date, fmt.as_ptr(), fmt.len() as u8, &mut txt_len, txt.as_mut_ptr())?;
     let txt = &txt[0..txt_len as usize];

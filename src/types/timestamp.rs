@@ -7,7 +7,8 @@ use crate::{ Result, oci::{self, *} };
 use std::{ mem, ptr, cmp::Ordering, ops::{Deref, DerefMut} };
 
 pub(crate) fn to_string(fmt: &str, fsprec: u8, ts: &OCIDateTime, ctx: &dyn Ctx) -> Result<String> {
-    let mut name: [u8;128] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+    let name = mem::MaybeUninit::<[u8;128]>::uninit();
+    let mut name = unsafe { name.assume_init() };
     let mut size = name.len() as u32;
     oci::date_time_to_text(
         ctx.as_context(), ctx.as_ref(), ts,
@@ -406,7 +407,8 @@ impl<'a, T> DateTime<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
         ```
     */
     pub fn tz_name(&self) -> Result<String> {
-        let mut name: [u8;64] = unsafe { mem::MaybeUninit::uninit().assume_init() };
+        let name = mem::MaybeUninit::<[u8;64]>::uninit();
+        let mut name = unsafe { name.assume_init() };
         let mut size = name.len() as u32;
         oci::date_time_get_time_zone_name(self.ctx.as_context(), self.ctx.as_ref(), self, name.as_mut_ptr(), &mut size)?;
         let txt = &name[0..size as usize];
