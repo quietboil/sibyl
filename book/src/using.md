@@ -36,9 +36,19 @@ set OCI_LIB_DIR=%ORACLE_HOME%\bin
 cargo build --examples --features=blocking
 ```
 
+> *Note* that for `gnu` targets the build script will try to locate `OCI.DLL` by searching it on the current `PATH` if the `OCI_LIB_DIR` is not specified.
+
 However, for `msvc` environment the `OCI_LIB_DIR` must point to the directory with `oci.lib`. For example, you might build those examples as:
 
 ```plaintext
 set OCI_LIB_DIR=%ORACLE_HOME%\oci\lib\msvc
 cargo build --examples --features=blocking
+```
+
+> *Note* that for `msvc` targets, that need `oci.lib`, the `OCI_LIB_DIR` is required. The build will fail if it is not set.
+
+Because of the above requirement, that the `OCI_LIB_DIR` must be set for `msvc` targets, it also must be specified for the `rust-analyser`. For example, in VS Code this can be done in `.vscode\settings.json`:
+
+```json
+"rust-analyzer.server.extraEnv": { "OCI_LIB_DIR": "C:\\Path\\To\\Oracle\\instantclient\\sdk\\lib\\msvc" }
 ```
