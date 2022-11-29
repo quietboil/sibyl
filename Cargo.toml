@@ -13,12 +13,12 @@ documentation = "https://docs.rs/sibyl"
 
 [dependencies]
 libc = "0.2"
-once_cell = "1.13"
+once_cell = "1.16"
 parking_lot = "0.12"
 tokio-rt = { version = "1", features = ["rt"], optional = true, package = "tokio" }
 actix-rt = { version = "2.7", default-features = false, optional = true }
 async-rt = { version = "1.12", features = ["unstable"], optional = true, package = "async-std" }
-async-global-executor = { version = "2.2", optional = true }
+async-global-executor = { version = "2.3", optional = true }
 
 [dev-dependencies]
 tokio-rt = { version = "1", features = ["rt", "rt-multi-thread"], package = "tokio" }
