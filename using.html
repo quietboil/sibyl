@@ -169,7 +169,7 @@ cargo build --examples --features=blocking
 <blockquote>
 <p><em>Note</em> that for <code>msvc</code> targets, that need <code>oci.lib</code>, the <code>OCI_LIB_DIR</code> is required. The build will fail if it is not set.</p>
 </blockquote>
-<p>Because of the above requirement, that the <code>OCI_LIB_DIR</code> must be set for <code>msvc</code> targets, it also must be specified for the <code>rust-analyser</code>. For example, in VS Code this can be done in <code>.vscode\settings.json</code>:</p>
+<p>Because of the above requirement, that the <code>OCI_LIB_DIR</code> must be set for <code>msvc</code> targets, it also must be specified for the <code>rust-analyzer</code>. For example, in VS Code this can be done in <code>.vscode\settings.json</code>:</p>
 <pre><code class="language-json">&quot;rust-analyzer.server.extraEnv&quot;: { &quot;OCI_LIB_DIR&quot;: &quot;C:\\Path\\To\\Oracle\\instantclient\\sdk\\lib\\msvc&quot; }
 </code></pre>
 
