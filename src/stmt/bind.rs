@@ -94,12 +94,27 @@ impl Params {
     }
 
     /// Binds an IN argument to a parameter placeholder at the specified position in the SQL statement.
-    pub(crate) fn bind(&mut self, idx: usize, sql_type: u16, data_ptr: *mut c_void, data_len: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
+    pub(crate) fn bind(&mut self, idx: usize, sql_type: u16, data_ptr: *const c_void, data_len: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
         self.bind_order.push(idx);
+        if data_len != 0 {
+            self.nulls[idx] = OCI_IND_NOTNULL;
+        }
         oci::bind_by_pos(
             stmt, self.binds[idx].as_mut_ptr(), err,
-            (idx + 1) as u32, data_ptr, data_len as i64, sql_type,
-            ptr::null_mut(), ptr::null_mut(),
+            (idx + 1) as u32, data_ptr as _, data_len as i64, sql_type,
+            &mut self.nulls[idx], ptr::null_mut(),
+            OCI_DEFAULT
+        )
+    }
+
+    /// Binds NULL to an IN parameter placeholder at the specified position in the SQL statement.
+    pub(crate) fn bind_null(&mut self, idx: usize, sql_type: u16, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
+        self.bind_order.push(idx);
+        self.nulls[idx] = OCI_IND_NULL;
+        oci::bind_by_pos(
+            stmt, self.binds[idx].as_mut_ptr(), err,
+            (idx + 1) as u32, ptr::null_mut(), 0, sql_type,
+            &mut self.nulls[idx], ptr::null_mut(),
             OCI_DEFAULT
         )
     }
@@ -267,6 +282,39 @@ mod tests {
         assert!(stmt.is_null("NEW_SALARY")?);
 
         session.rollback()?;
+        Ok(())
+    }
+
+    #[test]
+    fn bind_option() -> std::result::Result<(),Box<dyn std::error::Error>> {
+        let dbname = std::env::var("DBNAME")?;
+        let dbuser = std::env::var("DBUSER")?;
+        let dbpass = std::env::var("DBPASS")?;
+        let oracle = Environment::new()?;
+        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+
+        let stmt = session.prepare("SELECT Nvl(:val,'None') FROM dual")?;
+        let arg : Option<&str> = None;
+        let row = stmt.query_single(arg)?.unwrap();
+        let val : &str = row.get(0)?;
+        assert_eq!(val, "None");
+
+        let arg : Option<&str> = Some("Data");
+        let row = stmt.query_single(arg)?.unwrap();
+        let val : &str = row.get(0)?;
+        assert_eq!(val, "Data");
+
+        let stmt = session.prepare("SELECT Nvl(:val,42) FROM dual")?;
+        let arg : Option<i32> = None;
+        let row = stmt.query_single(arg)?.unwrap();
+        let val : i32 = row.get(0)?;
+        assert_eq!(val, 42);
+
+        let arg : Option<i32> = Some(99);
+        let row = stmt.query_single(arg)?.unwrap();
+        let val : i32 = row.get(0)?;
+        assert_eq!(val, 99);
+
         Ok(())
     }
 }

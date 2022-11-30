@@ -166,20 +166,26 @@ pub struct OCITimestampLTZ          {}
 pub struct OCIIntervalYearToMonth   {}
 pub struct OCIIntervalDayToSecond   {}
 
+/// Trait of (bindable) values to have a type
+pub trait SqlType {
+    fn sql_type() -> u16;
+}
+
 /// Trait of descriptors to have a type
-pub trait DescriptorType : OCIStruct {
+pub trait DescriptorType : OCIStruct + SqlType {
     type OCIType;
     fn get_type() -> u32;
-    fn sql_type() -> u16;
 }
 
 macro_rules! impl_descr_type {
     ($($oci_desc:ident => $id:ident, $sqlt:ident, $ret:ident),+) => {
         $(
+            impl SqlType for $oci_desc {
+                fn sql_type() -> u16 { $sqlt }
+            }
             impl DescriptorType for $oci_desc {
                 type OCIType = $ret;
                 fn get_type() -> u32 { $id }
-                fn sql_type() -> u16 { $sqlt }
             }
         )+
     };

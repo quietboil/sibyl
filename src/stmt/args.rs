@@ -39,6 +39,25 @@ impl ToSql for () {
     }
 }
 
+macro_rules! impl_sql_type {
+    ($($t:ty),+ => $sqlt:ident) => {
+        $(
+            impl SqlType for $t {
+                fn sql_type() -> u16 {
+                    $sqlt
+                }
+            }
+        )+
+    };
+}
+
+impl_sql_type!{ i8, i16, i32, i64, isize => SQLT_INT }
+impl_sql_type!{ u8, u16, u32, u64, usize => SQLT_UIN }
+impl_sql_type!{ f32 => SQLT_BFLOAT }
+impl_sql_type!{ f64 => SQLT_BDOUBLE }
+impl_sql_type!{ &str, &&str, String, &String => SQLT_CHR }
+impl_sql_type!{ [u8], &[u8], &&[u8], Vec<u8>, &Vec<u8> => SQLT_LBI }
+
 macro_rules! impl_num_to_sql {
     ($($t:ty),+ => $sqlt:ident) => {
         $(
@@ -74,18 +93,6 @@ impl_num_to_sql!{ i8, i16, i32, i64, isize => SQLT_INT }
 impl_num_to_sql!{ u8, u16, u32, u64, usize => SQLT_UIN }
 impl_num_to_sql!{ f32 => SQLT_BFLOAT }
 impl_num_to_sql!{ f64 => SQLT_BDOUBLE }
-
-// impl ToSql for &[&mut i8] {
-//     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-//         for &mut num in self.iter_mut() {
-//             let ptr = num as *mut i8;
-//             let len = size_of::<i8>();
-//             params.bind_out(pos, SQLT_INT, ptr as _, len, len, stmt, err)?;
-//             pos += 1;
-//         }
-//         Ok(pos)
-//     }
-// }
 
 macro_rules! impl_num_slice_to_sql {
     ($($t:ty),+ => $sqlt:ident) => {
@@ -305,6 +312,17 @@ impl<T> ToSql for &mut Descriptor<T> where T: DescriptorType, T::OCIType: OCIStr
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = size_of::<*mut T::OCIType>();
         params.bind_out(pos, T::sql_type(), (*self).as_mut_ptr() as _, len, len, stmt, err)?;
+        Ok(pos + 1)
+    }
+}
+
+impl<T> ToSql for Option<T> where T: ToSql + SqlType {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        if let Some(value) = self {
+            value.bind_to(pos, params, stmt, err)?;
+        } else {
+            params.bind_null(pos, T::sql_type(), stmt, err)?;
+        }
         Ok(pos + 1)
     }
 }
