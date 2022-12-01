@@ -39,49 +39,31 @@ impl ToSql for () {
     }
 }
 
-macro_rules! impl_sql_type {
-    ($($t:ty),+ => $sqlt:ident) => {
-        $(
-            impl SqlType for $t {
-                fn sql_type() -> u16 {
-                    $sqlt
-                }
-            }
-        )+
-    };
-}
-
 impl_sql_type!{ i8, i16, i32, i64, isize => SQLT_INT }
 impl_sql_type!{ u8, u16, u32, u64, usize => SQLT_UIN }
 impl_sql_type!{ f32 => SQLT_BFLOAT }
 impl_sql_type!{ f64 => SQLT_BDOUBLE }
-impl_sql_type!{ &str, &&str, String, &String => SQLT_CHR }
-impl_sql_type!{ [u8], &[u8], &&[u8], Vec<u8>, &Vec<u8> => SQLT_LBI }
+impl_sql_type!{ &str, String => SQLT_CHR }
+impl_sql_type!{ &[u8], Vec<u8> => SQLT_LBI }
 
 macro_rules! impl_num_to_sql {
     ($($t:ty),+ => $sqlt:ident) => {
         $(
             impl ToSql for $t {
                 fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    let ptr = self as *const $t;
-                    let len = size_of::<$t>();
-                    params.bind(pos, $sqlt, ptr as _, len, stmt, err)?;
+                    params.bind(pos, $sqlt, self as *const $t as _, size_of::<$t>(), stmt, err)?;
                     Ok(pos + 1)
                 }
             }
             impl ToSql for &$t {
                 fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    let ptr = *self as *const $t;
-                    let len = size_of::<$t>();
-                    params.bind(pos, $sqlt, ptr as _, len, stmt, err)?;
+                    params.bind(pos, $sqlt, *self as *const $t as _, size_of::<$t>(), stmt, err)?;
                     Ok(pos + 1)
                 }
             }
             impl ToSql for &mut $t {
                 fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    let ptr = *self as *mut $t;
-                    let len = size_of::<$t>();
-                    params.bind_out(pos, $sqlt, ptr as _, len, len, stmt, err)?;
+                    params.bind_out(pos, $sqlt, *self as *mut $t as _, size_of::<$t>(), size_of::<$t>(), stmt, err)?;
                     Ok(pos + 1)
                 }
             }
@@ -192,7 +174,7 @@ impl ToSql for &mut String {
         Ok(pos + 1)
     }
 
-    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {        
+    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {
         let new_len = params.out_data_len(pos);
         unsafe {
             self.as_mut_vec().set_len(new_len)
@@ -209,7 +191,7 @@ impl ToSql for &mut [String] {
         Ok(pos)
     }
 
-    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {        
+    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {
         for txt in self.iter_mut() {
             let new_len = params.out_data_len(pos);
             unsafe {
@@ -228,7 +210,7 @@ impl ToSql for &mut [&mut String] {
         Ok(pos)
     }
 
-    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {        
+    fn set_len_from_bind(&mut self, pos: usize, params: &Params) {
         for txt in self.iter_mut() {
             let new_len = params.out_data_len(pos);
             unsafe {
@@ -316,14 +298,32 @@ impl<T> ToSql for &mut Descriptor<T> where T: DescriptorType, T::OCIType: OCIStr
     }
 }
 
+fn bind_opt<T: ToSql + SqlType>(opt: &Option<&T>, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    if let Some(val) = opt.as_deref() {
+        // Casting to `mut` only to satisfy the `bind_to` contract (that has to deal with both IN and INOUT arguments)
+        let ptr = val as *const T as *mut T;
+        // The val has not changed. We pretend that it is mutable to satisfy `bind_to`.
+        // Real mutable items will not be seen here as `SqlType` is not implemented for them.
+        let val = unsafe { &mut *ptr };
+        // params.bind(pos, T::sql_type(), val as *const T as _, size_of::<T>(), stmt, err)?;
+        val.bind_to(pos, params, stmt, err)?;
+    } else {
+        params.bind(pos, T::sql_null_type(), std::ptr::null(), 0, stmt, err)?;
+    }
+    Ok(pos + 1)
+}
+
 impl<T> ToSql for Option<T> where T: ToSql + SqlType {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        if let Some(value) = self {
-            value.bind_to(pos, params, stmt, err)?;
-        } else {
-            params.bind_null(pos, T::sql_type(), stmt, err)?;
-        }
-        Ok(pos + 1)
+        let opt = self.as_ref();
+        bind_opt(&opt, pos, params, stmt, err)
+    }
+}
+
+impl<T> ToSql for &Option<T> where T: ToSql + SqlType {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        let opt = self.as_ref();
+        bind_opt(&opt, pos, params, stmt, err)
     }
 }
 

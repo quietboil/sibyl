@@ -168,8 +168,32 @@ pub struct OCIIntervalDayToSecond   {}
 
 /// Trait of (bindable) values to have a type
 pub trait SqlType {
+    /// Returns SQLT type code
     fn sql_type() -> u16;
+    /// Returns SQLT code for the NULL of the type
+    /// Some types - `RAW` - are picky about SQLT of the NULL.
+    fn sql_null_type() -> u16 {
+        Self::sql_type()
+    }
 }
+
+macro_rules! impl_sql_type {
+    ($($t:ty),+ => $sqlt:ident) => {
+        $(
+            impl SqlType for $t {
+                fn sql_type() -> u16 {
+                    $sqlt
+                }
+            }
+            impl SqlType for &$t {
+                fn sql_type() -> u16 {
+                    $sqlt
+                }
+            }
+        )+
+    };
+}
+pub(crate) use impl_sql_type;
 
 /// Trait of descriptors to have a type
 pub trait DescriptorType : OCIStruct + SqlType {

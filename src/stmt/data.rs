@@ -7,7 +7,8 @@ use crate::{
         date, interval, number, raw, timestamp, varchar,
         Date, Varchar, rowid
     },
-    lob::{ self, LOB },
+    lob::{ self, LOB }, 
+    Raw,
 };
 
 /// A trait for types which values can be created from the returned Oracle data.
@@ -280,6 +281,24 @@ impl<'a> FromSql<'a> for RowID {
                 }
             },
             _ => Err( Error::new("cannot return as row id") )
+        }
+    }
+}
+
+impl<'a> FromSql<'a> for Raw<'a> {
+    fn value(row: &'a Row<'a>, col: &mut Column) -> Result<Self> {
+        assert_not_null(row, col)?;
+        match col.data() {
+            ColumnBuffer::Binary( oci_raw_ptr ) => {
+                // inlined Raw::as_bytes to deal with the buffer lifetime issue
+                let ptr = raw::as_ptr(&oci_raw_ptr, row.as_ref());
+                let len = raw::len(&oci_raw_ptr, row.as_ref());
+                let raw = unsafe {
+                    std::slice::from_raw_parts(ptr, len)
+                };
+                Raw::from_bytes(raw, row.session())
+            },
+            _ => Err( Error::new("cannot return as Raw") )
         }
     }
 }

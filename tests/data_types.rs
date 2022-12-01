@@ -390,17 +390,61 @@ mod blocking {
         let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         let mut id = 0;
         let mut data_out = Vec::with_capacity(30);
-        let count = stmt.execute((&data[..], text, &mut id, &mut data_out))?;
+        let count = stmt.execute((data.as_ref(), text, &mut id, &mut data_out))?;
         assert_eq!(count, 1);
         assert!(id > 0);
-        assert_eq!(data_out.as_slice(), &data[..]);
+        assert_eq!(data_out.as_slice(), data.as_ref());
+
+        let null : Option<&[u8]> = None;
+        let mut id1 = 0;
+        let count = stmt.execute((null, text, &mut id1, &mut data_out))?;
+        assert_eq!(count, 1);
+        assert_eq!(id1, id + 1);
+        assert_eq!(data_out.len(), 0);
+
+        let not_null = Some(data.as_ref());
+        let mut id2 = 0;
+        let count = stmt.execute((not_null, text, &mut id2, &mut data_out))?;
+        assert_eq!(count, 1);
+        assert_eq!(id2, id1 + 1);
+        assert_eq!(data_out.as_slice(), data.as_ref());
+
+        let not_null = Vec::from(data.as_ref());
+        let not_null = Some(&not_null);
+        let mut id3 = 0;
+        let count = stmt.execute((&not_null, text, &mut id3, &mut data_out))?;
+        assert_eq!(count, 1);
+        assert_eq!(id3, id2 + 1);
+        assert_eq!(data_out.as_slice(), data.as_ref());
+
+        let raw = Raw::from_bytes(data.as_ref(), &session)?;
+        let raw = Some(&raw);
+        let txt : Option<&str> = None;
+        let mut id4 = 0;
+        let count = stmt.execute((&raw, &txt, &mut id4, &mut data_out))?;
+        assert_eq!(count, 1);
+        assert_eq!(id4, id3 + 1);
+        assert_eq!(data_out.as_slice(), data.as_ref());
+
+        let mut id5 = 0;
+        let count = stmt.execute((raw, &txt, &mut id5, &mut data_out))?;
+        assert_eq!(count, 1);
+        assert_eq!(id5, id4 + 1);
+        assert_eq!(data_out.as_slice(), data.as_ref());
+
+        let raw : Option<Raw> = None;
+        let mut id6 = 0;
+        let count = stmt.execute((raw, &txt, &mut id6, &mut data_out))?;
+        assert_eq!(count, 1);
+        assert_eq!(id6, id5 + 1);
+        assert_eq!(data_out.len(), 0);
 
         let stmt = session.prepare("SELECT bin, text FROM long_and_raw_test_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
         let row = stmt.query_single(&id)?.unwrap();
-        let bin : &[u8] = row.get("BIN")?;
+        let bin : Raw = row.get("BIN")?;
         let txt : &str = row.get("TEXT")?;
-        assert_eq!(bin, &data[..]);
+        assert_eq!(bin.as_bytes(), data.as_ref());
         assert_eq!(txt, text);
 
         Ok(())
