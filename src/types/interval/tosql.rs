@@ -2,6 +2,7 @@
 
 use crate::{oci::*, ToSql, Result, stmt::Params};
 use super::Interval;
+use std::mem::size_of;
 
 macro_rules! impl_int_to_sql {
     ($($ts:ty),+) => {
@@ -13,23 +14,23 @@ macro_rules! impl_int_to_sql {
             }
             impl ToSql for &Interval<'_, $ts> {
                 fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    let len = std::mem::size_of::<*mut <$ts as DescriptorType>::OCIType>();
-                    params.bind(pos, <$ts>::sql_type(), self.interval.as_ptr() as _, len, stmt, err)?;
+                    let len = size_of::<*mut <$ts as DescriptorType>::OCIType>();
+                    params.bind(pos, <$ts>::sql_type(), self.interval.as_ptr() as _, len, len, stmt, err)?;
                     Ok(pos + 1)
                 }
             }
             impl ToSql for &mut Interval<'_, $ts> {
                 fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    let len = std::mem::size_of::<*mut <$ts as DescriptorType>::OCIType>();
-                    params.bind_out(pos, <$ts>::sql_type(), self.interval.as_mut_ptr() as _, len, len, stmt, err)?;
+                    let len = size_of::<*mut <$ts as DescriptorType>::OCIType>();
+                    params.bind(pos, <$ts>::sql_type(), self.interval.as_mut_ptr() as _, len, len, stmt, err)?;
                     Ok(pos + 1)
                 }
             }
             impl ToSql for &[Interval<'_, $ts>] {
                 fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    let len = std::mem::size_of::<*mut <$ts as DescriptorType>::OCIType>();
+                    let len = size_of::<*mut <$ts as DescriptorType>::OCIType>();
                     for item in self.iter() {
-                        params.bind(pos, <$ts>::sql_type(), item.interval.as_ptr() as _, len, stmt, err)?;
+                        params.bind(pos, <$ts>::sql_type(), item.interval.as_ptr() as _, len, len, stmt, err)?;
                         pos += 1;
                     }
                     Ok(pos)
@@ -37,9 +38,9 @@ macro_rules! impl_int_to_sql {
             }
             impl ToSql for &[&Interval<'_, $ts>] {
                 fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    let len = std::mem::size_of::<*mut <$ts as DescriptorType>::OCIType>();
+                    let len = size_of::<*mut <$ts as DescriptorType>::OCIType>();
                     for item in self.iter() {
-                        params.bind(pos, <$ts>::sql_type(), item.interval.as_ptr() as _, len, stmt, err)?;
+                        params.bind(pos, <$ts>::sql_type(), item.interval.as_ptr() as _, len, len, stmt, err)?;
                         pos += 1;
                     }
                     Ok(pos)
@@ -47,12 +48,17 @@ macro_rules! impl_int_to_sql {
             }
             impl ToSql for &mut [&mut Interval<'_, $ts>] {
                 fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    let len = std::mem::size_of::<*mut <$ts as DescriptorType>::OCIType>();
+                    let len = size_of::<*mut <$ts as DescriptorType>::OCIType>();
                     for item in self.iter_mut() {
-                        params.bind_out(pos, <$ts>::sql_type(), item.interval.as_mut_ptr() as _, len, len, stmt, err)?;
+                        params.bind(pos, <$ts>::sql_type(), item.interval.as_mut_ptr() as _, len, len, stmt, err)?;
                         pos += 1;
                     }
                     Ok(pos)
+                }
+            }
+            impl SqlType for Interval<'_, $ts> {
+                fn sql_type() -> u16 {
+                    <$ts>::sql_type()
                 }
             }
         )+
@@ -60,3 +66,4 @@ macro_rules! impl_int_to_sql {
 }
 
 impl_int_to_sql!{ OCIIntervalYearToMonth, OCIIntervalDayToSecond }
+

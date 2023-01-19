@@ -88,7 +88,7 @@ impl<'a> Statement<'a> {
             if num_rows == 0 {
                 params.write().set_out_to_null();
             }
-            params.read().set_out_data_len(&mut args);
+            params.read().update_out_args(&mut args);
         }
         Ok(num_rows)
     }

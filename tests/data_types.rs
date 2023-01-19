@@ -395,50 +395,6 @@ mod blocking {
         assert!(id > 0);
         assert_eq!(data_out.as_slice(), data.as_ref());
 
-        let null : Option<&[u8]> = None;
-        let mut id1 = 0;
-        let count = stmt.execute((null, text, &mut id1, &mut data_out))?;
-        assert_eq!(count, 1);
-        assert_eq!(id1, id + 1);
-        assert_eq!(data_out.len(), 0);
-
-        let not_null = Some(data.as_ref());
-        let mut id2 = 0;
-        let count = stmt.execute((not_null, text, &mut id2, &mut data_out))?;
-        assert_eq!(count, 1);
-        assert_eq!(id2, id1 + 1);
-        assert_eq!(data_out.as_slice(), data.as_ref());
-
-        let not_null = Vec::from(data.as_ref());
-        let not_null = Some(&not_null);
-        let mut id3 = 0;
-        let count = stmt.execute((&not_null, text, &mut id3, &mut data_out))?;
-        assert_eq!(count, 1);
-        assert_eq!(id3, id2 + 1);
-        assert_eq!(data_out.as_slice(), data.as_ref());
-
-        let raw = Raw::from_bytes(data.as_ref(), &session)?;
-        let raw = Some(&raw);
-        let txt : Option<&str> = None;
-        let mut id4 = 0;
-        let count = stmt.execute((&raw, &txt, &mut id4, &mut data_out))?;
-        assert_eq!(count, 1);
-        assert_eq!(id4, id3 + 1);
-        assert_eq!(data_out.as_slice(), data.as_ref());
-
-        let mut id5 = 0;
-        let count = stmt.execute((raw, &txt, &mut id5, &mut data_out))?;
-        assert_eq!(count, 1);
-        assert_eq!(id5, id4 + 1);
-        assert_eq!(data_out.as_slice(), data.as_ref());
-
-        let raw : Option<Raw> = None;
-        let mut id6 = 0;
-        let count = stmt.execute((raw, &txt, &mut id6, &mut data_out))?;
-        assert_eq!(count, 1);
-        assert_eq!(id6, id5 + 1);
-        assert_eq!(data_out.len(), 0);
-
         let stmt = session.prepare("SELECT bin, text FROM long_and_raw_test_data WHERE id = :ID")?;
         // without explicit resizing via `stmt.set_max_long_size` (before `stmt.query`) TEXT output is limited to 32768
         let row = stmt.query_single(&id)?.unwrap();

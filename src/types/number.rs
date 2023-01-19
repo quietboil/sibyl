@@ -12,18 +12,20 @@ use crate::{Result, oci::{self, *}};
 use std::{cmp::Ordering, mem, ops::{Deref, DerefMut}};
 
 /**
-    Creates an OCI number initialized as zero. This simplified version of `u128_into_number`
+    Creates an uninitialized OCI number. This simplified version of `u128_into_number`
     is used to create an output variable buffer.
 
-    **Note** that we cannot always pass `uninit` version of `OCINumber` to be used for output.
-    While `uninit` variant works on Windows, it fails with ORA-01458 on Linux.
+    **Note** that we cannot pass an `uninit` version of `OCINumber` to be used for output.
+    While `uninit` variant works on Windows, it fails with ORA-01458 on Linux. Setting
+    first byte to 0 creates a predictable unitialized Number.
 */
 pub(crate) fn new() -> OCINumber {
     let mut num = mem::MaybeUninit::<OCINumber>::uninit();
     let ptr = num.as_mut_ptr();
     unsafe {
-        (*ptr).bytes[0] = 1;
-        (*ptr).bytes[1] = 128;
+        // (*ptr).bytes[0] = 1;
+        // (*ptr).bytes[1] = 128;
+        (*ptr).bytes[0] = 0;
         num.assume_init()
     }
 }

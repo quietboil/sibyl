@@ -179,6 +179,26 @@ impl<'a> Raw<'a> {
     }
 
     /**
+        Sets the content of self to `data`
+
+        # Example
+        ```
+        use sibyl::{ self as oracle, Raw };
+        let env = oracle::env()?;
+
+        let mut bin = Raw::with_capacity(10, &env)?;
+        bin.set(&[0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31])?;
+
+        assert_eq!(bin.len(), 7);
+        assert_eq!(bin.as_bytes(), &[0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31]);
+        # Ok::<(),oracle::Error>(())
+        ```
+    */
+    pub fn set(&mut self, data: &[u8]) -> Result<()> {
+        oci::raw_assign_bytes(self.ctx.as_ref(), self.ctx.as_ref(), data.as_ptr(), data.len() as u32, self.raw.as_mut_ptr())
+    }
+
+    /**
         Returns a byte slice of this Raw’s contents.
 
         # Example

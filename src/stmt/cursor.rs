@@ -16,7 +16,7 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 impl ToSql for &mut Handle<OCIStmt> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = std::mem::size_of::<*mut OCIStmt>();
-        params.bind_out(pos, SQLT_RSET, (*self).as_mut_ptr() as _, len, len, stmt, err)?;
+        params.bind(pos, SQLT_RSET, (*self).as_mut_ptr() as _, len, len, stmt, err)?;
         Ok(pos + 1)
     }
 }
@@ -135,7 +135,7 @@ impl Ctx for Cursor<'_> {
 impl ToSql for &mut Cursor<'_> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = std::mem::size_of::<*mut OCIStmt>();
-        params.bind_out(pos, SQLT_RSET, self.cursor.as_mut_ptr() as _, len, len, stmt, err)?;
+        params.bind(pos, SQLT_RSET, self.cursor.as_mut_ptr() as _, len, len, stmt, err)?;
         Ok(pos + 1)
     }
 }

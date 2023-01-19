@@ -645,7 +645,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 impl<T> ToSql for &LOB<'_, T> where T: DescriptorType<OCIType=OCILobLocator> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = std::mem::size_of::<*mut T::OCIType>();
-        params.bind(pos, T::sql_type(), self.inner.locator.as_ptr() as _, len, stmt, err)?;
+        params.bind(pos, T::sql_type(), self.inner.locator.as_ptr() as _, len, len, stmt, err)?;
         Ok(pos + 1)
     }
 }
@@ -653,7 +653,7 @@ impl<T> ToSql for &LOB<'_, T> where T: DescriptorType<OCIType=OCILobLocator> {
 impl<T> ToSql for &mut LOB<'_, T> where T: DescriptorType<OCIType=OCILobLocator> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = std::mem::size_of::<*mut T::OCIType>();
-        params.bind_out(pos, T::sql_type(), self.inner.locator.as_mut_ptr() as _, len, len, stmt, err)?;
+        params.bind(pos, T::sql_type(), self.inner.locator.as_mut_ptr() as _, len, len, stmt, err)?;
         Ok(pos + 1)
     }
 }

@@ -26,6 +26,7 @@ tokio-rt = { version = "1", features = ["rt", "rt-multi-thread"], package = "tok
 [features]
 blocking = []
 nonblocking = []
+unsafe-direct-binds = []
 tokio = ["tokio-rt"]
 actix = ["actix-rt"]
 async-std = ["async-rt"]

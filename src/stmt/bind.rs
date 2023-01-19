@@ -9,8 +9,6 @@ use libc::c_void;
 pub struct Params {
     /// Parameter placeholder (name) indexes
     idxs: HashMap<&'static str,usize>,
-    /// Parameter names
-    names: HashMap<usize,&'static str>,
     /// OCI bind handles
     binds: Vec<Ptr<OCIBind>>,
     /// NULL indicators
@@ -18,7 +16,9 @@ pub struct Params {
     /// Sizes of returned data
     out_data_lens: Vec<u32>,
     /// Map of arguments indexes (positions) to parameter placeholder indexes
-    bind_order: Vec<usize>,
+    bind_order: Vec<u16>,
+    /// Buffers used to keep and bind IN arguments or OUR arguments that were passed as None
+    buffers: Vec<Vec<u8>>
 }
 
 impl Params {
@@ -29,7 +29,6 @@ impl Params {
         } else {
             let num_binds = num_binds as usize;
             let mut idxs  = HashMap::with_capacity(num_binds);
-            let mut names = HashMap::with_capacity(num_binds);
             let mut binds = Vec::with_capacity(num_binds);
 
             let mut bind_names      = vec![     ptr::null_mut::<u8>(); num_binds];
@@ -56,16 +55,18 @@ impl Params {
                     // While `str` for names that we created above will only live as long as the containing `Statement`,
                     // within `Params` they can be seen as static as they will be alive longer.
                     idxs.insert(name, i);
-                    names.insert(i, name);
                 }
                 binds.push(Ptr::new(oci_binds[i]));
             }
 
+            let buffers = vec![Vec::new(); num_binds];
+
             Ok(Some(Self{
-                idxs, names, binds,
+                idxs, binds,
                 nulls: Vec::with_capacity(num_binds),
                 out_data_lens: Vec::with_capacity(num_binds),
                 bind_order: Vec::with_capacity(num_binds),
+                buffers,
             }))
         }
     }
@@ -93,43 +94,62 @@ impl Params {
         }
     }
 
-    /// Binds an IN argument to a parameter placeholder at the specified position in the SQL statement.
-    pub(crate) fn bind(&mut self, idx: usize, sql_type: u16, data_ptr: *const c_void, data_len: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
-        self.bind_order.push(idx);
-        self.nulls[idx] = if data_len == 0 { OCI_IND_NULL } else { OCI_IND_NOTNULL };        
-        oci::bind_by_pos(
-            stmt, self.binds[idx].as_mut_ptr(), err,
-            (idx + 1) as u32, data_ptr as _, data_len as i64, sql_type,
-            &mut self.nulls[idx], ptr::null_mut(),
-            OCI_DEFAULT
-        )
+    fn reserve_buffer(&mut self, idx: usize, data: *const c_void, len: usize) -> *mut u8 {
+        if let Some(buffer) = self.buffers.get_mut(idx) {
+            buffer.reserve(len);
+            let buffer_ptr = buffer.as_mut_ptr();
+            if !data.is_null() {
+                unsafe {
+                    std::ptr::copy_nonoverlapping(data, buffer_ptr as _, len);
+                }
+            }
+            buffer_ptr
+        } else {
+            data as _
+        }
     }
 
-    /// Binds an OUT argument to a parameter placeholder at the specified position in the SQL statement.
-    pub(crate) fn bind_out(&mut self, idx: usize, sql_type: u16, data_ptr: *mut c_void, data_len: usize, buff_size: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
-        if buff_size == 0 {
-            let msg = if let Some(name) = self.names.get(&idx) {
-                format!("Storage capacity of output variable {} is 0", name)
-            } else {
-                format!("Storage capacity of output variable {} is 0", idx)
-            };
-            return Err(Error::msg(msg));
-        }
-        self.bind_order.push(idx);
+    /// Binds an IN argument to a parameter placeholder at the specified position in the SQL statement.
+    pub(crate) fn bind_in(&mut self, idx: usize, sql_type: u16, data: *const c_void, data_len: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
+        #[cfg(feature="unsafe-direct-binds")]
+        let data_ptr = data;
+        #[cfg(not(feature="unsafe-direct-binds"))]
+        let data_ptr = if data_len > 0 {
+            self.reserve_buffer(idx, data, data_len) as _
+        } else {
+            data
+        };
+        self.bind(idx, sql_type, data_ptr as _, data_len, data_len, stmt, err)
+    }
+
+    /// Binds NULL argument to an IN parameter placeholder at the specified position in the SQL statement.
+    pub(crate) fn bind_null(&mut self, idx: usize, sql_type: u16, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
+        self.bind(idx, sql_type, std::ptr::null_mut(), 0, 0, stmt, err)
+    }
+
+    /// Binds NULL argument to an OUT or INOUT parameter placeholder at the specified position in the SQL statement
+    pub(crate) fn bind_null_mut(&mut self, idx: usize, sql_type: u16, buff_size: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
+        let data_ptr = if buff_size > 0 { self.reserve_buffer(idx, std::ptr::null(), buff_size) as _ } else { std::ptr::null_mut() };
+        self.bind(idx, sql_type, data_ptr, 0, buff_size, stmt, err)
+    }
+
+    /// Binds an INOUT or an OUT argument to a parameter placeholder at the specified position in the SQL statement.
+    pub(crate) fn bind(&mut self, idx: usize, sql_type: u16, data: *mut c_void, data_len: usize, buff_size: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
+        self.bind_order.push(idx as _);
         self.nulls[idx] = if data_len == 0 { OCI_IND_NULL } else { OCI_IND_NOTNULL };
         self.out_data_lens[idx] = data_len as _;
         oci::bind_by_pos(
             stmt, self.binds[idx].as_mut_ptr(), err,
-            (idx + 1) as u32, data_ptr, buff_size as i64, sql_type,
-            &mut self.nulls[idx],           // Pointer to an indicator variable or array
-            &mut self.out_data_lens[idx],   // Pointer to an array of actual lengths of array elements
+            (idx + 1) as _, data, buff_size as _, sql_type,
+            &mut self.nulls[idx],
+            &mut self.out_data_lens[idx],
             OCI_DEFAULT
         )
     }
 
     /// Checks whether previously bound placeholders are rebound.
     /// Returns `true` if they are.
-    fn prior_binds_are_rebound(&self, mut prior_binds: Vec<usize>) -> bool {
+    fn prior_binds_are_rebound(&self, mut prior_binds: Vec<u16>) -> bool {
         prior_binds.retain(|ix| !self.bind_order.contains(ix));
         prior_binds.len() == 0
     }
@@ -158,12 +178,12 @@ impl Params {
         self.out_data_lens.fill(0);
     }
 
-    pub(crate) fn set_out_data_len(&self, args: &mut impl ToSql) {
-        args.set_len_from_bind(0, self);
+    pub(crate) fn update_out_args(&self, args: &mut impl ToSql) {
+        args.update_from_bind(0, self);
     }
 
     /// Checks whether the value returned for the output parameter is NULL.
-    pub(super) fn is_null(&self, pos: impl Position) -> Result<bool> {
+    pub(crate) fn is_null(&self, pos: impl Position) -> Result<bool> {
         pos.name()
             .and_then(|name| {
                 let name = Self::strip_colon(name);
@@ -181,11 +201,24 @@ impl Params {
             .ok_or_else(|| Error::new("Parameter not found."))
     }
 
+    pub(crate) fn get_data_as_ref<T>(&self, pos: usize) -> Option<&T> {
+        self.buffers.get(pos).and_then(|buf| unsafe { (buf.as_ptr() as *const c_void as *const T).as_ref() } )
+    }
+
+    pub(crate) fn get_data_as_bytes(&self, pos: usize) -> Option<&[u8]> {
+        self.buffers.get(pos)
+            .map(|buf| buf.as_ptr())
+            .zip(self.out_data_lens.get(pos))
+            .map(|(data, &len)| unsafe {
+                std::slice::from_raw_parts(data, len as _) 
+            })
+    }
+
     /// Returns the size of the returned data for the OUT parameter at the specified argument position
     pub(super) fn out_data_len(&self, pos: usize) -> usize {
-        self.bind_order
+        self.out_data_lens
             .get(pos)
-            .map(|&ix| self.out_data_lens[ix] as _)
+            .map(|&ix| ix as _)
             .unwrap_or_default()
     }
 }
