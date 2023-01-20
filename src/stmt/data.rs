@@ -314,13 +314,6 @@ impl<'a, T: FromSql<'a>> FromSql<'a> for Option<T> {
     }
 }
 
-// fn dump<T: desc::DescriptorType>(desc: &desc::Descriptor<T>, pfx: &str) {
-//     let ptr = desc.get() as *const libc::c_void as *const u8;
-//     let mem = std::ptr::slice_from_raw_parts(ptr, 32);
-//     let mem = unsafe { &*mem };
-//     println!("{}: {:?}", pfx, mem);
-// }
-
 #[cfg(all(test,feature="blocking"))]
 mod tests {
     use crate::*;

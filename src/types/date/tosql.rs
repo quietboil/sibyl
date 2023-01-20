@@ -7,6 +7,9 @@ use super::Date;
 impl ToSql for OCIDate {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_ODT, self as *const OCIDate as _, size_of::<OCIDate>(), size_of::<OCIDate>(), stmt, err)?;
+        if self.year == 0 {
+            params.mark_as_null(pos);
+        }
         Ok(pos + 1)
     }
 }
@@ -26,8 +29,7 @@ impl ToSql for &Date<'_> {
 
 impl ToSql for &mut Date<'_> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        params.bind(pos, SQLT_ODT, &mut self.date as *mut OCIDate as _, size_of::<OCIDate>(), size_of::<OCIDate>(), stmt, err)?;
-        Ok(pos + 1)
+        self.date.bind_to(pos, params, stmt, err)
     }
 }
 
@@ -54,8 +56,7 @@ impl ToSql for &[&Date<'_>] {
 impl ToSql for &mut [&mut Date<'_>] {
     fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         for item in self.iter_mut() {
-            params.bind(pos, SQLT_ODT, &mut item.date as *mut OCIDate as _, size_of::<OCIDate>(), size_of::<OCIDate>(), stmt, err)?;
-            pos += 1;
+            pos = item.date.bind_to(pos, params, stmt, err)?;
         }
         Ok(pos)
     }

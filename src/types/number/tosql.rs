@@ -7,6 +7,9 @@ use super::Number;
 impl ToSql for OCINumber {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind(pos, SQLT_VNU, self as *const OCINumber as _, size_of::<OCINumber>(), size_of::<OCINumber>(), stmt, err)?;
+        if self.bytes[0] == 0 {
+            params.mark_as_null(pos);
+        }
         Ok(pos + 1)
     }
 }
@@ -26,8 +29,7 @@ impl ToSql for &Number<'_> {
 
 impl ToSql for &mut Number<'_> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        params.bind(pos, SQLT_VNU, &mut self.num as *mut OCINumber as _, size_of::<OCINumber>(), size_of::<OCINumber>(), stmt, err)?;
-        Ok(pos + 1)
+        self.num.bind_to(pos, params, stmt, err)
     }
 }
 
@@ -54,8 +56,7 @@ impl ToSql for &[&Number<'_>] {
 impl ToSql for &mut [&mut Number<'_>] {
     fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         for item in self.iter_mut() {
-            params.bind(pos, SQLT_VNU, &mut item.num as *mut OCINumber as _, size_of::<OCINumber>(), size_of::<OCINumber>(), stmt, err)?;
-            pos += 1;
+            pos = item.num.bind_to(pos, params, stmt, err)?;
         }
         Ok(pos)
     }

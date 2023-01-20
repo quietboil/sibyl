@@ -109,7 +109,7 @@ impl ToSql for &mut Option<String> {
         if let Some(val) = self {
             params.bind(pos, SQLT_CHR, val.as_ptr() as _, val.len(), val.capacity(), stmt, err)?;
         } else {
-            params.bind_null_mut(pos, SQLT_CHR, 4000 * 4, stmt, err)?;
+            params.bind_null(pos, SQLT_CHR, stmt, err)?;
         }
         Ok(pos + 1)
     }

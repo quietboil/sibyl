@@ -221,6 +221,11 @@ mod tests {
         let val : &str = row.get(0)?;
         assert_eq!(val, "Text");
 
+        let arg = Some("");
+        let row = stmt.query_single(&arg)?.unwrap();
+        let val : &str = row.get(0)?;
+        assert_eq!(val, "None");
+
         let stmt = session.prepare("
         BEGIN
             :VAL := 'area 51';
@@ -301,6 +306,11 @@ mod tests {
         let val : &str = row.get(0)?;
         assert_eq!(val, "Text");
 
+        let arg = Some(String::new());
+        let row = stmt.query_single(&arg)?.unwrap();
+        let val : &str = row.get(0)?;
+        assert_eq!(val, "None");
+
         let stmt = session.prepare("
         BEGIN
             IF :VAL IS NULL THEN
@@ -310,27 +320,15 @@ mod tests {
             END IF;
         END;
         ")?;
-        let mut val : Option<String> = None;
+        // NULL IN, VARCHAR OUT
+        let mut val = Some(String::with_capacity(16));
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
         assert_eq!(val, Some(String::from("Area 51")));
 
-        let res = stmt.execute(&mut val);
-        // There is no space in the updated `val` for "<<" and ">>"
-        match res {
-            Err(Error::Oracle(code, _)) => {
-                assert_eq!(code, 6502);
-            },
-            _ => {
-                panic!("unexpected result");
-            }
-        }
-
-        let mut txt = String::with_capacity(16);
-        txt.push_str("Area 51");
-        let mut val = Some(txt);
+        // VARCHAR IN, VARCHAR OUT
         let cnt = stmt.execute(&mut val)?;
-        assert!(cnt > 0);
+        assert_eq!(cnt, 1);
         assert_eq!(val, Some(String::from("<<Area 51>>")));
 
         let stmt = session.prepare("
@@ -338,6 +336,7 @@ mod tests {
             :VAL := NULL;
         END;
         ")?;
+        // VARCHAR IN, NULL OUT
         let mut val = Some(String::from("text"));
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
@@ -355,11 +354,11 @@ mod tests {
         let arg : Option<&[u8]> = None;
         let row = stmt.query_single(&arg)?.unwrap();
         let val : &[u8] = row.get(0)?;
-        assert_eq!(val, [0x6e, 0x69, 0x6c]);
+        assert_eq!(val, &[0x6e, 0x69, 0x6c]);
 
         let row = stmt.query_single(arg)?.unwrap();
         let val : &[u8] = row.get(0)?;
-        assert_eq!(val, [0x6e, 0x69, 0x6c]);
+        assert_eq!(val, &[0x6e, 0x69, 0x6c]);
 
         let val = [0x62, 0x69, 0x6e].as_ref();
         let arg = Some(val);
@@ -370,6 +369,12 @@ mod tests {
         let row = stmt.query_single(arg)?.unwrap();
         let res : &[u8] = row.get(0)?;
         assert_eq!(res, val);
+
+        let val = [].as_ref();
+        let arg = Some(val);
+        let row = stmt.query_single(&arg)?.unwrap();
+        let res : &[u8] = row.get(0)?;
+        assert_eq!(res, &[0x6e, 0x69, 0x6c]);
 
         let stmt = session.prepare("
         BEGIN
@@ -409,48 +414,64 @@ mod tests {
         let arg : Option<Vec<u8>> = None;
         let row = stmt.query_single(&arg)?.unwrap();
         let val : &[u8] = row.get(0)?;
-        assert_eq!(val, [0x6e, 0x69, 0x6c]);
+        assert_eq!(val, &[0x6e, 0x69, 0x6c]);
 
         let row = stmt.query_single(arg)?.unwrap();
         let val : &[u8] = row.get(0)?;
-        assert_eq!(val, [0x6e, 0x69, 0x6c]);
+        assert_eq!(val, &[0x6e, 0x69, 0x6c]);
 
         let val = [0x62, 0x69, 0x6e].to_vec();
         let arg = Some(val);
         let row = stmt.query_single(&arg)?.unwrap();
         let res : &[u8] = row.get(0)?;
-        assert_eq!(res, [0x62, 0x69, 0x6e].as_ref());
+        assert_eq!(res, &[0x62, 0x69, 0x6e]);
 
         let row = stmt.query_single(arg)?.unwrap();
         let res : &[u8] = row.get(0)?;
-        assert_eq!(res, [0x62, 0x69, 0x6e].as_ref());
+        assert_eq!(res, &[0x62, 0x69, 0x6e]);
+
+        let arg = Some(Vec::new());
+        let row = stmt.query_single(&arg)?.unwrap();
+        let val : &[u8] = row.get(0)?;
+        assert_eq!(val, &[0x6e, 0x69, 0x6c]);
 
         let stmt = session.prepare("
         BEGIN
-            :VAL := Utl_Raw.Cast_To_Raw('Area 51');
+            IF :VAL IS NULL THEN
+                :VAL := Utl_Raw.Cast_To_Raw('Area 51');
+            ELSE
+                :VAL := Utl_Raw.Concat(
+                    Utl_Raw.Cast_To_Raw('<'),
+                    :VAL,
+                    Utl_Raw.Cast_To_Raw('>')
+                );
+            END IF;
         END;
         ")?;
+        // NULL IN, RAW OUT
         let mut bin = Vec::with_capacity(16);
         let mut val = Some(&mut bin);
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
         // Unlike &[u8] above Vec is updated to reflect the returned data.
-        assert_eq!(bin, [0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31].as_ref());
-
-        // Even more interesting case - NULL IN, data OUT
-        // Note that for this to work Option must own Vec, rather than a ref
-        let mut val : Option<Vec<u8>> = None;
-        let cnt = stmt.execute(&mut val)?;
-        assert_eq!(cnt, 1);
         assert!(val.is_some());
         let bin = val.unwrap();
-        assert_eq!(bin, [0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31].as_ref());
+        assert_eq!(bin, &[0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31]);
+
+        // RAW IN, RAW OUT
+        let mut val = Some(bin);
+        let cnt = stmt.execute(&mut val)?;
+        assert!(cnt > 0);
+        assert!(val.is_some());
+        let bin = val.unwrap();
+        assert_eq!(bin, &[0x3c, 0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31, 0x3e]);
 
         let stmt = session.prepare("
         BEGIN
             :VAL := NULL;
         END;
         ")?;
+        // RAW IN, NULL OUT
         let mut val = Some([0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31].to_vec());
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
@@ -471,12 +492,24 @@ mod tests {
         let expected_date = Date::from_string("1969-07-16 13:32:00", "YYYY-MM-DD HH24:MI:SS", &session)?;
         assert_eq!(res.compare(&expected_date)?, std::cmp::Ordering::Equal);
 
-        // DATE IN, DATE OUT
         let stmt = session.prepare("
         BEGIN
-            :VAL := Last_Day(:VAL);
+            IF :VAL IS NULL THEN
+                :VAL := To_Date('1969-07-16 13:32:00','YYYY-MM-DD HH24:MI:SS');
+            ELSE
+                :VAL := Last_Day(:VAL);
+            END IF;
         END;
         ")?;
+        // NULL IN, DATE OUT
+        let mut val = Some(Date::new(&session));
+        let cnt = stmt.execute(&mut val)?;
+        assert_eq!(cnt, 1);
+        assert!(val.is_some());
+        let expected_date = Date::from_string("1969-07-16 13:32:00", "YYYY-MM-DD HH24:MI:SS", &session)?;
+        assert_eq!(val.unwrap().compare(&expected_date)?, std::cmp::Ordering::Equal);
+
+        // DATE IN, DATE OUT
         let mut val = Some(Date::from_string("1969-07-16 13:32:00", "YYYY-MM-DD HH24:MI:SS", &session)?);
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
@@ -553,15 +586,30 @@ mod tests {
         let expected_timestamp = Timestamp::from_string("1969-07-24 16:50:35", "YYYY-MM-DD HH24:MI:SS", &session)?;
         assert_eq!(res.compare(&expected_timestamp)?, std::cmp::Ordering::Equal);
 
-        // TIMESTAMP IN, TIMESTAMP OUT
         let stmt = session.prepare("
         BEGIN
-            :VAL := :VAL + To_DSInterval('+8 03:18:35.00');
+            IF :VAL IS NULL THEN
+                :VAL := To_Timestamp('1969-07-16 13:32:00','YYYY-MM-DD HH24:MI:SS');
+            ELSE
+                :VAL := :VAL + To_DSInterval('+8 03:18:35.00');
+            END IF;
         END;
         ")?;
-        let mut val = Some(Timestamp::from_string("1969-07-16 13:32:00", "YYYY-MM-DD HH24:MI:SS", &session)?);
+        // NULL IN, TIMESTAMP OUT
+        let mut val = Some(Timestamp::new(&session)?);
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
+        assert!(val.is_some());
+        let res = val.unwrap();
+        let expected_timestamp = Timestamp::from_string("1969-07-16 13:32:00", "YYYY-MM-DD HH24:MI:SS", &session)?;
+        assert_eq!(res.compare(&expected_timestamp)?, std::cmp::Ordering::Equal);
+
+        // TIMESTAMP IN, TIMESTAMP OUT
+        let mut val = Some(res);
+        let cnt = stmt.execute(&mut val)?;
+        assert!(cnt > 0);
+        assert!(val.is_some());
+        let res = val.unwrap();
         let expected_timestamp = Timestamp::from_string("1969-07-24 16:50:35", "YYYY-MM-DD HH24:MI:SS", &session)?;
         assert_eq!(res.compare(&expected_timestamp)?, std::cmp::Ordering::Equal);
 
@@ -571,7 +619,7 @@ mod tests {
             :VAL := NULL;
         END;
         ")?;
-        let mut val = Some(Timestamp::from_string("1969-07-16 13:32:00", "YYYY-MM-DD HH24:MI:SS", &session)?);
+        let mut val = Some(res);
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
         assert!(val.is_none());
@@ -593,17 +641,29 @@ mod tests {
         let expected_number = Number::from_int(42, &session)?;
         assert_eq!(res.compare(&expected_number)?, std::cmp::Ordering::Equal);
 
-        // NUMBER IN, NUMBER OUT
         let stmt = session.prepare("
         BEGIN
-            :VAL := :VAL + 1;
+            IF :VAL IS NULL THEN
+                :VAL := 99;
+            ELSE
+                :VAL := :VAL + 1;
+            END IF;
         END;
         ")?;
-        let mut val = Some(Number::from_int(99, &session)?);
+        // NULL IN, NUMBER OUT
+        let mut val = Some(Number::new(&session));
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
-        let expected_number = Number::from_int(100, &session)?;
         assert!(val.is_some());
+        let expected_number = Number::from_int(99, &session)?;
+        assert_eq!(val.unwrap().compare(&expected_number)?, std::cmp::Ordering::Equal);
+
+        // NUMBER IN, NUMBER OUT
+        let mut val = Some(expected_number);
+        let cnt = stmt.execute(&mut val)?;
+        assert_eq!(cnt, 1);
+        assert!(val.is_some());
+        let expected_number = Number::from_int(100, &session)?;
         assert_eq!(val.unwrap().compare(&expected_number)?, std::cmp::Ordering::Equal);
 
         // NUMBER IN, NUMBER OUT
@@ -633,19 +693,30 @@ mod tests {
         let res: Varchar = row.get(0)?;
         assert_eq!(res.as_str(), "hello");
 
-        // VARCHAR IN, VARCHAR OUT
         let stmt = session.prepare("
         BEGIN
-            :VAL := '<' || :VAL || '>';
+            IF :VAL IS NULL THEN
+                :VAL := 'text';
+            ELSE
+                :VAL := '<' || :VAL || '>';
+            END IF;
         END;
         ")?;
-        let mut txt = Varchar::with_capacity(8, &session)?;
-        txt.set("text")?;
-        let mut val = Some(txt);
+        // NULL IN, VARCHAR OUT
+        let mut val = Some(Varchar::with_capacity(8, &session)?);
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
         assert!(val.is_some());
-        assert_eq!(val.unwrap().as_str(), "<text>");
+        let res = val.unwrap();
+        assert_eq!(res.as_str(), "text");
+
+        // VARCHAR IN, VARCHAR OUT
+        let mut val = Some(res);
+        let cnt = stmt.execute(&mut val)?;
+        assert_eq!(cnt, 1);
+        assert!(val.is_some());
+        let res = val.unwrap();
+        assert_eq!(res.as_str(), "<text>");
 
         // VARCHAR IN, NULL OUT
         let stmt = session.prepare("
@@ -673,18 +744,28 @@ mod tests {
         let val : Raw = row.get(0)?;
         assert_eq!(val.as_bytes(), &[0x6e, 0x69, 0x6c]);
 
-        // RAW IN, RAW OUT
         let stmt = session.prepare("
         BEGIN
-            :VAL := Utl_Raw.Concat(
-                Utl_Raw.Cast_To_Raw('<'),
-                :VAL,
-                Utl_Raw.Cast_To_Raw('>')
-            );
+            IF :VAL IS NULL THEN
+                :VAL := Utl_Raw.Cast_To_Raw('data');
+            ELSE
+                :VAL := Utl_Raw.Concat(
+                    Utl_Raw.Cast_To_Raw('<'),
+                    :VAL,
+                    Utl_Raw.Cast_To_Raw('>')
+                );
+            END IF;
         END;
         ")?;
-        let mut bin = Raw::with_capacity(8, &session)?;
-        bin.set(&[0x64, 0x61, 0x74, 0x61])?;
+        // RAW IN, RAW OUT
+        let mut val = Some(Raw::with_capacity(8, &session)?);
+        let cnt = stmt.execute(&mut val)?;
+        assert_eq!(cnt, 1);
+        assert!(val.is_some());
+        let bin = val.unwrap();
+        assert_eq!(bin.as_bytes(), &[0x64, 0x61, 0x74, 0x61]);
+
+        // RAW IN, RAW OUT
         let mut val = Some(bin);
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);

@@ -68,7 +68,7 @@ impl<'a, T> Interval<'a, T> where T: DescriptorType<OCIType=OCIInterval> {
         Self { interval, ctx }
     }
 
-    /// Returns new uninitialized interval.
+    /// Returns new interval. This new interval is zero.
     pub fn new(ctx: &'a dyn Ctx) -> Result<Self> {
         let interval = Descriptor::<T>::new(&ctx)?;
         Ok( Self { ctx, interval } )

@@ -109,7 +109,7 @@ impl ToSql for &mut Option<Vec<u8>> {
         if let Some(val) = self {
             params.bind(pos, SQLT_LBI, val.as_ptr() as _, val.len(), val.capacity(), stmt, err)?;
         } else {
-            params.bind_null_mut(pos, SQLT_LBI, 4000 * 4, stmt, err)?;
+            params.bind_null(pos, SQLT_LBI, stmt, err)?;
         }
         Ok(pos + 1)
     }

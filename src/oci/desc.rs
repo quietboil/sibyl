@@ -29,7 +29,7 @@ where T: DescriptorType
     }
 }
 
-impl<T> AsRef<T::OCIType> for Descriptor<T> 
+impl<T> AsRef<T::OCIType> for Descriptor<T>
 where T: DescriptorType
     , T::OCIType: OCIStruct
 {
@@ -38,7 +38,7 @@ where T: DescriptorType
     }
 }
 
-impl<T> AsMut<T::OCIType> for Descriptor<T> 
+impl<T> AsMut<T::OCIType> for Descriptor<T>
 where T: DescriptorType
     , T::OCIType: OCIStruct
 {
@@ -120,4 +120,12 @@ impl<T> Descriptor<T>
     pub(crate) fn set_attr<V: attr::AttrSet>(&self, attr_type: u32, attr_val: V, err: &OCIError) -> Result<()> {
         attr::set::<T::OCIType, V>(attr_type, attr_val, T::get_type(), &self.0, err)
     }
+
+    // pub(crate) fn dump(&self, pfx: &str)
+    // {
+    //     let ptr = self.0.get() as *const libc::c_void as *const u8;
+    //     let mem = std::ptr::slice_from_raw_parts(ptr, 32);
+    //     let mem = unsafe { &*mem };
+    //     println!("{pfx}: {mem:?}");
+    // }
 }

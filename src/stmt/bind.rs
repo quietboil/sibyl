@@ -147,6 +147,11 @@ impl Params {
         )
     }
 
+    /// Marks bind as having a NULL value despite having a buffer.
+    pub(crate) fn mark_as_null(&mut self, idx: usize) {
+        self.nulls[idx] = OCI_IND_NULL;
+    }
+
     /// Checks whether previously bound placeholders are rebound.
     /// Returns `true` if they are.
     fn prior_binds_are_rebound(&self, mut prior_binds: Vec<u16>) -> bool {
