@@ -34,6 +34,7 @@ pub(crate) fn is_initialized(rowid: &OCIRowid) -> bool {
 pub struct RowID (Descriptor<OCIRowid>);
 
 impl RowID  {
+    /// Creates an unitialized `RowID`. These are used as output arguments.
     pub fn new(env: &impl AsRef<OCIEnv>) -> Result<Self> {
         let desc = Descriptor::new(env)?;
         Ok( Self(desc) )
