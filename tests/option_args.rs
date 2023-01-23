@@ -757,7 +757,7 @@ mod tests {
             END IF;
         END;
         ")?;
-        // RAW IN, RAW OUT
+        // NULL IN, RAW OUT
         let mut val = Some(Raw::with_capacity(8, &session)?);
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
@@ -779,6 +779,62 @@ mod tests {
         END;
         ")?;
         let mut val = Some(Raw::from_bytes(&[0x64, 0x61, 0x74, 0x61], &session)?);
+        let cnt = stmt.execute(&mut val)?;
+        assert_eq!(cnt, 1);
+        assert!(val.is_none());
+
+        Ok(())
+    }
+
+    #[test]
+    fn rawids() -> Result<()> {
+        let session = get_session()?;
+
+        let stmt = session.prepare("
+        BEGIN
+            IF :VAL IS NULL THEN
+                SELECT rowid 
+                  INTO :VAL 
+                  FROM system.help 
+                 WHERE topic='@' 
+                   AND seq = 2;
+            ELSE
+                SELECT rowid 
+                  INTO :VAL 
+                  FROM system.help 
+                 WHERE (topic, seq) IN (
+                           SELECT topic, seq + 1
+                             FROM system.help
+                            WHERE rowid = :VAL );
+            END IF;
+        END;
+        ")?;
+        // NULL IN, RAWID OUT
+        let mut val = Some(RowID::new(&session)?);
+        let cnt = stmt.execute(&mut val)?;
+        assert_eq!(cnt, 1);
+        assert!(val.is_some());
+
+        let assert_stmt = session.prepare("SELECT info FROM system.help WHERE rowid = :ROW_ID")?;
+        let row = assert_stmt.query_single(&val)?.unwrap();
+        let info : &str = row.get(0)?;
+        assert_eq!(info, r#" @ ("at" sign)"#);
+
+        // RAWID IN, RAWID OUT
+        let cnt = stmt.execute(&mut val)?;
+        assert_eq!(cnt, 2);
+        assert!(val.is_some());
+
+        let row = assert_stmt.query_single(&val)?.unwrap();
+        let info : &str = row.get(0)?;
+        assert_eq!(info, r#" -------------"#);
+
+        // RAWID IN, NULL OUT
+        let stmt = session.prepare("
+        BEGIN
+            :VAL := NULL;
+        END;
+        ")?;
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
         assert!(val.is_none());

@@ -1,9 +1,15 @@
 /// The ROWID data type identifies a particular row in a database table.
 
-use crate::{Result, oci::{self, *, attr::AttrGetInto}, ToSql, stmt::Params};
+use crate::{Result, oci::{self, *, attr::AttrGetInto}};
 use libc::c_void;
 
+mod tosql;
+
 pub(crate) fn to_string(rowid: &OCIRowid, err: &OCIError) -> Result<String> {
+    // Attempt to stringify new/uninitialized rowid leads to SIGSEGV
+    if !is_initialized(rowid) {
+        return Err(crate::Error::new("RowID is not initialized"));
+    }
     let mut text = String::with_capacity(20);
     let txt = unsafe { text.as_mut_vec() };
     let mut len = txt.capacity();
@@ -45,63 +51,6 @@ impl RowID  {
     */
     pub fn to_string(&self, err: &impl AsRef<OCIError>) -> Result<String> {
         to_string(&self.0, err.as_ref())
-    }
-}
-
-impl ToSql for RowID {
-    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        let len = std::mem::size_of::<*mut OCIRowid>();
-        params.bind(pos, SQLT_RDD, self.0.as_ptr() as _, len, len, stmt, err)?;
-        Ok(pos + 1)
-    }
-}
-
-impl ToSql for &RowID {
-    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        let len = std::mem::size_of::<*mut OCIRowid>();
-        params.bind_in(pos, SQLT_RDD, self.0.as_ptr() as _, len, stmt, err)?;
-        Ok(pos + 1)
-    }
-}
-
-impl ToSql for &mut RowID {
-    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        let len = std::mem::size_of::<*mut OCIRowid>();
-        params.bind(pos, SQLT_RDD, self.0.as_mut_ptr() as _, len, len, stmt, err)?;
-        Ok(pos + 1)
-    }
-}
-
-impl ToSql for &[RowID] {
-    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        let len = std::mem::size_of::<*mut OCIRowid>();
-        for item in self.iter() {
-            params.bind_in(pos, SQLT_RDD, item.0.as_ptr() as _, len, stmt, err)?;
-            pos += 1;
-        }
-        Ok(pos)
-    }
-}
-
-impl ToSql for &[&RowID] {
-    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        let len = std::mem::size_of::<*mut OCIRowid>();
-        for item in self.iter() {
-            params.bind_in(pos, SQLT_RDD, item.0.as_ptr() as _, len, stmt, err)?;
-            pos += 1;
-        }
-        Ok(pos)
-    }
-}
-
-impl ToSql for &mut [&mut RowID] {
-    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        let len = std::mem::size_of::<*mut OCIRowid>();
-        for item in self.iter_mut() {
-            params.bind(pos, SQLT_RDD, item.0.as_mut_ptr() as _, len, len, stmt, err)?;
-            pos += 1;
-        }
-        Ok(pos)
     }
 }
 
