@@ -123,7 +123,7 @@ impl ToSql for &mut Option<Vec<u8>> {
                 val.set_len(new_len);
             }
         } else if let Some(val) = params.get_data_as_bytes(pos) {
-            self.get_or_insert(val.to_vec());
+            self.replace(val.to_vec());
         }
     }
 }

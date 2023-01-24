@@ -124,7 +124,7 @@ impl ToSql for &mut Option<String> {
             }
         } else if let Some(val) = params.get_data_as_bytes(pos) {
             let new_str = String::from_utf8_lossy(val).into_owned();
-            self.get_or_insert(new_str);
+            self.replace(new_str);
         }
     }
 }

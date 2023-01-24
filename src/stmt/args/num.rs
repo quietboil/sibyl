@@ -97,8 +97,10 @@ macro_rules! impl_num_to_sql {
                 fn update_from_bind(&mut self, pos: usize, params: &Params) {
                     if params.is_null(pos).unwrap_or(true) {
                         self.take();
+                    } else if self.is_some() {
+                        // has been updated by OCI
                     } else if let Some(val) = params.get_data_as_ref(pos) {
-                        self.get_or_insert(*val);
+                        self.replace(*val);
                     }
                 }
             }
