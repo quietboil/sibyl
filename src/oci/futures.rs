@@ -2,7 +2,7 @@
 
 use crate::{session::SvcCtx, lob::{LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP}, pool::session::SPool};
 use super::{*, ptr::Ptr};
-use std::{future::Future, pin::Pin, task::{Context, Poll}, sync::Arc};
+use std::{future::Future, pin::Pin, task::{Context, Poll}, sync::{Arc, atomic::{AtomicI32, Ordering}}};
 
 macro_rules! wait {
     (|$this:ident, $ctx:ident| $oci_call:expr) => {{
@@ -131,6 +131,8 @@ macro_rules! wait_bool_flag {
     }};
 }
 
+/// Counter that keeps the number of active async drops.
+pub static NUM_ACTIVE_ASYNC_DROPS : AtomicI32 = AtomicI32::new(0);
 
 enum SessionReleaseSteps {
     TransRollback,
@@ -147,7 +149,14 @@ pub(crate) struct SessionRelease {
 
 impl SessionRelease {
     pub(crate) fn new(svc: Ptr<OCISvcCtx>, err: Handle<OCIError>, env: Arc<Handle<OCIEnv>>, spool: Option<Arc<SPool>>) -> Self {
+        NUM_ACTIVE_ASYNC_DROPS.fetch_add(1, Ordering::Relaxed);
         Self { svc, err, env, spool, step: SessionReleaseSteps::TransRollback }
+    }
+}
+
+impl Drop for SessionRelease {
+    fn drop(&mut self) {
+        NUM_ACTIVE_ASYNC_DROPS.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
@@ -186,7 +195,14 @@ pub(crate) struct StmtRelease {
 
 impl StmtRelease {
     pub(crate) fn new(stmt: Ptr<OCIStmt>, err: Handle<OCIError>, ctx: Arc<SvcCtx>) -> Self {
+        NUM_ACTIVE_ASYNC_DROPS.fetch_add(1, Ordering::Relaxed);
         Self { stmt, err, ctx }
+    }
+}
+
+impl Drop for StmtRelease {
+    fn drop(&mut self) {
+        NUM_ACTIVE_ASYNC_DROPS.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
@@ -208,7 +224,14 @@ pub(crate) struct LobDrop<T> where T: DescriptorType<OCIType=OCILobLocator> {
 
 impl<T> LobDrop<T> where T: DescriptorType<OCIType=OCILobLocator> {
     pub(crate) fn new(ctx: Arc<SvcCtx>, loc: Descriptor<T>, flags: u32) -> Self {
+        NUM_ACTIVE_ASYNC_DROPS.fetch_add(1, Ordering::Relaxed);
         Self { ctx, loc, flags }
+    }
+}
+
+impl<T> Drop for LobDrop<T> where T: DescriptorType<OCIType=OCILobLocator> {
+    fn drop(&mut self) {
+        NUM_ACTIVE_ASYNC_DROPS.fetch_sub(1, Ordering::Relaxed);
     }
 }
 

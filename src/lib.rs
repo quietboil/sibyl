@@ -150,6 +150,7 @@ pub use stmt::{Statement, Cursor, Rows, Row, ToSql, FromSql, ColumnType, Positio
 pub use types::{Date, Raw, Number, Varchar, RowID, DateTime, Interval};
 pub use types::number::Integer;
 pub use oci::{Cache, CharSetForm, client_version};
+pub use oci::futures::NUM_ACTIVE_ASYNC_DROPS;
 pub use lob::LOB;
 
 /// A specialized `Result` type for Sibyl.

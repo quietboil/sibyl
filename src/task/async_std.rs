@@ -1,12 +1,11 @@
 //! Abstraction over async-std task functions
 
-use std::{future::Future, sync::{Weak, Arc}};
+use std::{future::Future, sync::atomic::Ordering};
 
 pub use async_rt::task::spawn;
 
 use async_rt::task;
-use parking_lot::Mutex;
-use crate::{Result, oci::{Handle, OCIEnv}};
+use crate::{Result, oci::futures::NUM_ACTIVE_ASYNC_DROPS};
 
 pub(crate) async fn execute_blocking<F, R>(f: F) -> Result<R> 
 where
@@ -25,16 +24,6 @@ where
     let _ = spawn(f);
 }
 
-static OCI_ENVIRONMENTS : Mutex<Vec<Weak<Handle<OCIEnv>>>> = Mutex::new(Vec::new());
-
-pub(crate) fn register_env(env: &Arc<Handle<OCIEnv>>) {
-    OCI_ENVIRONMENTS.lock().push(Arc::downgrade(env));
-}
-
-fn any_oci_env_is_in_use() -> bool {
-    OCI_ENVIRONMENTS.lock().iter().any(|rc| rc.strong_count() > 1)
-}
-
 /// Runs a future on async-std executor.
 /// 
 /// This function ensures that all async drops have run to completion.
@@ -43,7 +32,7 @@ fn any_oci_env_is_in_use() -> bool {
 pub fn block_on<F: Future>(future: F) -> F::Output {
     task::block_on(async move {
         let res = future.await;
-        while any_oci_env_is_in_use() {
+        while NUM_ACTIVE_ASYNC_DROPS.load(Ordering::Acquire) > 0 {
             task::yield_now().await;
         }
         res

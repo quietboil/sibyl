@@ -8,9 +8,6 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-#[cfg(all(feature="nonblocking",any(feature="tokio",feature="actix",feature="async-std")))]
-use crate::task::register_env;
-
 use std::{ptr, sync::Arc};
 use crate::{Error, Result, oci::*, types::Ctx};
 
@@ -69,8 +66,6 @@ impl Environment {
         let env = Handle::from(env);
         let err = Handle::<OCIError>::new(&env)?;
         let env = Arc::new(env);
-        #[cfg(all(feature="nonblocking",any(feature="tokio",feature="actix",feature="async-std")))]
-        register_env(&env);
         Ok(Self { env, err })
     }
 
