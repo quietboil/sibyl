@@ -155,6 +155,7 @@ pub use oci::{Cache, CharSetForm, client_version};
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 pub use oci::futures::NUM_ACTIVE_ASYNC_DROPS;
 pub use lob::LOB;
+pub use nvl::Nvl;
 
 /// A specialized `Result` type for Sibyl.
 pub type Result<T>        = std::result::Result<T, Error>;

@@ -173,3 +173,12 @@ impl_num_slice_to_sql!{ i8, i16, i32, i64, isize => SQLT_INT }
 impl_num_slice_to_sql!{ u16, u32, u64, usize => SQLT_UIN }
 impl_num_slice_to_sql!{ f32 => SQLT_BFLOAT }
 impl_num_slice_to_sql!{ f64 => SQLT_BDOUBLE }
+
+impl_sql_type!{ i8, i16, i32, i64, isize => SQLT_INT }
+impl_sql_type!{ &i8, &i16, &i32, &i64, &isize => SQLT_INT }
+impl_sql_type!{ &mut i8, &mut i16, &mut i32, &mut i64, &mut isize => SQLT_INT }
+impl_sql_type!{ u16, u32, u64, usize => SQLT_UIN }
+impl_sql_type!{ &u16, &u32, &u64, &usize => SQLT_UIN }
+impl_sql_type!{ &mut u16, &mut u32, &mut u64, &mut usize => SQLT_UIN }
+impl_sql_type!{ f32, &f32, &mut f32 => SQLT_BFLOAT }
+impl_sql_type!{ f64, &f64, &mut f64 => SQLT_BDOUBLE }

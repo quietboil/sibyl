@@ -387,7 +387,10 @@ mod tests {
         let cnt = stmt.execute(&mut val)?;
         assert_eq!(cnt, 1);
         assert_eq!(bin, [0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31, 0x00, 0x00, 0x00].as_ref());
-        // ------- note how it is not very useful as an OUT -------^^^^--^^^^--^^^^
+        // ---- note how as-is it is not very useful as an OUT ----^^^^--^^^^--^^^^
+        assert_eq!(stmt.len_of(0)?, 7);
+        let res = bin[0..stmt.len_of(0)?].as_ref();
+        assert_eq!(res, [0x41, 0x72, 0x65, 0x61, 0x20, 0x35, 0x31].as_ref());
 
         // However, it is adequate for the "data IN, NULL OUT" use case:
         let stmt = session.prepare("

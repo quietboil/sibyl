@@ -500,6 +500,66 @@ impl<'a> Statement<'a> {
     }
 
     /**
+    Returns the size of the data in bytes bound to the specified parameter placeholder.
+
+    This is the most useful for byte arrays bound to OUT or INOUT parameters. Unlike `String`
+    or `Vec` byte slices cannot adjust their length when the size of the returned data is
+    smaller than their size. This method can be used to do so after the data are fetched.
+
+    # Examples
+
+    ```
+    # use sibyl::Result;
+    # #[cfg(feature="blocking")]
+    # fn main() -> Result<()> {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    let stmt = session.prepare("
+    BEGIN
+        :VAL := Utl_Raw.Cast_To_Raw('data');
+    END;
+    ")?;
+    let mut data = [0; 8];
+    stmt.execute(data.as_mut())?;
+
+    assert_eq!(data, [0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00]);
+    // Note the "trailing" original zeros ----^^^^--^^^^--^^^^--^^^^    
+    assert_eq!(stmt.len_of("VAL")?, 4);
+    let res = data[0..stmt.len_of("VAL")?].as_ref();
+    assert_eq!(res.len(), 4);
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> Result<()> {
+    # sibyl::block_on(async {
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let stmt = session.prepare("
+    # BEGIN
+    #     :VAL := Utl_Raw.Cast_To_Raw('data');
+    # END;
+    # ").await?;
+    # let mut data = [0; 8];
+    # stmt.execute(data.as_mut()).await?;
+    # assert_eq!(data, [0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00]);
+    # assert_eq!(stmt.len_of(0)?, 4);
+    # let res = data[0..stmt.len_of(0)?].as_ref();
+    # assert_eq!(res.len(), 4);
+    # Ok(()) })
+    # }
+    ```
+    */
+    pub fn len_of(&self, pos: impl Position) -> Result<usize> {
+        self.params.as_ref().map(|params| params.read().data_len(pos)).unwrap_or(Ok(0))
+    }
+
+    /**
     Returns column meta data.
 
     Returns None if the specified position is greater than the number of columns in the query

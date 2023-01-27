@@ -185,11 +185,6 @@ macro_rules! impl_sql_type {
                     $sqlt
                 }
             }
-            impl SqlType for &$t {
-                fn sql_type() -> u16 {
-                    $sqlt
-                }
-            }
         )+
     };
 }

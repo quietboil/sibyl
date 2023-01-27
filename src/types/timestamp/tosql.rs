@@ -1,3 +1,4 @@
+use crate::types::OracleDataType;
 /// Implementation of traits that allow Timestamps to be used as SQL parameters
 
 use crate::{oci::*, ToSql, Result, stmt::Params};
@@ -26,7 +27,7 @@ macro_rules! impl_ts_to_sql {
             }
             impl ToSql for &mut DateTime<'_, $ts> {
                 fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                    self.datetime.bind_to(pos, params, stmt, err)
+                    (*self).bind_to(pos, params, stmt, err)
                 }
             }
             impl ToSql for &[DateTime<'_, $ts>] {
@@ -52,7 +53,7 @@ macro_rules! impl_ts_to_sql {
             impl ToSql for &mut [&mut DateTime<'_, $ts>] {
                 fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
                     for item in self.iter_mut() {
-                        pos = item.datetime.bind_to(pos, params, stmt, err)?;
+                        pos = (*item).bind_to(pos, params, stmt, err)?;
                     }
                     Ok(pos)
                 }
@@ -62,8 +63,28 @@ macro_rules! impl_ts_to_sql {
                     <$ts>::sql_type()
                 }
             }
+            impl SqlType for &DateTime<'_, $ts> {
+                fn sql_type() -> u16 {
+                    <$ts>::sql_type()
+                }
+            }
+            impl SqlType for &mut DateTime<'_, $ts> {
+                fn sql_type() -> u16 {
+                    <$ts>::sql_type()
+                }
+            }
         )+
     };
 }
 
 impl_ts_to_sql!{ OCITimestamp, OCITimestampTZ, OCITimestampLTZ }
+
+impl OracleDataType for DateTime<'_, OCITimestamp> {}
+impl OracleDataType for &DateTime<'_, OCITimestamp> {}
+impl OracleDataType for &mut DateTime<'_, OCITimestamp> {}
+impl OracleDataType for DateTime<'_, OCITimestampTZ> {}
+impl OracleDataType for &DateTime<'_, OCITimestampTZ> {}
+impl OracleDataType for &mut DateTime<'_, OCITimestampTZ> {}
+impl OracleDataType for DateTime<'_, OCITimestampLTZ> {}
+impl OracleDataType for &DateTime<'_, OCITimestampLTZ> {}
+impl OracleDataType for &mut DateTime<'_, OCITimestampLTZ> {}

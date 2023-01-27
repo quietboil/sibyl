@@ -1,3 +1,4 @@
+use crate::types::OracleDataType;
 /// Implementation of traits that allow Intervals to be used as SQL parameters
 
 use crate::{oci::*, ToSql, Result, stmt::Params};
@@ -61,9 +62,25 @@ macro_rules! impl_int_to_sql {
                     <$ts>::sql_type()
                 }
             }
+            impl SqlType for &Interval<'_, $ts> {
+                fn sql_type() -> u16 {
+                    <$ts>::sql_type()
+                }
+            }
+            impl SqlType for &mut Interval<'_, $ts> {
+                fn sql_type() -> u16 {
+                    <$ts>::sql_type()
+                }
+            }
         )+
     };
 }
 
 impl_int_to_sql!{ OCIIntervalYearToMonth, OCIIntervalDayToSecond }
 
+impl OracleDataType for Interval<'_, OCIIntervalYearToMonth> {}
+impl OracleDataType for &Interval<'_, OCIIntervalYearToMonth> {}
+impl OracleDataType for &mut Interval<'_, OCIIntervalYearToMonth> {}
+impl OracleDataType for Interval<'_, OCIIntervalDayToSecond> {}
+impl OracleDataType for &Interval<'_, OCIIntervalDayToSecond> {}
+impl OracleDataType for &mut Interval<'_, OCIIntervalDayToSecond> {}

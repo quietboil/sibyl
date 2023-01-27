@@ -112,3 +112,4 @@ macro_rules! impl_mut_bin_slice_option {
 
 impl_mut_bin_slice_option!{ &mut [u8], &mut &mut [u8] => SQLT_LBI, 2000 }
 
+impl_sql_type!{ &mut [u8], &mut &mut [u8] => SQLT_LBI }

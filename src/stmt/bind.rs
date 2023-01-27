@@ -13,8 +13,8 @@ pub struct Params {
     binds: Vec<Ptr<OCIBind>>,
     /// NULL indicators
     nulls: Vec<i16>,
-    /// Sizes of returned data
-    out_data_lens: Vec<u32>,
+    /// Sizes of provided and returned data
+    data_lens: Vec<u32>,
     /// Map of arguments indexes (positions) to parameter placeholder indexes
     bind_order: Vec<u16>,
     /// Buffers used to keep and bind IN arguments or OUR arguments that were passed as None
@@ -64,7 +64,7 @@ impl Params {
             Ok(Some(Self{
                 idxs, binds,
                 nulls: Vec::with_capacity(num_binds),
-                out_data_lens: Vec::with_capacity(num_binds),
+                data_lens: Vec::with_capacity(num_binds),
                 bind_order: Vec::with_capacity(num_binds),
                 buffers,
             }))
@@ -122,6 +122,16 @@ impl Params {
         self.bind(idx, sql_type, data_ptr as _, data_len, data_len, stmt, err)
     }
 
+    /// Variant of `bind_in` that always uses internal buffer.
+    pub(crate) fn bind_in_mut(&mut self, idx: usize, sql_type: u16, data: *const c_void, data_len: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
+        let data_ptr = if data_len > 0 {
+            self.reserve_buffer(idx, data, data_len) as _
+        } else {
+            data
+        };
+        self.bind(idx, sql_type, data_ptr as _, data_len, data_len, stmt, err)
+    }
+
     /// Binds NULL argument to an IN parameter placeholder at the specified position in the SQL statement.
     pub(crate) fn bind_null(&mut self, idx: usize, sql_type: u16, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
         self.bind(idx, sql_type, std::ptr::null_mut(), 0, 0, stmt, err)
@@ -137,12 +147,12 @@ impl Params {
     pub(crate) fn bind(&mut self, idx: usize, sql_type: u16, data: *mut c_void, data_len: usize, buff_size: usize, stmt: &OCIStmt, err: &OCIError) -> Result<()> {
         self.bind_order.push(idx as _);
         self.nulls[idx] = if data_len == 0 { OCI_IND_NULL } else { OCI_IND_NOTNULL };
-        self.out_data_lens[idx] = data_len as _;
+        self.data_lens[idx] = data_len as _;
         oci::bind_by_pos(
             stmt, self.binds[idx].as_mut_ptr(), err,
             (idx + 1) as _, data, buff_size as _, sql_type,
             &mut self.nulls[idx],
-            &mut self.out_data_lens[idx],
+            &mut self.data_lens[idx],
             OCI_DEFAULT
         )
     }
@@ -166,8 +176,8 @@ impl Params {
 
         self.nulls.clear();
         self.nulls.resize(self.nulls.capacity(), OCI_IND_NULL);
-        self.out_data_lens.clear();
-        self.out_data_lens.resize(self.out_data_lens.capacity(), 0);
+        self.data_lens.clear();
+        self.data_lens.resize(self.data_lens.capacity(), 0);
 
         args.bind_to(0, self, stmt, err)?;
 
@@ -180,7 +190,7 @@ impl Params {
 
     pub(crate) fn set_out_to_null(&mut self) {
         self.nulls.fill(OCI_IND_NULL);
-        self.out_data_lens.fill(0);
+        self.data_lens.fill(0);
     }
 
     pub(crate) fn update_out_args(&self, args: &mut impl ToSql) {
@@ -206,6 +216,21 @@ impl Params {
             .ok_or_else(|| Error::new("Parameter not found."))
     }
 
+    /// Returns the size of the data for the parameter at the specified argument position
+    pub(super) fn data_len(&self, pos: impl Position) -> Result<usize> {
+        pos.name()
+            .and_then(|name| {
+                let name = Self::strip_colon(name);
+                self.idxs
+                    .get(name)
+                    .or(self.idxs.get(name.to_uppercase().as_str()))
+            })
+            .map(|ix| *ix)
+            .or(pos.index())
+            .map(|ix| self.get_data_len(ix))
+            .ok_or_else(|| Error::new("Parameter not found."))
+    }
+
     pub(crate) fn get_data_as_ref<T>(&self, pos: usize) -> Option<&T> {
         self.buffers.get(pos).and_then(|buf| unsafe { (buf.as_ptr() as *const c_void as *const T).as_ref() } )
     }
@@ -213,15 +238,15 @@ impl Params {
     pub(crate) fn get_data_as_bytes(&self, pos: usize) -> Option<&[u8]> {
         self.buffers.get(pos)
             .map(|buf| buf.as_ptr())
-            .zip(self.out_data_lens.get(pos))
+            .zip(self.data_lens.get(pos))
             .map(|(data, &len)| unsafe {
                 std::slice::from_raw_parts(data, len as _) 
             })
     }
 
     /// Returns the size of the returned data for the OUT parameter at the specified argument position
-    pub(super) fn out_data_len(&self, pos: usize) -> usize {
-        self.out_data_lens
+    pub(super) fn get_data_len(&self, pos: usize) -> usize {
+        self.data_lens
             .get(pos)
             .map(|&ix| ix as _)
             .unwrap_or_default()

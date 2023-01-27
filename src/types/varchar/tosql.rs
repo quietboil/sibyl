@@ -1,6 +1,7 @@
 /// Implementation of traits that allow Varchars to be used as SQL parameters
 
 use std::mem::size_of;
+use crate::types::OracleDataType;
 use crate::{oci::*, ToSql, Result, stmt::Params};
 use super::Varchar;
 
@@ -10,6 +11,11 @@ impl SqlType for Varchar<'_> {
 }
 
 impl SqlType for &Varchar<'_> {
+    fn sql_type() -> u16 { SQLT_LVC }
+    fn sql_null_type() -> u16 { SQLT_CHR }
+}
+
+impl SqlType for &mut Varchar<'_> {
     fn sql_type() -> u16 { SQLT_LVC }
     fn sql_null_type() -> u16 { SQLT_CHR }
 }
@@ -95,3 +101,7 @@ impl ToSql for &mut [&mut Varchar<'_>] {
         Ok(pos)
     }
 }
+
+impl OracleDataType for Varchar<'_> {}
+impl OracleDataType for &Varchar<'_> {}
+impl OracleDataType for &mut Varchar<'_> {}

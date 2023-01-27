@@ -3,8 +3,15 @@ use crate::{oci::*, Result};
 
 impl ToSql for Vec<u8> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        params.bind_in(pos, SQLT_LBI, self.as_ptr() as _, self.len(), stmt, err)?;
+        params.bind(pos, SQLT_LBI, self.as_mut_ptr() as _, self.len(), self.capacity(), stmt, err)?;
         Ok(pos + 1)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, params: &Params) {
+        let new_len = params.get_data_len(pos);
+        unsafe {
+            self.set_len(new_len)
+        }
     }
 }
 
@@ -22,12 +29,14 @@ impl ToSql for &mut Vec<u8> {
     }
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) {
-        let new_len = params.out_data_len(pos);
+        let new_len = params.get_data_len(pos);
         unsafe {
             self.set_len(new_len)
         }
     }
 }
+
+impl_sql_type!{ Vec<u8>, &Vec<u8>, &mut Vec<u8> => SQLT_LBI }
 
 impl ToSql for Option<Vec<u8>> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
@@ -63,7 +72,7 @@ impl ToSql for Option<&mut Vec<u8>> {
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) {
         if let Some(val) = self {
-            let new_len = params.out_data_len(pos);
+            let new_len = params.get_data_len(pos);
             unsafe {
                 val.set_len(new_len);
             }
@@ -118,7 +127,7 @@ impl ToSql for &mut Option<Vec<u8>> {
         if params.is_null(pos).unwrap_or(true) {
             self.take();
         } else if let Some(val) = self {
-            let new_len = params.out_data_len(pos);
+            let new_len = params.get_data_len(pos);
             unsafe {
                 val.set_len(new_len);
             }
@@ -154,7 +163,7 @@ impl ToSql for &mut Option<&mut Vec<u8>> {
         if params.is_null(pos).unwrap_or(true) {
             self.take();
         } else if let Some(val) = self {
-            let new_len = params.out_data_len(pos);
+            let new_len = params.get_data_len(pos);
             unsafe {
                 val.set_len(new_len);
             }

@@ -17,7 +17,8 @@ pub use timestamp::DateTime;
 pub use interval::Interval;
 
 use libc::c_void;
-use crate::oci::{OCIError, OCIEnv, OCISession};
+use crate::ToSql;
+use crate::oci::{OCIError, OCIEnv, OCISession, SqlType};
 
 pub trait Ctx : AsRef<OCIEnv> + AsRef<OCIError> + Send + Sync {
     fn as_context(&self) -> *const c_void {
@@ -29,3 +30,6 @@ pub trait Ctx : AsRef<OCIEnv> + AsRef<OCIError> + Send + Sync {
     }
     fn try_as_session(&self) -> Option<&OCISession>;
 }
+
+/// Marker for Oracle data types
+pub trait OracleDataType : ToSql + SqlType {}

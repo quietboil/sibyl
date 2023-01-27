@@ -6,6 +6,13 @@ impl ToSql for String {
         params.bind(pos, SQLT_CHR, self.as_ptr() as _, self.len(), self.capacity(), stmt, err)?;
         Ok(pos + 1)
     }
+
+    fn update_from_bind(&mut self, pos: usize, params: &Params) {
+        let new_len = params.get_data_len(pos);
+        unsafe {
+            self.as_mut_vec().set_len(new_len);
+        }
+    }
 }
 
 impl ToSql for &String {
@@ -22,12 +29,14 @@ impl ToSql for &mut String {
     }
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) {
-        let new_len = params.out_data_len(pos);
+        let new_len = params.get_data_len(pos);
         unsafe {
             self.as_mut_vec().set_len(new_len);
         }
     }
 }
+
+impl_sql_type!{ String, &String, &mut String => SQLT_CHR }
 
 impl ToSql for Option<String> {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
@@ -63,7 +72,7 @@ impl ToSql for Option<&mut String> {
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) {
         if let Some(val) = self {
-            let new_len = params.out_data_len(pos);
+            let new_len = params.get_data_len(pos);
             unsafe {
                 val.as_mut_vec().set_len(new_len);
             }
@@ -118,7 +127,7 @@ impl ToSql for &mut Option<String> {
         if params.is_null(pos).unwrap_or(true) {
             self.take();
         } else if let Some(val) = self {
-            let new_len = params.out_data_len(pos);
+            let new_len = params.get_data_len(pos);
             unsafe {
                 val.as_mut_vec().set_len(new_len);
             }
@@ -155,7 +164,7 @@ impl ToSql for &mut Option<&mut String> {
         if params.is_null(pos).unwrap_or(true) {
             self.take();
         } else if let Some(val) = self {
-            let new_len = params.out_data_len(pos);
+            let new_len = params.get_data_len(pos);
             unsafe {
                 val.as_mut_vec().set_len(new_len);
             }
@@ -194,7 +203,7 @@ impl ToSql for &mut [String] {
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) {
         for txt in self.iter_mut() {
-            let new_len = params.out_data_len(pos);
+            let new_len = params.get_data_len(pos);
             unsafe {
                 (*txt).as_mut_vec().set_len(new_len)
             }
@@ -213,7 +222,7 @@ impl ToSql for &mut [&mut String] {
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) {
         for txt in self.iter_mut() {
-            let new_len = params.out_data_len(pos);
+            let new_len = params.get_data_len(pos);
             unsafe {
                 (*txt).as_mut_vec().set_len(new_len)
             }

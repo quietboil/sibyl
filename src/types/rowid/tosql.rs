@@ -1,4 +1,5 @@
 use std::mem::size_of;
+use crate::types::OracleDataType;
 use crate::{oci::*, ToSql, Result, stmt::Params, RowID};
 use super::is_initialized;
 
@@ -68,4 +69,8 @@ impl ToSql for &mut [&mut RowID] {
     }
 }
 
-impl_sql_type!{ RowID => SQLT_RDD }
+impl_sql_type!{ RowID, &RowID, &mut RowID => SQLT_RDD }
+
+impl OracleDataType for RowID {}
+impl OracleDataType for &RowID {}
+impl OracleDataType for &mut RowID {}

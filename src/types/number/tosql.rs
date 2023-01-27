@@ -1,6 +1,7 @@
 /// Implementation of traits that allow Numbers to be used as SQL parameters
 
 use std::mem::size_of;
+use crate::types::OracleDataType;
 use crate::{oci::*, ToSql, Result, stmt::Params};
 use super::Number;
 
@@ -62,4 +63,8 @@ impl ToSql for &mut [&mut Number<'_>] {
     }
 }
 
-impl_sql_type!{ OCINumber, Number<'_> => SQLT_VNU }
+impl_sql_type!{ Number<'_>, &Number<'_>, &mut Number<'_> => SQLT_VNU }
+
+impl OracleDataType for Number<'_> {}
+impl OracleDataType for &Number<'_> {}
+impl OracleDataType for &mut Number<'_> {}

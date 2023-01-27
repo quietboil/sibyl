@@ -5,8 +5,10 @@ mod str;
 mod string;
 mod bin;
 mod binvec;
+mod bool;
 
 use super::bind::Params;
+use crate::types::OracleDataType;
 use crate::{oci::*, Result};
 use std::mem::size_of;
 
@@ -66,7 +68,7 @@ impl<T> ToSql for &mut Descriptor<T> where T: DescriptorType, T::OCIType: OCIStr
     }
 }
 
-impl<T> ToSql for Option<T> where T: ToSql + SqlType {
+impl<T> ToSql for Option<T> where T: OracleDataType {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         if let Some(val) = self {
             val.bind_to(pos, params, stmt, err)
@@ -85,7 +87,7 @@ impl<T> ToSql for Option<T> where T: ToSql + SqlType {
     }
 }
 
-impl<T> ToSql for &Option<T> where T: ToSql + SqlType {
+impl<T> ToSql for &Option<T> where T: OracleDataType {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         if let Some(val) = self {
             // Coerse val into ref mut to satisfy `bind_to`
@@ -98,7 +100,7 @@ impl<T> ToSql for &Option<T> where T: ToSql + SqlType {
     }
 }
 
-impl<T> ToSql for &mut Option<T> where T: ToSql + SqlType {
+impl<T> ToSql for &mut Option<T> where T: OracleDataType {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         if let Some(val) = self {
             val.bind_to(pos, params, stmt, err)

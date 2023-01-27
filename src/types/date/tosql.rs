@@ -1,6 +1,7 @@
 /// Implementation of traits that allow Dates to be used as SQL parameters
 
 use std::mem::size_of;
+use crate::types::OracleDataType;
 use crate::{oci::*, ToSql, Result, stmt::Params};
 use super::Date;
 
@@ -62,4 +63,8 @@ impl ToSql for &mut [&mut Date<'_>] {
     }
 }
 
-impl_sql_type!{ OCIDate, Date<'_> => SQLT_ODT }
+impl_sql_type!{ Date<'_>, &Date<'_>, &mut Date<'_> => SQLT_ODT }
+
+impl OracleDataType for Date<'_> {}
+impl OracleDataType for &Date<'_> {}
+impl OracleDataType for &mut Date<'_> {}

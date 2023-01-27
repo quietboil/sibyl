@@ -1,6 +1,7 @@
 /// Implementation of traits that allow Raw values to be used as SQL parameters
 
 use std::mem::size_of;
+use crate::types::OracleDataType;
 use crate::{oci::*, ToSql, Result, stmt::Params};
 use super::Raw;
 
@@ -10,6 +11,11 @@ impl SqlType for Raw<'_> {
 }
 
 impl SqlType for &Raw<'_> {
+    fn sql_type() -> u16 { SQLT_LVB }
+    fn sql_null_type() -> u16 { SQLT_BIN }
+}
+
+impl SqlType for &mut Raw<'_> {
     fn sql_type() -> u16 { SQLT_LVB }
     fn sql_null_type() -> u16 { SQLT_BIN }
 }
@@ -95,3 +101,7 @@ impl ToSql for &mut [&mut Raw<'_>] {
         Ok(pos)
     }
 }
+
+impl OracleDataType for Raw<'_> {}
+impl OracleDataType for &Raw<'_> {}
+impl OracleDataType for &mut Raw<'_> {}
