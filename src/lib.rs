@@ -216,3 +216,24 @@ fn main() -> Result<()> {
 pub fn env() -> Result<Environment> {
     Environment::new()
 }
+
+#[cfg(feature="blocking")]
+#[doc(hidden)]
+pub mod test_env {
+    use once_cell::sync::OnceCell;
+    use crate::{Environment, SessionPool, Session, Result};
+
+    static ORACLE : OnceCell<Environment> = OnceCell::new();
+    static POOL : OnceCell<SessionPool> = OnceCell::new();
+
+    pub fn get_session() -> Result<Session<'static>> {
+        let pool = POOL.get_or_try_init(|| {
+            let dbname = std::env::var("DBNAME").expect("database name");
+            let dbuser = std::env::var("DBUSER").expect("user name");
+            let dbpass = std::env::var("DBPASS").expect("password");    
+            let oracle = ORACLE.get_or_try_init(|| Environment::new())?;
+            oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)
+        })?;
+        pool.get_session()
+    }
+}

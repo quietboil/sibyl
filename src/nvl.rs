@@ -1,3 +1,34 @@
+//! A "nullable value" type that wraps a non-null value. `Nvl` is bound to a SQL parameer
+//! placeholder as null.
+//! 
+//! `Nvl` exists because several Oracle data types do not have an internal representatation
+//! that can be treated as a null value. `Nvl` provides an explicit mechanism to bind them
+//! as null and expecting either null or non-null value as the output.
+//! 
+//! # Examples
+//! 
+//! ```
+//! # use sibyl::*;
+//! # let session = sibyl::test_env::get_session()?;
+//! let stmt = session.prepare("
+//! BEGIN
+//!   IF :VAL IS NULL THEN
+//!     :VAL := To_Timestamp('1969-07-24 16:50:35','YYYY-MM-DD HH24:MI:SS') 
+//!           - To_Timestamp('1969-07-16 13:32:00','YYYY-MM-DD HH24:MI:SS');
+//!   ELSE
+//!     :VAL := NULL;
+//!   END IF;
+//! END;
+//! ")?;
+//! let mut interval = Nvl::new(IntervalDS::new(&session)?);
+//! stmt.execute(&mut interval)?;
+//! 
+//! assert!(interval.as_ref().is_some());
+//! let expected_interval = IntervalDS::from_string("+8 03:18:35.00", &session)?;
+//! assert_eq!(interval.as_ref().unwrap().compare(&expected_interval)?, std::cmp::Ordering::Equal);
+//! # Ok::<(),sibyl::Error>(())
+//! ``` 
+
 use crate::ToSql;
 use crate::oci::SqlType;
 

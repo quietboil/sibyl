@@ -1,24 +1,7 @@
 #[cfg(feature="blocking")]
 mod tests {
-    use once_cell::sync::OnceCell;
     use sibyl::*;
-
-    static ORACLE : OnceCell<Environment> = OnceCell::new();
-    static POOL : OnceCell<SessionPool> = OnceCell::new();
-
-    fn get_session() -> Result<Session<'static>> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-
-        let oracle = ORACLE.get_or_try_init(|| {
-            Environment::new()
-        })?;
-        let pool = POOL.get_or_try_init(|| {
-            oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)
-        })?;
-        pool.get_session()
-    }
+    use sibyl::test_env::get_session;
 
     #[test]
     fn primitive_numbers() -> Result<()> {
