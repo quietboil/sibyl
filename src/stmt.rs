@@ -147,11 +147,7 @@ impl<'a> Statement<'a> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, first_name, last_name
           FROM hr.employees
@@ -163,11 +159,7 @@ impl<'a> Statement<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     SELECT employee_id, first_name, last_name
     #       FROM hr.employees
@@ -203,11 +195,7 @@ impl<'a> Statement<'a> {
     # static TEXT : &str = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     # let stmt = session.prepare("
     #     DECLARE
     #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -244,11 +232,7 @@ impl<'a> Statement<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     DECLARE
     #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -300,11 +284,7 @@ impl<'a> Statement<'a> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
           FROM hr.employees
@@ -318,11 +298,7 @@ impl<'a> Statement<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     SELECT employee_id, last_name, first_name
     #       FROM hr.employees
@@ -359,11 +335,7 @@ impl<'a> Statement<'a> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, first_name, last_name
           FROM hr.employees
@@ -386,11 +358,7 @@ impl<'a> Statement<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     SELECT employee_id, first_name, last_name
     #       FROM hr.employees
@@ -442,11 +410,7 @@ impl<'a> Statement<'a> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         UPDATE hr.employees
            SET manager_id = :new_manager_id
@@ -469,11 +433,7 @@ impl<'a> Statement<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     UPDATE hr.employees
     #        SET manager_id = :new_manager_id
@@ -512,11 +472,7 @@ impl<'a> Statement<'a> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
     BEGIN
         :VAL := Utl_Raw.Cast_To_Raw('data');
@@ -535,11 +491,7 @@ impl<'a> Statement<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     # BEGIN
     #     :VAL := Utl_Raw.Cast_To_Raw('data');
@@ -580,11 +532,7 @@ impl<'a> Statement<'a> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
           FROM hr.employees
@@ -604,11 +552,7 @@ impl<'a> Statement<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     SELECT employee_id, last_name, first_name
     #       FROM hr.employees

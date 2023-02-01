@@ -219,11 +219,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -284,11 +280,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -392,11 +384,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -426,11 +414,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -492,11 +476,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::NChar, Cache::No)?;
 
     assert!(lob.is_nclob()?);
@@ -505,11 +485,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let lob = CLOB::temp(&session, CharSetForm::NChar, Cache::No).await?;
     # assert!(lob.is_nclob()?);
     # Ok(()) })
@@ -543,11 +519,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     let (dir_name, file_name) = file.file_name()?;
@@ -559,11 +531,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let file = BFile::new(&session)?;
     # file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     # let (dir_name, file_name) = file.file_name()?;
@@ -606,11 +574,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let mut file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
 
@@ -620,11 +584,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let mut file = BFile::new(&session)?;
     # file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     # assert!(file.file_exists().await?);

@@ -144,11 +144,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     session.set_stmt_cache_size(100)?;
     # let size = session.stmt_cache_size()?;
     # assert_eq!(size, 100);
@@ -157,11 +153,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # session.set_stmt_cache_size(100)?;
     # let size = session.stmt_cache_size()?;
     # assert_eq!(size, 100);
@@ -181,11 +173,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let size = session.stmt_cache_size()?;
     assert_eq!(size, 20);
     # Ok(())
@@ -193,11 +181,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let size = session.stmt_cache_size()?;
     # assert_eq!(size, 20);
     # Ok(()) })
@@ -229,11 +213,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     session.set_call_timeout(5000)?;
     # let time = session.call_timeout()?;
     # assert_eq!(time, 5000);
@@ -242,11 +222,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # session.set_call_timeout(5000)?;
     # let time = session.call_timeout()?;
     # assert_eq!(time, 5000);
@@ -267,11 +243,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     session.set_call_timeout(1000)?;
 
     let time = session.call_timeout()?;
@@ -282,11 +254,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # session.set_call_timeout(1000)?;
     # let time = session.call_timeout()?;
     # assert_eq!(time, 1000);
@@ -317,11 +285,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     session.start_call_time_measurements()?;
     session.ping()?;
     let dt = session.call_time()?;
@@ -332,11 +296,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # session.start_call_time_measurements()?;
     # session.ping().await?;
     # let dt = session.call_time()?;
@@ -373,11 +333,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     session.set_module("Sibyl DocTest");
 
     let stmt = session.prepare("
@@ -393,12 +349,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # session.set_module("Sibyl DocTest");
     # let stmt = session.prepare("
     #     SELECT module
@@ -434,11 +385,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     session.set_action("Action Name Test");
 
     let stmt = session.prepare("
@@ -454,12 +401,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # session.set_action("Action Name Test");
     # let stmt = session.prepare("
     #     SELECT action
@@ -494,11 +436,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     session.set_client_identifier("Test Wielder");
 
     let stmt = session.prepare("
@@ -514,11 +452,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # session.set_client_identifier("Test Wielder");
     # let stmt = session.prepare("
     #     SELECT client_identifier
@@ -553,11 +487,7 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     session.set_client_info("Nothing to see here, move along folks");
 
     let stmt = session.prepare("
@@ -573,11 +503,7 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # session.set_client_info("Nothing to see here, move along folks");
     # let stmt = session.prepare("
     #     SELECT client_info
@@ -604,13 +530,12 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let orig_name = session.current_schema()?;
-    // Workaround for 19.15 client isssue - `current_schema` returns empty string until set by `set_current_schema`
+    // Workaround for an isssue that was introduced by the instant client 19.15 - 
+    // `current_schema` returns empty string until set by `set_current_schema`
+    // Client 19.13 and earlier return the schema's name upon connect.
+    let dbuser = std::env::var("DBUSER").expect("user name");
     let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
     session.set_current_schema("HR")?;
 
@@ -625,12 +550,9 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let orig_name = session.current_schema()?;
+    # let dbuser = std::env::var("DBUSER").expect("user name");
     # let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
     # session.set_current_schema("HR")?;
     # let current_schema = session.current_schema()?;
@@ -666,13 +588,12 @@ impl Session<'_> {
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let orig_name = session.current_schema()?;
-    // Workaround for 19.15 client isssue - `current_schema` returns empty string until set by `set_current_schema`
+    // Workaround for an isssue that was introduced by the instant client 19.15 - 
+    // `current_schema` returns empty string until set by `set_current_schema`
+    // Client 19.13 and earlier return the schema's name upon connect.
+    let dbuser = std::env::var("DBUSER").expect("user name");
     let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
 
     session.set_current_schema("HR")?;
@@ -694,12 +615,9 @@ impl Session<'_> {
     # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let orig_name = session.current_schema()?;
+    # let dbuser = std::env::var("DBUSER").expect("user name");
     # let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
     # session.set_current_schema("HR")?;
     # assert_eq!(session.current_schema()?, "HR");

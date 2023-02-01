@@ -9,17 +9,8 @@ fn read_text_file(path: &str) -> String {
 
 #[cfg(feature="blocking")]
 mod blocking {
-
     use sibyl::*;
-
-    use crate::read_text_file;
-
-    fn connect(oracle: &Environment) -> Result<Session> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        oracle.connect(&dbname, &dbuser, &dbpass)
-    }
+    use super::read_text_file;
 
     fn check_or_create_test_table(session: &Session) -> Result<()> {
         let stmt = session.prepare("
@@ -74,25 +65,29 @@ mod blocking {
         let text = std::str::from_utf8(&data.as_slice()[539971..539977]).expect("last 6 bytes as str");
         assert_eq!(text, "%%EOF\r");
 
-        data.truncate(0);
-        let mut num_read : usize = 0;
-        let mut has_more = lob.read_first(8192, 0, file_len, &mut data, &mut num_read)?;
-        assert!(num_read >= 8, "read at least first 8 bytes");
-        assert_eq!(data.len(), num_read);
-        let mut total_read = num_read;
+        let (feature_release, _, _, _, _) = sibyl::client_version();
+        // 21c barfs SIGSEGV when it is asked to read the last piece
+        if feature_release <= 19 {
+            data.truncate(0);
+            let mut num_read : usize = 0;
+            let mut has_more = lob.read_first(8192, 0, file_len, &mut data, &mut num_read)?;
+            assert!(num_read >= 8, "read at least first 8 bytes");
+            assert_eq!(data.len(), num_read);
+            let mut total_read = num_read;
 
-        let text = std::str::from_utf8(&data.as_slice()[0..8]).expect("first 8 bytes as str");
-        assert_eq!(text, "%PDF-1.3");
+            let text = std::str::from_utf8(&data.as_slice()[0..8]).expect("first 8 bytes as str");
+            assert_eq!(text, "%PDF-1.3");
 
-        while has_more {
-            has_more = lob.read_next(8192, &mut data, &mut num_read)?;
-            total_read += num_read;
+            while has_more {
+                has_more = lob.read_next(8192, &mut data, &mut num_read)?;
+                total_read += num_read;
+            }
+            assert_eq!(total_read, file_len);
+            assert_eq!(data.len(), file_len);
+
+            let text = std::str::from_utf8(&data.as_slice()[539971..539977]).expect("last 6 bytes as str");
+            assert_eq!(text, "%%EOF\r");
         }
-        assert_eq!(total_read, file_len);
-        assert_eq!(data.len(), file_len);
-
-        let text = std::str::from_utf8(&data.as_slice()[539971..539977]).expect("last 6 bytes as str");
-        assert_eq!(text, "%%EOF\r");
 
         lob.close_file()?;
         assert!(!lob.is_file_open()?, "file is closed");
@@ -116,58 +111,63 @@ mod blocking {
         let text = std::str::from_utf8(&data.as_slice()[539971..539977]).expect("last 6 bytes as str");
         assert_eq!(text, "%%EOF\r");
 
-        data.truncate(0);
+        let (feature_release, _, _, _, _) = sibyl::client_version();
+        // 21c barfs SIGSEGV when it is asked to read the last piece (19c server)
+        if feature_release <= 19 {
+            data.truncate(0);
 
-        let chunk_size = lob.chunk_size()?;
-        assert!(chunk_size > 0);
+            let chunk_size = lob.chunk_size()?;
+            assert!(chunk_size > 0);
 
-        let mut num_read : usize = 0;
-        let mut has_more = lob.read_first(chunk_size, 0, lob_len, &mut data, &mut num_read)?;
-        assert!(num_read >= 8, "read at least first 8 bytes");
-        assert_eq!(data.len(), num_read);
-        let mut total_read = num_read;
+            let mut num_read : usize = 0;
+            let mut has_more = lob.read_first(chunk_size, 0, lob_len, &mut data, &mut num_read)?;
+            assert!(num_read >= 8, "read at least first 8 bytes");
+            assert_eq!(data.len(), num_read);
+            let mut total_read = num_read;
 
-        let text = std::str::from_utf8(&data.as_slice()[0..8]).expect("first 8 bytes as str");
-        assert_eq!(text, "%PDF-1.3");
+            let text = std::str::from_utf8(&data.as_slice()[0..8]).expect("first 8 bytes as str");
+            assert_eq!(text, "%PDF-1.3");
 
-        while has_more {
-            has_more = lob.read_next(chunk_size, &mut data, &mut num_read)?;
-            total_read += num_read;
+            while has_more {
+                has_more = lob.read_next(chunk_size, &mut data, &mut num_read)?;
+                total_read += num_read;
+            }
+            assert_eq!(total_read, lob_len);
+            assert_eq!(data.len(), lob_len);
+
+            let text = std::str::from_utf8(&data.as_slice()[lob_len-6..lob_len]).expect("last 6 bytes as str");
+            assert_eq!(text, "%%EOF\r");
         }
-        assert_eq!(total_read, lob_len);
-        assert_eq!(data.len(), lob_len);
-
-        let text = std::str::from_utf8(&data.as_slice()[539971..539977]).expect("last 6 bytes as str");
-        assert_eq!(text, "%%EOF\r");
 
         Ok(())
     }
 
     #[test]
     fn read_file() -> Result<()> {
-        let oracle = sibyl::env()?;
-        let session = connect(&oracle)?;
-        check_or_create_test_table(&session)?;
+        let (feature_release, _, _, _, _) = sibyl::client_version();
+        // 21c cannot insert BFileName into 19c table - fails with "ORA-03120: two-task conversion routine: integer overflow"
+        if feature_release <= 19 {
+            let session = sibyl::test_env::get_session()?;
+            check_or_create_test_table(&session)?;
 
-        let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIR,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE")?;
-        let mut id : usize = 0;
-        let mut lob : BFile = BFile::new(&session)?;
-        stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut id, &mut lob))?;
+            let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIR,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE")?;
+            let mut id : usize = 0;
+            let mut lob : BFile = BFile::new(&session)?;
+            stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut id, &mut lob))?;
 
-        check_file(lob)?;
+            check_file(lob)?;
 
-        let lob : BFile = BFile::new(&session)?;
-        lob.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
+            let lob : BFile = BFile::new(&session)?;
+            lob.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
 
-        check_file(lob)?;
-
+            check_file(lob)?;
+        }
         Ok(())
     }
 
     #[test]
     fn read_blob() -> Result<()> {
-        let oracle = sibyl::env()?;
-        let session = connect(&oracle)?;
+        let session = sibyl::test_env::get_session()?;
         check_or_create_test_table(&session)?;
 
         let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
@@ -197,8 +197,7 @@ mod blocking {
 
     #[test]
     fn write_blob() -> Result<()> {
-        let oracle = sibyl::env()?;
-        let session = connect(&oracle)?;
+        let session = sibyl::test_env::get_session()?;
         check_or_create_test_table(&session)?;
 
         // load the data
@@ -308,8 +307,7 @@ mod blocking {
 
     #[test]
     fn read_write_clob() -> Result<()> {
-        let oracle = sibyl::env()?;
-        let session = connect(&oracle)?;
+        let session = sibyl::test_env::get_session()?;
         check_or_create_test_table(&session)?;
 
         // load the data
@@ -398,17 +396,8 @@ mod blocking {
 
 #[cfg(feature="nonblocking")]
 mod nonblocking {
-
     use sibyl::*;
-
     use crate::read_text_file;
-
-    async fn connect<'a>(oracle: &'a Environment) -> Result<Session<'a>> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        oracle.connect(&dbname, &dbuser, &dbpass).await
-    }
 
     async fn check_or_create_test_table(session: &Session<'_>) -> Result<()> {
         let stmt = session.prepare("
@@ -466,14 +455,16 @@ mod nonblocking {
     #[test]
     fn read_file() -> Result<()> {
         block_on(async {
-            let oracle = sibyl::env()?;
-            let session = connect(&oracle).await?;
+            let session = sibyl::test_env::get_session().await?;
             check_or_create_test_table(&session).await?;
 
-            let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIRNAME,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE").await?;
+            let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIRNAME,:FILENAME)) RETURNING id INTO :ID").await?;
             let mut id : usize = 0;
-            let mut lob : BFile = BFile::new(&session)?;
-            stmt.execute(((":DIRNAME", "MEDIA_DIR"), (":FILENAME", "mousepad_comp_ad.pdf"), (":ID", &mut id), (":NEW_BFILE", &mut lob))).await?;
+            stmt.execute(((":DIRNAME", "MEDIA_DIR"), (":FILENAME", "mousepad_comp_ad.pdf"), (":ID", &mut id))).await?;
+
+            let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
+            let row = stmt.query_single(&id).await?.expect("just inserted row with new BFile");
+            let lob : BFile = row.get(0)?;
 
             check_file(lob).await?;
 
@@ -507,20 +498,20 @@ mod nonblocking {
     #[test]
     fn read_blob() -> Result<()> {
         block_on(async {
-            let oracle = sibyl::env()?;
-            let session = connect(&oracle).await?;
+            let session = sibyl::test_env::get_session().await?;
             check_or_create_test_table(&session).await?;
 
             let stmt = session.prepare("
-                DECLARE
-                    row_id ROWID;
-                BEGIN
-                    INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING rowid into row_id;
-                    SELECT bin INTO :NEW_BLOB FROM test_large_object_data WHERE rowid = row_id FOR UPDATE;
-                END;
+                INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING rowid INTO :ROW_ID
             ").await?;
-            let mut lob = BLOB::new(&session)?;
-            stmt.execute(&mut lob).await?;
+            let mut rowid = RowID::new(&session)?;
+            stmt.execute(&mut rowid).await?;
+
+            let stmt = session.prepare("
+                SELECT bin FROM test_large_object_data WHERE rowid = :ROW_ID FOR UPDATE
+            ").await?;
+            let row = stmt.query_single(&rowid).await?.expect("just inserted row with the empty BLOB");
+            let lob : BLOB = row.get(0)?;
 
             let file = BFile::new(&session)?;
             file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
@@ -542,8 +533,7 @@ mod nonblocking {
     #[test]
     fn write_blob() -> Result<()> {
         block_on(async {
-            let oracle = sibyl::env()?;
-            let session = connect(&oracle).await?;
+            let session = sibyl::test_env::get_session().await?;
             check_or_create_test_table(&session).await?;
 
             // load the data
@@ -610,8 +600,7 @@ mod nonblocking {
         let expected_lob_char_len = text_char_len + 24;
 
         block_on(async {
-            let oracle = sibyl::env()?;
-            let session = connect(&oracle).await?;
+            let session = sibyl::test_env::get_session().await?;
             check_or_create_test_table(&session).await?;
 
             // make 2 clobs - one for writing and another for appending
@@ -659,8 +648,7 @@ mod nonblocking {
     #[test]
     fn temp_blob_api() -> Result<()> {
         block_on(async {
-            let oracle = sibyl::env()?;
-            let session = connect(&oracle).await?;
+            let session = sibyl::test_env::get_session().await?;
 
             let lob = BLOB::temp(&session, Cache::No).await?;
 
@@ -674,15 +662,20 @@ mod nonblocking {
     #[test]
     fn temp_blob_dbms() -> Result<()> {
         block_on(async {
-            let oracle = sibyl::env()?;
-            let session = connect(&oracle).await?;
+            let session = sibyl::test_env::get_session().await?;
             check_or_create_test_table(&session).await?;
 
             let mut lob = BLOB::empty(&session)?;
             let is_temp = lob.is_temp().await?;
             assert!(!is_temp);
 
-            let stmt = session.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE); END;").await?;
+            let (feature_release, _, _, _, _) = sibyl::client_version();
+             
+            let stmt = if feature_release == 21 {
+                session.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE, DBMS_LOB.SESSION); END;").await?
+            } else {
+                session.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE, DBMS_LOB.CALL); END;").await?
+            };
             stmt.execute(&mut lob).await?;
             let is_temp = lob.is_temp().await?;
             assert!(is_temp);

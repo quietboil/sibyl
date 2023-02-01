@@ -19,13 +19,14 @@ tokio-rt = { version = "1", features = ["rt"], optional = true, package = "tokio
 actix-rt = { version = "2.8", default-features = false, optional = true }
 async-rt = { version = "1.12", features = ["unstable"], optional = true, package = "async-std" }
 async-global-executor = { version = "2.3", optional = true }
+async-once-cell = { version = "0.4", optional = true }
 
 [dev-dependencies]
 tokio-rt = { version = "1", features = ["rt", "rt-multi-thread"], package = "tokio" }
 
 [features]
 blocking = []
-nonblocking = []
+nonblocking = ["async-once-cell"]
 unsafe-direct-binds = []
 tokio = ["tokio-rt"]
 actix = ["actix-rt"]

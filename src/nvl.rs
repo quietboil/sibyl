@@ -9,6 +9,8 @@
 //! 
 //! ```
 //! # use sibyl::*;
+//! # #[cfg(feature="blocking")]
+//! # fn main() -> Result<()> {
 //! # let session = sibyl::test_env::get_session()?;
 //! let stmt = session.prepare("
 //! BEGIN
@@ -26,7 +28,10 @@
 //! assert!(interval.as_ref().is_some());
 //! let expected_interval = IntervalDS::from_string("+8 03:18:35.00", &session)?;
 //! assert_eq!(interval.as_ref().unwrap().compare(&expected_interval)?, std::cmp::Ordering::Equal);
-//! # Ok::<(),sibyl::Error>(())
+//! # Ok(())
+//! # }
+//! # #[cfg(feature="nonblocking")]
+//! # fn main() {}
 //! ``` 
 
 use crate::ToSql;

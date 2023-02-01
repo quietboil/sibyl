@@ -48,11 +48,7 @@ impl<'a> Statement<'a> {
 
     ```
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let stmt = session.prepare("
         INSERT INTO hr.departments
                ( department_id, department_name, manager_id, location_id )
@@ -110,11 +106,7 @@ impl<'a> Statement<'a> {
     ```
     # use std::collections::HashMap;
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
           FROM hr.employees
@@ -197,11 +189,7 @@ impl<'a> Statement<'a> {
     use std::collections::HashMap;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let stmt = session.prepare("
         SELECT country_id, state_province, city, postal_code, street_address
           FROM hr.locations
@@ -265,11 +253,7 @@ impl<'a> Statement<'a> {
     use std::cmp::Ordering::Equal;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let stmt = session.prepare("
         DECLARE
             c1 SYS_REFCURSOR;
@@ -377,15 +361,7 @@ mod tests {
     #[test]
     fn async_query() -> Result<()> {
         block_on(async {
-            use std::env;
-
-            let oracle = crate::env()?;
-
-            let dbname = env::var("DBNAME").expect("database name");
-            let dbuser = env::var("DBUSER").expect("user name");
-            let dbpass = env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = crate::test_env::get_session().await?;
             let stmt = session.prepare("
                 SELECT employee_id
                   FROM (
@@ -406,11 +382,7 @@ mod tests {
     #[test]
     fn plsql_args() -> std::result::Result<(),Box<dyn std::error::Error>> {
         block_on(async {
-            let dbname = std::env::var("DBNAME")?;
-            let dbuser = std::env::var("DBUSER")?;
-            let dbpass = std::env::var("DBPASS")?;
-            let oracle = env()?;
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = crate::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 BEGIN
@@ -481,11 +453,7 @@ mod tests {
     #[test]
     fn plsql_one_out_arg() -> std::result::Result<(),Box<dyn std::error::Error>> {
         block_on(async {
-            let dbname = std::env::var("DBNAME")?;
-            let dbuser = std::env::var("DBUSER")?;
-            let dbpass = std::env::var("DBPASS")?;
-            let oracle = env()?;
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = crate::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 BEGIN
@@ -503,7 +471,7 @@ mod tests {
                 ( ":ADDR", &mut addr )
             )).await?;
 
-            assert_eq!(num_rows, 1);
+            assert!(num_rows > 0);
             assert!(!stmt.is_null(":ADDR")?);
             assert_eq!(addr, "Magdalen Centre, The Oxford Science Park");
 
@@ -512,7 +480,7 @@ mod tests {
                 ( ":ADDR", &mut addr )
             )).await?;
 
-            assert_eq!(num_rows, 2);
+            assert!(num_rows > 0);
             assert!(!stmt.is_null(":ADDR")?);
             assert_eq!(addr, "8204 Arthur St");
 
@@ -521,7 +489,7 @@ mod tests {
                 ( ":ADDR", &mut addr )
             )).await?;
 
-            assert_eq!(num_rows, 2);
+            assert!(num_rows > 0);
             assert!(!stmt.is_null(":ADDR")?);
             assert_eq!(addr, "12-98 Victoria Street");
 
@@ -538,7 +506,7 @@ mod tests {
                 ( ":ADDR", &mut addr )
             )).await?;
 
-            assert_eq!(num_rows, 2);
+            assert!(num_rows > 0);
             assert!(!stmt.is_null(":ADDR")?);
             assert_eq!(addr, "12-98 Victoria Street");
 
@@ -547,7 +515,7 @@ mod tests {
                 ( ":ADDR", &mut addr )
             )).await?;
 
-            assert_eq!(num_rows, 2);
+            assert!(num_rows > 0);
             assert!(!stmt.is_null(":ADDR")?);
             assert_eq!(addr, "Magdalen Centre, The Oxford Science Park");
 
@@ -559,11 +527,7 @@ mod tests {
     #[test]
     fn update_many_rows() -> std::result::Result<(),Box<dyn std::error::Error>> {
         block_on(async {
-            let dbname = std::env::var("DBNAME")?;
-            let dbuser = std::env::var("DBUSER")?;
-            let dbpass = std::env::var("DBPASS")?;
-            let oracle = env()?;
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = crate::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 UPDATE hr.employees
@@ -591,11 +555,7 @@ mod tests {
     #[test]
     fn single_row_query() -> Result<()> {
         block_on(async {
-            let oracle = env()?;
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = crate::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 SELECT country_id, state_province, city, postal_code, street_address

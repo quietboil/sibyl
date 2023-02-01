@@ -13,11 +13,7 @@ impl<'a> Cursor<'a> {
     ```
     use sibyl::Cursor;
 
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT last_name
              , CURSOR(

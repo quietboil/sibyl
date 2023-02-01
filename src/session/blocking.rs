@@ -69,11 +69,7 @@ impl<'a> Session<'a> {
     # Example
 
     ```
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     # session.start_call_time_measurements()?;
     session.ping()?;
     # let dt = session.call_time()?;
@@ -96,11 +92,7 @@ impl<'a> Session<'a> {
     # Example
 
     ```
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id
           FROM (
@@ -129,11 +121,7 @@ impl<'a> Session<'a> {
     # Example
 
     ```
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         UPDATE hr.employees
            SET salary = :new_salary
@@ -160,11 +148,7 @@ impl<'a> Session<'a> {
     # Example
 
     ```
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         UPDATE hr.employees
            SET salary = ROUND(salary * 1.1)

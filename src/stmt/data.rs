@@ -320,11 +320,7 @@ mod tests {
 
     #[test]
     fn from_lob() -> Result<()> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
         let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -392,11 +388,7 @@ mod tests {
 
     #[test]
     fn from_rowid() -> Result<()> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
         let stmt = session.prepare("
             SELECT ROWID, manager_id
               FROM hr.employees

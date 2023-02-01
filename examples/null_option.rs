@@ -1,7 +1,7 @@
-use sibyl::*;
-
 #[cfg(feature="blocking")]
-fn main() -> Result<()> {
+fn main() -> sibyl::Result<()> {
+    use sibyl::*;
+
     let dbname = std::env::var("DBNAME").expect("database name");
     let dbuser = std::env::var("DBUSER").expect("user name");
     let dbpass = std::env::var("DBPASS").expect("password");

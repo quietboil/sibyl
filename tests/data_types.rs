@@ -4,11 +4,7 @@ mod blocking {
 
     #[test]
     fn character_datatypes() -> Result<()> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -111,11 +107,7 @@ mod blocking {
     fn datetime_datatypes() -> Result<()> {
         use std::cmp::Ordering::Equal;
 
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -235,11 +227,7 @@ mod blocking {
 
     #[test]
     fn large_object_datatypes() -> Result<()> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -359,11 +347,7 @@ mod blocking {
 
     #[test]
     fn long_and_raw_datatypes() -> Result<()> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -408,11 +392,7 @@ mod blocking {
 
     #[test]
     fn long_raw_datatype() -> Result<()> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -452,11 +432,7 @@ mod blocking {
     fn numeric_datatypes() -> Result<()> {
         use std::cmp::Ordering::Equal;
 
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             DECLARE
                 name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
@@ -514,11 +490,7 @@ mod blocking {
 
     #[test]
     fn rowid_datatype() -> Result<()> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             SELECT ROWID, manager_id
               FROM hr.employees
@@ -549,11 +521,7 @@ mod blocking {
     fn ref_cursor() -> Result<()> {
         use std::cmp::Ordering::Equal;
 
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             BEGIN
                 OPEN :lowest_payed_employee FOR
@@ -644,11 +612,7 @@ mod blocking {
     fn ref_cursor_result() -> Result<()> {
         use std::cmp::Ordering::Equal;
 
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             DECLARE
                 c1 SYS_REFCURSOR;
@@ -742,11 +706,7 @@ mod blocking {
 
     #[test]
     fn ref_cursor_column() -> Result<()> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
             SELECT last_name
@@ -793,18 +753,7 @@ mod nonblocking {
     #[test]
     fn character_datatypes() -> Result<()> {
         block_on(async {
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 DECLARE
@@ -912,18 +861,7 @@ mod nonblocking {
     fn datetime_datatypes() -> Result<()> {
         block_on(async {
             use std::cmp::Ordering::Equal;
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 DECLARE
@@ -1050,18 +988,7 @@ mod nonblocking {
     #[test]
     fn long_and_raw_datatypes() -> Result<()> {
         block_on(async {
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 DECLARE
@@ -1117,18 +1044,7 @@ mod nonblocking {
     #[test]
     fn long_raw_datatype() -> Result<()> {
         block_on(async {
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 DECLARE
@@ -1170,18 +1086,7 @@ mod nonblocking {
     fn numeric_datatypes() -> Result<()> {
         block_on(async {
             use std::cmp::Ordering::Equal;
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 DECLARE
@@ -1242,18 +1147,7 @@ mod nonblocking {
     #[test]
     fn rowid_datatype() -> Result<()> {
         block_on(async {
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
                 SELECT ROWID, manager_id
@@ -1293,18 +1187,7 @@ mod nonblocking {
     fn ref_cursor() -> Result<()> {
         block_on(async {
             use std::cmp::Ordering::Equal;
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
             let stmt = session.prepare("
                 BEGIN
                     OPEN :lowest_payed_employee FOR
@@ -1396,18 +1279,7 @@ mod nonblocking {
     fn ref_cursor_result() -> Result<()> {
         block_on(async {
             use std::cmp::Ordering::Equal;
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
             let stmt = session.prepare("
                 DECLARE
                     c1 SYS_REFCURSOR;
@@ -1503,18 +1375,7 @@ mod nonblocking {
     #[test]
     fn ref_cursor_column() -> Result<()> {
         block_on(async {
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
             let stmt = session.prepare("
                 SELECT last_name
                     , CURSOR(
@@ -1556,18 +1417,7 @@ mod nonblocking {
     #[test]
     fn large_object_datatypes() -> Result<()> {
         block_on(async {
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                sibyl::env()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+            let session = sibyl::test_env::get_session().await?;
             let stmt = session.prepare("
                 DECLARE
                     name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);

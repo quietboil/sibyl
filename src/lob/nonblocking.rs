@@ -40,14 +40,10 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # Example
 
     ```
-    use sibyl::CLOB;
+    use sibyl::*;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -65,16 +61,13 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     #     end;
     # ").await?;
     # stmt.execute(()).await?;
-    let stmt = session.prepare("
-        DECLARE
-            row_id ROWID;
-        BEGIN
-            INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid into row_id;
-            SELECT text INTO :NEW_LOB FROM test_lobs WHERE rowid = row_id FOR UPDATE;
-        END;
-    ").await?;
-    let mut lob = CLOB::new(&session)?;
-    stmt.execute(&mut lob).await?;
+    let stmt = session.prepare("INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :ROW_ID").await?;
+    let mut rowid = RowID::new(&session)?;
+    stmt.execute(&mut rowid).await?;
+
+    let stmt = session.prepare("SELECT text FROM test_lobs WHERE rowid = :ROW_ID FOR UPDATE").await?;
+    let row = stmt.query_single(&rowid).await?.expect("just inserted row");
+    let mut lob : CLOB = row.get(0)?;
 
     let text = [
         "Love seeketh not itself to please,\n",
@@ -211,11 +204,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     use sibyl::{CLOB, Cache, CharSetForm};
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let text1 = "
         The sun does arise,
         And make happy the skies.
@@ -285,11 +274,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     use sibyl::{CLOB, Cache, CharSetForm};
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let text = "
     O Nightingale, that on yon bloomy Spray
     Warbl'st at eeve, when all the Woods are still,
@@ -398,14 +383,10 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     the test user has permissions to read them (see `etc/create_sandbox.sql`)
 
     ```
-    use sibyl::{CLOB, Cache, CharSetForm, BFile};
+    use sibyl::*;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -423,16 +404,13 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     #     end;
     # ").await?;
     # stmt.execute(()).await?;
-    let stmt = session.prepare("
-        DECLARE
-            row_id ROWID;
-        BEGIN
-            INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid into row_id;
-            SELECT text INTO :NEW_LOB FROM test_lobs WHERE rowid = row_id FOR UPDATE;
-        END;
-    ").await?;
-    let mut lob = CLOB::new(&session)?;
-    stmt.execute(&mut lob).await?;
+    let stmt = session.prepare("INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :ROW_ID").await?;
+    let mut rowid = RowID::new(&session)?;
+    stmt.execute(&mut rowid).await?;
+
+    let stmt = session.prepare("SELECT text FROM test_lobs WHERE rowid = :ROW_ID FOR UPDATE").await?;
+    let row = stmt.query_single(&rowid).await?.expect("just inserted row");
+    let mut lob : CLOB = row.get(0)?;
 
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -666,11 +644,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     use sibyl::{CLOB, Cache, CharSetForm};
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     let text = "tête-à-tête";
     assert_eq!(text.len(), 14); // byte count
@@ -714,11 +688,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     use sibyl::{CLOB, Cache, CharSetForm};
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
 
     let written = lob.append("Hello, World!").await?;
@@ -751,11 +721,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     use sibyl::{CLOB, Cache, CharSetForm};
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     lob.write(4, "tête-à-tête").await?;
 
@@ -842,11 +808,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     use sibyl::{BLOB, Cache};
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let lob = BLOB::temp(&session, Cache::No).await?;
 
     let written = lob.write(3, "Hello, World!".as_bytes()).await?;
@@ -877,11 +839,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     use sibyl::{BLOB, Cache};
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let lob = BLOB::temp(&session, Cache::No).await?;
 
     let written = lob.append("Hello, World!".as_bytes()).await?;
@@ -914,11 +872,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     use sibyl::{BLOB, Cache, BFile};
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "modem.jpg")?;
     assert!(file.file_exists().await?);
@@ -1008,11 +962,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     use sibyl::BFile;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "formatted_doc.txt")?;
 
@@ -1036,11 +986,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     use sibyl::BFile;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     assert!(!file.is_file_open().await?);
@@ -1072,11 +1018,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     use sibyl::BFile;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
 
@@ -1112,11 +1054,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     use sibyl::BFile;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     let file_len = file.len().await?;

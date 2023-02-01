@@ -255,15 +255,11 @@ impl Params {
 
 #[cfg(all(test, feature="blocking"))]
 mod tests {
-    use crate::{Result, Environment};
+    use crate::Result;
 
     #[test]
     fn dup_args() -> Result<()> {
-        let oracle = Environment::new()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
 
         let stmt = session.prepare("
             INSERT INTO hr.locations (location_id, state_province, city, postal_code, street_address)
@@ -296,11 +292,7 @@ mod tests {
 
     #[test]
     fn no_colon_arg_names() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let oracle = Environment::new()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
 
         let stmt = session.prepare("
             UPDATE hr.employees

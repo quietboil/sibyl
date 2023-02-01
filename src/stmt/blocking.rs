@@ -57,11 +57,7 @@ impl<'a> Statement<'a> {
     # Example
 
     ```
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         INSERT INTO hr.departments
                ( department_id, department_name, manager_id, location_id )
@@ -119,11 +115,7 @@ impl<'a> Statement<'a> {
     ```
     use std::collections::HashMap;
 
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
           FROM hr.employees
@@ -205,11 +197,7 @@ impl<'a> Statement<'a> {
     ```
     use std::collections::HashMap;
 
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT country_id, state_province, city, postal_code, street_address
           FROM hr.locations
@@ -272,11 +260,7 @@ impl<'a> Statement<'a> {
     use sibyl::Number;
     use std::cmp::Ordering::Equal;
 
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         DECLARE
             c1 SYS_REFCURSOR;
@@ -387,11 +371,7 @@ mod tests {
 
     #[test]
     fn stmt_args() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
 
         let stmt = session.prepare("
             INSERT INTO hr.countries
@@ -424,11 +404,7 @@ mod tests {
 
     #[test]
     fn int_arg() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
 
         let stmt = session.prepare("
             SELECT city, street_address
@@ -452,11 +428,7 @@ mod tests {
 
     #[test]
     fn plsql_args() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
 
         let stmt = session.prepare("
             BEGIN
@@ -525,11 +497,7 @@ mod tests {
 
     #[test]
     fn out_arg_no_rows() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
 
         let stmt = session.prepare("
             UPDATE hr.employees
@@ -564,11 +532,7 @@ mod tests {
     /// Unless (or until) dynamic array binding is implemented this would be failing
     #[test]
     fn out_arg_many_rows() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let dbname = std::env::var("DBNAME")?;
-        let dbuser = std::env::var("DBUSER")?;
-        let dbpass = std::env::var("DBPASS")?;
-        let oracle = env()?;
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
 
         let stmt = session.prepare("
             UPDATE hr.employees
@@ -594,11 +558,7 @@ mod tests {
 
     #[test]
     fn single_row_query() -> Result<()> {
-        let oracle = env()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = crate::test_env::get_session()?;
 
         let stmt = session.prepare("
             SELECT country_id, state_province, city, postal_code, street_address

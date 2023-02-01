@@ -5,11 +5,7 @@ mod tests {
 
     #[test]
     fn monotype() -> Result<()> {
-        let oracle = env()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
             SELECT first_name, last_name, hire_date
@@ -37,11 +33,7 @@ mod tests {
 
     #[test]
     fn named_monotype() -> Result<()> {
-        let oracle = env()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
             SELECT first_name, last_name, hire_date
@@ -71,11 +63,7 @@ mod tests {
 
     #[test]
     fn mix() -> Result<()> {
-        let oracle = env()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
             SELECT first_name, last_name, department_name, hire_date
@@ -119,11 +107,7 @@ mod tests {
 
     #[test]
     fn named_mix() -> Result<()> {
-        let oracle = env()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
             SELECT first_name, last_name, department_name, hire_date

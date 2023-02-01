@@ -14,11 +14,7 @@ impl<'a> Cursor<'a> {
     use sibyl::Cursor;
 
     # sibyl::block_on(async {
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME").expect("database name");
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let dbpass = std::env::var("DBPASS").expect("password");
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
+    # let session = sibyl::test_env::get_session().await?;
     let stmt = session.prepare("
         SELECT last_name
              , CURSOR(

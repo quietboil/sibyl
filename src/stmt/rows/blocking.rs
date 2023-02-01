@@ -11,11 +11,7 @@ impl<'a> Rows<'a> {
     # Example
 
     ```
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT street_address, postal_code, city, state_province
           FROM hr.locations

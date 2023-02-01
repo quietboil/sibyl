@@ -1,28 +1,10 @@
 #[cfg(feature="blocking")]
 mod tests {
-    use once_cell::sync::OnceCell;
     use sibyl::*;
-
-    static ORACLE : OnceCell<Environment> = OnceCell::new();
-    static POOL : OnceCell<SessionPool> = OnceCell::new();
-
-    fn get_session() -> Result<Session<'static>> {
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-
-        let oracle = ORACLE.get_or_try_init(|| {
-            Environment::new()
-        })?;
-        let pool = POOL.get_or_try_init(|| {
-            oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)
-        })?;
-        pool.get_session()
-    }
 
     #[test]
     fn num_values() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("SELECT Nvl(:val,42) FROM dual")?;
         stmt.set_prefetch_rows(1)?;
@@ -125,7 +107,7 @@ mod tests {
     // Option-al ref cannot be changed, thus we always get ORA-06502 - buffer too small -
     // as the "buffer" here has literal length of 0 bytes.
     fn output_to_none() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
         BEGIN
@@ -175,7 +157,7 @@ mod tests {
 
     #[test]
     fn str_slices() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("SELECT Nvl(:val,'None') FROM dual")?;
         stmt.set_prefetch_rows(1)?;
@@ -260,7 +242,7 @@ mod tests {
 
     #[test]
     fn strings() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("SELECT Nvl(:val,'None') FROM dual")?;
         stmt.set_prefetch_rows(1)?;
@@ -347,7 +329,7 @@ mod tests {
 
     #[test]
     fn bin_slices() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("SELECT Nvl(:VAL,Utl_Raw.Cast_To_Raw('nil')) FROM dual")?;
 
@@ -410,7 +392,7 @@ mod tests {
 
     #[test]
     fn bin_vec() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("SELECT Nvl(:VAL,Utl_Raw.Cast_To_Raw('nil')) FROM dual")?;
 
@@ -485,7 +467,7 @@ mod tests {
 
     #[test]
     fn dates() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         // NULL IN, DATE OUT... kind of :-)
         let stmt = session.prepare("SELECT Nvl(:VAL,To_Date('1969-07-16 13:32:00','YYYY-MM-DD HH24:MI:SS')) FROM dual")?;
@@ -535,7 +517,7 @@ mod tests {
 
     #[test]
     fn intervals() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         // NULL IN, INTERVAL OUT... kind of :-)
         let stmt = session.prepare("
@@ -576,7 +558,7 @@ mod tests {
 
     #[test]
     fn timestamps() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         // NULL IN, TIMESTAMP OUT... kind of :-)
         let stmt = session.prepare("
@@ -632,7 +614,7 @@ mod tests {
 
     #[test]
     fn numbers() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         // NULL IN, NUMBER OUT (kind of)
         let stmt = session.prepare("
@@ -685,7 +667,7 @@ mod tests {
 
     #[test]
     fn varchars() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         // NULL IN, VARCHAR OUT (kind of)
         let stmt = session.prepare("
@@ -737,7 +719,7 @@ mod tests {
 
     #[test]
     fn raws() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         // NULL IN, RAW (kind of)
         let stmt = session.prepare("SELECT Nvl(:VAL,Utl_Raw.Cast_To_Raw('nil')) FROM dual")?;
@@ -791,7 +773,7 @@ mod tests {
 
     #[test]
     fn rawids() -> Result<()> {
-        let session = get_session()?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
         BEGIN

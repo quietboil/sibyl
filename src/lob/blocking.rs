@@ -38,11 +38,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     ```
     use sibyl::{ CLOB, RowID };
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -195,11 +191,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let text1 = "
         The sun does arise,
         And make happy the skies.
@@ -263,11 +255,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let text = "
     O Nightingale, that on yon bloomy Spray
     Warbl'st at eeve, when all the Woods are still,
@@ -377,13 +365,9 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     the test user has permissions to read them (see `etc/create_sandbox.sql`)
 
     ```
-    use sibyl::{CLOB, Cache, CharSetForm, BFile, RowID};
+    use sibyl::*;
 
-    # let oracle = sibyl::env()?;
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -401,16 +385,13 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     #     end;
     # ")?;
     # stmt.execute(())?;
-    let stmt = session.prepare("
-        DECLARE
-            row_id ROWID;
-        BEGIN
-            INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid into row_id;
-            SELECT text INTO :TXT FROM test_lobs WHERE rowid = row_id FOR UPDATE;
-        END;
-    ")?;
-    let mut lob = CLOB::new(&session)?;
-    stmt.execute(&mut lob)?;
+    let stmt = session.prepare("INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :ROW_ID")?;
+    let mut rowid = RowID::new(&session)?;
+    stmt.execute(&mut rowid)?;
+
+    let stmt = session.prepare("SELECT text FROM test_lobs WHERE rowid = :ROW_ID FOR UPDATE")?;
+    let row = stmt.query_single(&rowid)?.expect("just inserted row");
+    let mut lob : CLOB = row.get(0)?;
 
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -678,11 +659,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
     let text = "tête-à-tête";
     assert_eq!(text.len(), 14); // byte count
@@ -728,11 +705,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{ CLOB, CharSetForm, Cache };
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
     lob.open()?;
     let chunk_size = lob.chunk_size()?;
@@ -810,11 +783,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
 
     let written = lob.append("Hello, World!")?;
@@ -848,11 +817,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{ CLOB, CharSetForm, Cache };
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
     lob.open()?;
     let chunk_size = lob.chunk_size()?;
@@ -933,11 +898,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
     lob.write(4, "tête-à-tête")?;
 
@@ -991,11 +952,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
     let chunk_size = lob.chunk_size()?;
     lob.open()?;
@@ -1093,11 +1050,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, Cache};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = BLOB::temp(&session, Cache::No)?;
     let written = lob.write(3, "Hello, World!".as_bytes())?;
     assert_eq!(13, written);
@@ -1128,11 +1081,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, RowID};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     # let stmt = session.prepare("
     #     declare
     #         name_already_used exception; pragma exception_init(name_already_used, -955);
@@ -1237,11 +1186,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, Cache};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let lob = BLOB::temp(&session, Cache::No)?;
 
     let written = lob.append("Hello, World!".as_bytes())?;
@@ -1274,11 +1219,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, Cache};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let mut lob = BLOB::temp(&session, Cache::No)?;
     let chunk_size = lob.chunk_size()?;
     let data = vec![165u8;chunk_size];
@@ -1354,11 +1295,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, Cache, BFile};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "modem.jpg")?;
     assert!(file.file_exists()?);
@@ -1404,11 +1341,9 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     use sibyl::{BLOB, Cache, BFile};
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let (feature_release, _, _, _, _) = sibyl::client_version();
+    # if feature_release <= 19 {
+    # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "monitor.jpg")?;
     assert!(file.file_exists()?);
@@ -1438,8 +1373,13 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
     assert_eq!(data_len, file_len);
     assert_eq!(data.len(), file_len);
+    # }
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
+
+    # Known Issues
+
+    - 21c clients fail with SIGSEGV when reading the last piece from the 19c server.
     */
     pub fn read_first(&self, piece_size: usize, offset: usize, len: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
         let (has_more, byte_count, _) = self.read_piece(OCI_FIRST_PIECE, piece_size, offset, len, 0, 0, buf)?;
@@ -1461,6 +1401,11 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     # Returns
 
     `true` if `read_next` should be called again to continue reading the specified LOB fragment.
+
+    # Known Issues
+
+    - 21c clients (tested with instant clients 21.4 and 21.9) are getting SIGSEGV when they are reading the last piece from the
+      19c server.
     */
     pub fn read_next(&self, piece_size: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
         let (has_more, byte_count, _) = self.read_piece(OCI_NEXT_PIECE, piece_size, 0, 0, 0, 0, buf)?;
@@ -1493,11 +1438,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "formatted_doc.txt")?;
 
@@ -1521,11 +1462,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     assert!(!file.is_file_open()?);
@@ -1557,11 +1494,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
 
@@ -1595,11 +1528,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     let file_len = file.len()?;
@@ -1640,11 +1569,9 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     use sibyl::BFile;
 
-    # let dbname = std::env::var("DBNAME")?;
-    # let dbuser = std::env::var("DBUSER")?;
-    # let dbpass = std::env::var("DBPASS")?;
-    # let oracle = sibyl::env()?;
-    # let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+    # let (feature_release, _, _, _, _) = sibyl::client_version();
+    # if feature_release <= 19 {
+    # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "keyboard.jpg")?;
     assert!(file.file_exists()?);
@@ -1669,8 +1596,13 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 
     assert_eq!(data_len, file_len);
     assert_eq!(data.len(), file_len);
+    # }
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
+
+    # Known Issues
+
+    - 21c clients fail with SIGSEGV when reading the last piece from the 19c server.
     */
     pub fn read_first(&self, piece_size: usize, offset: usize, len: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
         let (has_more, byte_count, _) = self.read_piece(OCI_FIRST_PIECE, piece_size, offset, len, 0, 0, buf)?;
@@ -1692,6 +1624,10 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # Returns
 
     `true` if `read_next` should be called again to continue reading the specified LOB fragment.
+
+    # Known Issues
+
+    - 21c clients fail with SIGSEGV when reading the last piece from the 19c server.
     */
     pub fn read_next(&self, piece_size: usize, buf: &mut Vec<u8>, num_read: &mut usize) -> Result<bool> {
         let (has_more, byte_count, _) = self.read_piece(OCI_NEXT_PIECE, piece_size, 0, 0, 0, 0, buf)?;

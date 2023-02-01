@@ -4,11 +4,7 @@ mod tests {
 
     #[test]
     fn dup_args() -> Result<()> {
-        let oracle = env()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
             INSERT INTO hr.locations (location_id, state_province, city, postal_code, street_address)
@@ -39,11 +35,7 @@ mod tests {
 
     #[test]
     fn num_args() -> Result<()> {
-        let oracle = env()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
             INSERT INTO hr.locations (location_id, state_province, city, postal_code, street_address)
@@ -74,11 +66,7 @@ mod tests {
 
     #[test]
     fn slices() -> std::result::Result<(),Box<dyn std::error::Error>> {
-        let oracle = env()?;
-        let dbname = std::env::var("DBNAME").expect("database name");
-        let dbuser = std::env::var("DBUSER").expect("user name");
-        let dbpass = std::env::var("DBPASS").expect("password");
-        let session = oracle.connect(&dbname, &dbuser, &dbpass)?;
+        let session = sibyl::test_env::get_session()?;
 
         let stmt = session.prepare("
             SELECT location_id, state_province, city, postal_code, street_address
