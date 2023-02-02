@@ -42,16 +42,24 @@ impl ToSql for &[RowID] {
         }
         Ok(pos)
     }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
 }
 
 impl ToSql for &[&RowID] {
     fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let len = size_of::<*mut OCIRowid>();
-        for item in self.iter() {
+        for &item in self.iter() {
             params.bind_in(pos, SQLT_RDD, item.0.as_ptr() as _, len, stmt, err)?;
             pos += 1;
         }
         Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
     }
 }
 
@@ -66,6 +74,10 @@ impl ToSql for &mut [&mut RowID] {
             pos += 1;
         }
         Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
     }
 }
 

@@ -126,18 +126,64 @@ mod tests {
         let date_from = Date::from_string("October   1, 2006", "MONTH DD, YYYY", &session)?;
         let date_thru = Date::from_string("December 31, 2006", "MONTH DD, YYYY", &session)?;
 
-        let rows = stmt.query(
+        let row = stmt.query_single(
             (
                 (":DEPARTMENTS", ["Marketing", "Purchasing", "Human Resources", "Shipping", "IT"].as_slice()),
                 (":MIN_EMPLOYEES", 5),
                 (":HIRE_RANGE", [date_from, date_thru].as_slice()),
             )
-        )?;
-        let row = rows.next()?.unwrap();
+        )?.unwrap();
         let first_name: &str = row.get(0)?;
         let last_name:  &str = row.get(1)?;
         let dept_name:  &str = row.get(2)?;
         let hire_date: Date  = row.get(3)?;
+
+        assert_eq!(first_name, "Guy");
+        assert_eq!(last_name,  "Himuro");
+        assert_eq!(dept_name,  "Purchasing");
+
+        let expected_hire_date = Date::from_string("November 15, 2006", "MONTH DD, YYYY", &session)?;
+        assert_eq!(hire_date.compare(&expected_hire_date)?, Equal);
+
+        Ok(())
+    }
+
+    #[test]
+    fn mix_with_out() -> Result<()> {
+        let session = sibyl::test_env::get_session()?;
+ 
+        let stmt = session.prepare("
+        BEGIN
+            SELECT first_name, last_name, department_name, hire_date
+              INTO :NAMES, :LAST_NAME, :DEPT_NAME, :HIRE_DATE
+              FROM hr.employees e
+              JOIN hr.departments d
+                ON d.department_id = e.department_id
+             WHERE d.department_name IN (:DEPARTMENTS, :D2, :D3, :D4, :D5)
+               AND d.department_id IN (
+                        SELECT department_id
+                          FROM hr.employees
+                      GROUP BY department_id
+                        HAVING Count(*) >= :MIN_EMPLOYEES )
+               AND hire_date BETWEEN :HIRE_RANGE AND :HIRE_RANGE_END
+          ORDER BY hire_date;
+        END;
+        ")?;
+        let date_from = Date::from_string("October   1, 2006", "MONTH DD, YYYY", &session)?;
+        let date_thru = Date::from_string("December 31, 2006", "MONTH DD, YYYY", &session)?;
+        let mut hire_date = Date::new(&session);
+        let mut first_name = String::with_capacity(20);
+        let mut last_name = String::with_capacity(25);
+        let mut dept_name = String::with_capacity(30);
+
+        let cnt = stmt.execute((
+            (":DEPARTMENTS", ["Marketing", "Purchasing", "Human Resources", "Shipping", "IT"].as_slice()),
+            (":MIN_EMPLOYEES", 5),
+            (":HIRE_RANGE", [date_from, date_thru].as_slice()),
+            ("NAMES", [&mut first_name, &mut last_name, &mut dept_name].as_mut_slice()),
+            ("HIRE_DATE", &mut hire_date),
+        ))?;
+        assert_eq!(cnt, 1);
 
         assert_eq!(first_name, "Guy");
         assert_eq!(last_name,  "Himuro");

@@ -34,8 +34,9 @@
 //! # fn main() {}
 //! ``` 
 
-use crate::ToSql;
-use crate::oci::SqlType;
+use crate::{Result, ToSql};
+use crate::oci::{SqlType, OCIStmt, OCIError};
+use crate::stmt::Params;
 
 /// A Nullable Value.
 ///
@@ -132,21 +133,21 @@ impl<T> Nvl<T> where T: ToSql + SqlType {
 }
 
 impl<T> ToSql for Nvl<T> where T: ToSql + SqlType {
-    fn bind_to(&mut self, pos: usize, params: &mut crate::stmt::Params, stmt: &crate::oci::OCIStmt, err: &crate::oci::OCIError) -> crate::Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind_null(pos, T::sql_null_type(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
 impl<T> ToSql for &Nvl<T> where T: ToSql + SqlType {
-    fn bind_to(&mut self, pos: usize, params: &mut crate::stmt::Params, stmt: &crate::oci::OCIStmt, err: &crate::oci::OCIError) -> crate::Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         params.bind_null(pos, T::sql_null_type(), stmt, err)?;
         Ok(pos + 1)
     }
 }
 
 impl<T> ToSql for &mut Nvl<T> where T: ToSql + SqlType {
-    fn bind_to(&mut self, pos: usize, params: &mut crate::stmt::Params, stmt: &crate::oci::OCIStmt, err: &crate::oci::OCIError) -> crate::Result<usize> {
+    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         if let Some(val) = self.as_mut() {
             let next_pos = val.bind_to(pos, params, stmt, err)?;
             params.mark_as_null(pos);
@@ -157,11 +158,14 @@ impl<T> ToSql for &mut Nvl<T> where T: ToSql + SqlType {
         }
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &crate::stmt::Params) {
-        if params.is_null(pos).unwrap_or(true) {
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
+        if params.is_null(pos)? {
             self.0.take();
+            Ok(pos + 1)
         } else if let Some(val) = self.as_mut() {
-            val.update_from_bind(pos, params);
+            val.update_from_bind(pos, params)
+        } else {
+            Ok(pos + 1)
         }
     }
 }

@@ -47,10 +47,11 @@ macro_rules! impl_slice_option {
                     }
                     Ok(pos + 1)
                 }
-                fn update_from_bind(&mut self, pos: usize, params: &Params) {
+                fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
                     if params.is_null(pos).unwrap_or(true) {
                         self.take();
                     }
+                    Ok(pos + 1)
                 }
             }
         )+
@@ -66,5 +67,23 @@ impl ToSql for &[&str] {
             pos += 1;
         }
         Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
+}
+
+impl ToSql for &[&&str] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for &&txt in self.iter() {
+            params.bind_in(pos, SQLT_CHR, txt.as_ptr() as _, txt.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
     }
 }

@@ -37,7 +37,9 @@ pub trait ToSql : Send + Sync {
     A callback that is called to update OUT (or INOUT) argumetns. For example, to set the length
     of the received data.
     */
-    fn update_from_bind(&mut self, _pos: usize, _params: &Params) {}
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + 1)
+    }
 }
 
 impl ToSql for () {
@@ -78,11 +80,14 @@ impl<T> ToSql for Option<T> where T: OracleDataType {
         }
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
-        if params.is_null(pos).unwrap_or(true) {
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
+        if params.is_null(pos)? {
             self.take();
+            Ok(pos + 1)
         } else if let Some(val) = self {
-            val.update_from_bind(pos, params);
+            val.update_from_bind(pos, params)
+        } else {
+            Ok(pos + 1)
         }
     }
 }
@@ -109,65 +114,64 @@ impl<T> ToSql for &mut Option<T> where T: OracleDataType {
         }
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
-        if params.is_null(pos).unwrap_or(true) {
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
+        if params.is_null(pos)? {
             self.take();
+            Ok(pos + 1)
         } else if let Some(val) = self {
-            val.update_from_bind(pos, params);
+            val.update_from_bind(pos, params)
+        } else {
+            Ok(pos + 1)
         }
     }
 }
 
 impl<T> ToSql for (&str, T) where T: ToSql {
-    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    fn bind_to(&mut self, _pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let idx = params.index_of(self.0)?;
-        self.1.bind_to(idx, params, stmt, err)?;
-        Ok(pos)
+        self.1.bind_to(idx, params, stmt, err)
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
-        let idx = params.index_of(self.0).unwrap_or(pos);
-        self.1.update_from_bind(idx, params);
+    fn update_from_bind(&mut self, _pos: usize, params: &Params) -> Result<usize> {
+        let idx = params.index_of(self.0)?;
+        self.1.update_from_bind(idx, params)
     }
 }
 
 impl<T1,T2> ToSql for ((&str, T1), (&str, T2)) where T1: ToSql, T2: ToSql {
-    fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+    fn bind_to(&mut self, _pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let idx = params.index_of(self.0.0)?;
         self.0.1.bind_to(idx, params, stmt, err)?;
         let idx = params.index_of(self.1.0)?;
-        self.1.1.bind_to(idx, params, stmt, err)?;
-        Ok(pos)
+        self.1.1.bind_to(idx, params, stmt, err)
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
-        let idx = params.index_of(self.0.0).unwrap_or(pos);
-        self.0.1.update_from_bind(idx, params);
-        let idx = params.index_of(self.1.0).unwrap_or(pos);
-        self.1.1.update_from_bind(idx, params);
+    fn update_from_bind(&mut self, _pos: usize, params: &Params) -> Result<usize> {
+        let idx = params.index_of(self.0.0)?;
+        self.0.1.update_from_bind(idx, params)?;
+        let idx = params.index_of(self.1.0)?;
+        self.1.1.update_from_bind(idx, params)
     }
 }
 
 macro_rules! impl_tuple_args {
-    ($head:ident $($tail:ident)+) => {
-        impl<$head $(, $tail)*> ToSql for ($head $(, $tail)*) where $head: ToSql $(, $tail: ToSql)* {
+    ($($item:ident)+) => {
+        impl<$($item),+> ToSql for ($($item),+) where $($item: ToSql),+ {
             #[allow(non_snake_case)]
-            fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-                let (ref mut $head $(, ref mut $tail)*) = *self;
-                let pos = $head.bind_to(pos, params, stmt, err)?;
+            fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                let ($(ref mut $item),+) = *self;
                 $(
-                    let pos = $tail.bind_to(pos, params, stmt, err)?;
-                )*
+                    pos = $item.bind_to(pos, params, stmt, err)?;
+                )+
                 Ok(pos)
             }
             #[allow(non_snake_case)]
-            fn update_from_bind(&mut self, mut pos: usize, params: &Params) {
-                let (ref mut $head $(, ref mut $tail)*) = *self;
-                $head.update_from_bind(pos, params);
+            fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
+                let ($(ref mut $item),+) = *self;
                 $(
-                    pos += 1;
-                    $tail.update_from_bind(pos, params);
-                )*
+                    pos = $item.update_from_bind(pos, params)?;
+                )+
+                Ok(pos)
             }
         }
     };

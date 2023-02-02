@@ -193,8 +193,8 @@ impl Params {
         self.data_lens.fill(0);
     }
 
-    pub(crate) fn update_out_args(&self, args: &mut impl ToSql) {
-        args.update_from_bind(0, self);
+    pub(crate) fn update_out_args(&self, args: &mut impl ToSql) -> Result<usize> {
+        args.update_from_bind(0, self)
     }
 
     /// Checks whether the value returned for the output parameter is NULL.

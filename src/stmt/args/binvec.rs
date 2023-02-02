@@ -7,11 +7,12 @@ impl ToSql for Vec<u8> {
         Ok(pos + 1)
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
         let new_len = params.get_data_len(pos);
         unsafe {
             self.set_len(new_len)
         }
+        Ok(pos + 1)
     }
 }
 
@@ -28,11 +29,74 @@ impl ToSql for &mut Vec<u8> {
         Ok(pos + 1)
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
         let new_len = params.get_data_len(pos);
         unsafe {
             self.set_len(new_len)
         }
+        Ok(pos + 1)
+    }
+}
+
+impl ToSql for &[Vec<u8>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter() {
+            params.bind_in(pos, SQLT_LBI, item.as_ptr() as _, item.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
+}
+
+impl ToSql for &[&Vec<u8>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for &item in self.iter() {
+            params.bind_in(pos, SQLT_LBI, item.as_ptr() as _, item.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
+}
+
+impl ToSql for &mut [Vec<u8>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            params.bind(pos, SQLT_LBI, item.as_mut_ptr() as _, item.len(), item.capacity(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.update_from_bind(pos, params)?;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &mut [&mut Vec<u8>] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            params.bind(pos, SQLT_LBI, item.as_mut_ptr() as _, item.len(), item.capacity(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.update_from_bind(pos, params)?;
+        }
+        Ok(pos)
     }
 }
 
@@ -70,13 +134,14 @@ impl ToSql for Option<&mut Vec<u8>> {
         Ok(pos + 1)
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
         if let Some(val) = self {
             let new_len = params.get_data_len(pos);
             unsafe {
                 val.set_len(new_len);
             }
         }
+        Ok(pos + 1)
     }
 }
 
@@ -123,8 +188,8 @@ impl ToSql for &mut Option<Vec<u8>> {
         Ok(pos + 1)
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
-        if params.is_null(pos).unwrap_or(true) {
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
+        if params.is_null(pos)? {
             self.take();
         } else if let Some(val) = self {
             let new_len = params.get_data_len(pos);
@@ -134,6 +199,7 @@ impl ToSql for &mut Option<Vec<u8>> {
         } else if let Some(val) = params.get_data_as_bytes(pos) {
             self.replace(val.to_vec());
         }
+        Ok(pos + 1)
     }
 }
 
@@ -159,7 +225,7 @@ impl ToSql for &mut Option<&mut Vec<u8>> {
         Ok(pos + 1)
     }
 
-    fn update_from_bind(&mut self, pos: usize, params: &Params) {
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
         if params.is_null(pos).unwrap_or(true) {
             self.take();
         } else if let Some(val) = self {
@@ -168,5 +234,6 @@ impl ToSql for &mut Option<&mut Vec<u8>> {
                 val.set_len(new_len);
             }
         }
+        Ok(pos + 1)
     }
 }

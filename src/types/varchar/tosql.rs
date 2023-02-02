@@ -70,11 +70,15 @@ impl ToSql for &[Varchar<'_>] {
         }
         Ok(pos)
     }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
 }
 
 impl ToSql for &[&Varchar<'_>] {
     fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
-        for item in self.iter() {
+        for &item in self.iter() {
             let len = item.len();
             let cap = item.capacity()? + size_of::<u32>();
             params.bind(pos, SQLT_LVC, item.txt.get() as _, len + size_of::<u32>(), cap, stmt, err)?;
@@ -84,6 +88,10 @@ impl ToSql for &[&Varchar<'_>] {
             pos += 1;
         }
         Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
     }
 }
 
@@ -99,6 +107,10 @@ impl ToSql for &mut [&mut Varchar<'_>] {
             pos += 1;
         }
         Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
     }
 }
 

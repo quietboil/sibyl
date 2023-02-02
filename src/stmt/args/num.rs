@@ -94,7 +94,7 @@ macro_rules! impl_num_to_sql {
                     }
                     Ok(pos + 1)
                 }
-                fn update_from_bind(&mut self, pos: usize, params: &Params) {
+                fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
                     if params.is_null(pos).unwrap_or(true) {
                         self.take();
                     } else if self.is_some() {
@@ -102,6 +102,7 @@ macro_rules! impl_num_to_sql {
                     } else if let Some(val) = params.get_data_as_ref(pos) {
                         self.replace(*val);
                     }
+                    Ok(pos + 1)
                 }
             }
             impl ToSql for &mut Option<&$t> {
@@ -113,10 +114,11 @@ macro_rules! impl_num_to_sql {
                     }
                     Ok(pos + 1)
                 }
-                fn update_from_bind(&mut self, pos: usize, params: &Params) {
+                fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
                     if params.is_null(pos).unwrap_or(true) {
                         self.take();
                     }
+                    Ok(pos + 1)
                 }
             }
             impl ToSql for &mut Option<&mut $t> {
@@ -129,10 +131,11 @@ macro_rules! impl_num_to_sql {
                     }
                     Ok(pos + 1)
                 }
-                fn update_from_bind(&mut self, pos: usize, params: &Params) {
+                fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
                     if params.is_null(pos).unwrap_or(true) {
                         self.take();
                     }
+                    Ok(pos + 1)
                 }
             }
         )+
@@ -155,6 +158,21 @@ macro_rules! impl_num_slice_to_sql {
                     }
                     Ok(pos)
                 }
+                fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+                    Ok(pos + self.len())
+                }
+            }
+            impl ToSql for &[&$t] {
+                fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+                    for &num in self.iter() {
+                        params.bind_in(pos, $sqlt, num as *const $t as _, size_of::<$t>(), stmt, err)?;
+                        pos += 1;
+                    }
+                    Ok(pos)
+                }
+                fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+                    Ok(pos + self.len())
+                }
             }
             impl ToSql for &mut [&mut $t] {
                 fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
@@ -163,6 +181,9 @@ macro_rules! impl_num_slice_to_sql {
                         pos += 1;
                     }
                     Ok(pos)
+                }
+                fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+                    Ok(pos + self.len())
                 }
             }
         )+

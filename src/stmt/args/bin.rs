@@ -29,6 +29,62 @@ impl ToSql for & mut & mut [u8] {
     }
 }
 
+impl ToSql for &[&[u8]] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for &item in self.iter() {
+            params.bind_in(pos, SQLT_LBI, item.as_ptr() as _, item.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
+}
+
+impl ToSql for &[&&[u8]] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for &&item in self.iter() {
+            params.bind_in(pos, SQLT_LBI, item.as_ptr() as _, item.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
+}
+
+impl ToSql for &mut [&mut [u8]] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            params.bind(pos, SQLT_LBI, item.as_mut_ptr() as _, item.len(), item.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
+}
+
+impl ToSql for &mut [&mut &mut [u8]] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            params.bind(pos, SQLT_LBI, item.as_mut_ptr() as _, item.len(), item.len(), stmt, err)?;
+            pos += 1;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+        Ok(pos + self.len())
+    }
+}
+
 macro_rules! impl_slice_option {
     ($($t:ty),+ => $sqlt:ident) => {
         $(
@@ -100,10 +156,11 @@ macro_rules! impl_mut_bin_slice_option {
                     }
                     Ok(pos + 1)
                 }
-                fn update_from_bind(&mut self, pos: usize, params: &Params) {
-                    if params.is_null(pos).unwrap_or(true) {
+                fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
+                    if params.is_null(pos)? {
                         self.take();
                     }
+                    Ok(pos + 1)
                 }
             }
         )+

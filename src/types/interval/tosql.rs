@@ -36,15 +36,21 @@ macro_rules! impl_int_to_sql {
                     }
                     Ok(pos)
                 }
+                fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+                    Ok(pos + self.len())
+                }
             }
             impl ToSql for &[&Interval<'_, $ts>] {
                 fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
                     let len = size_of::<*mut <$ts as DescriptorType>::OCIType>();
-                    for item in self.iter() {
+                    for &item in self.iter() {
                         params.bind(pos, <$ts>::sql_type(), item.interval.as_ptr() as _, len, len, stmt, err)?;
                         pos += 1;
                     }
                     Ok(pos)
+                }
+                fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+                    Ok(pos + self.len())
                 }
             }
             impl ToSql for &mut [&mut Interval<'_, $ts>] {
@@ -55,6 +61,9 @@ macro_rules! impl_int_to_sql {
                         pos += 1;
                     }
                     Ok(pos)
+                }
+                fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
+                    Ok(pos + self.len())
                 }
             }
             impl SqlType for Interval<'_, $ts> {
