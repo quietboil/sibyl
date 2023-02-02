@@ -217,45 +217,51 @@ pub fn env() -> Result<Environment> {
     Environment::new()
 }
 
-#[cfg(feature="blocking")]
 #[doc(hidden)]
 pub mod test_env {
-    use once_cell::sync::OnceCell;
-    use crate::{Environment, SessionPool, Session, Result};
+    #[cfg(feature="blocking")]
+    mod blocking {
+        use once_cell::sync::OnceCell;
+        use crate::{Environment, SessionPool, Session, Result};
 
-    static ORACLE : OnceCell<Environment> = OnceCell::new();
-    static POOL : OnceCell<SessionPool> = OnceCell::new();
+        static ORACLE : OnceCell<Environment> = OnceCell::new();
+        static POOL : OnceCell<SessionPool> = OnceCell::new();
 
-    pub fn get_session() -> Result<Session<'static>> {
-        let pool = POOL.get_or_try_init(|| {
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");    
-            let oracle = ORACLE.get_or_try_init(|| Environment::new())?;
-            oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)
-        })?;
-        pool.get_session()
+        pub fn get_session() -> Result<Session<'static>> {
+            let pool = POOL.get_or_try_init(|| {
+                let dbname = std::env::var("DBNAME").expect("database name");
+                let dbuser = std::env::var("DBUSER").expect("user name");
+                let dbpass = std::env::var("DBPASS").expect("password");    
+                let oracle = ORACLE.get_or_try_init(|| Environment::new())?;
+                oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)
+            })?;
+            pool.get_session()
+        }
     }
-}
+    #[cfg(feature="blocking")]
+    pub use self::blocking::get_session;
 
-#[cfg(feature="nonblocking")]
-#[doc(hidden)]
-pub mod test_env {
-    use once_cell::sync::OnceCell;
-    use async_once_cell::OnceCell as AsyncOnceCell;
-    use crate::{Environment, SessionPool, Session, Result};
+ 
+    #[cfg(feature="nonblocking")]
+    mod nonblocking {
+        use once_cell::sync::OnceCell;
+        use async_once_cell::OnceCell as AsyncOnceCell;
+        use crate::{Environment, SessionPool, Session, Result};
 
-    static ORACLE : OnceCell<Environment> = OnceCell::new();
-    static POOL : AsyncOnceCell<SessionPool> = AsyncOnceCell::new();
+        static ORACLE : OnceCell<Environment> = OnceCell::new();
+        static POOL : AsyncOnceCell<SessionPool> = AsyncOnceCell::new();
 
-    pub async fn get_session() -> Result<Session<'static>> {
-        let pool = POOL.get_or_try_init(async {
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");    
-            let oracle = ORACLE.get_or_try_init(|| Environment::new())?;
-            oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await
-        }).await?;
-        pool.get_session().await
+        pub async fn get_session() -> Result<Session<'static>> {
+            let pool = POOL.get_or_try_init(async {
+                let dbname = std::env::var("DBNAME").expect("database name");
+                let dbuser = std::env::var("DBUSER").expect("user name");
+                let dbpass = std::env::var("DBPASS").expect("password");    
+                let oracle = ORACLE.get_or_try_init(|| Environment::new())?;
+                oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await
+            }).await?;
+            pool.get_session().await
+        }
     }
+    #[cfg(feature="nonblocking")]
+    pub use self::nonblocking::get_session;    
 }
