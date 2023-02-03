@@ -3,6 +3,7 @@
 [Introduction](intro.md)
 
 - [Getting Started](using.md)
+  - [Optional Features](opt_features.md)
 - [Example Project](example_project.md)
 
 # User Guide

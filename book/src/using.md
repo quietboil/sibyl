@@ -25,7 +25,7 @@ sibyl = { version = "0.6", features = ["nonblocking", "tokio"] }
 The cargo build needs to know where the OCI client library is. You can provide that information via environment variable `OCI_LIB_DIR` on Windows or `LIBRARY_PATH` on Linux. On Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build Sibyl's examples as:
 
 ```shell
-export LIBRARY_PATH=/usr/lib/oracle/19.13/client64/lib
+export LIBRARY_PATH=/usr/lib/oracle/19.18/client64/lib
 cargo build --examples --features=blocking
 ```
 
