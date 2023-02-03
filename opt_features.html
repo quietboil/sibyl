@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Slices as Arguments - Sibyl User Manual</title>
+        <title>Optional Features - Sibyl User Manual</title>
 
 
         <!-- Custom HTML head -->
@@ -80,7 +80,7 @@
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
-                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="opt_features.html"><strong aria-hidden="true">1.1.</strong> Optional Features</a></li></ol></li><li class="chapter-item expanded "><a href="example_project.html"><strong aria-hidden="true">2.</strong> Example Project</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">3.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">4.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html"><strong aria-hidden="true">4.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">4.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">4.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html"><strong aria-hidden="true">5.</strong> SQL Statement Execution</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="args.html"><strong aria-hidden="true">5.1.</strong> Statement Arguments</a></li><li class="chapter-item expanded "><a href="slices.html" class="active"><strong aria-hidden="true">5.2.</strong> Slices as Arguments</a></li><li class="chapter-item expanded "><a href="nulls.html"><strong aria-hidden="true">5.3.</strong> NULLs</a></li></ol></li><li class="chapter-item expanded "><a href="encoding.html"><strong aria-hidden="true">6.</strong> Character Sets</a></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">7.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">7.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">7.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">7.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">7.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">7.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">7.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">7.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">7.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">7.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">8.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">9.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">10.</strong> Testing</a></li></ol>
+                <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="opt_features.html" class="active"><strong aria-hidden="true">1.1.</strong> Optional Features</a></li></ol></li><li class="chapter-item expanded "><a href="example_project.html"><strong aria-hidden="true">2.</strong> Example Project</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">3.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">4.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html"><strong aria-hidden="true">4.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">4.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">4.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html"><strong aria-hidden="true">5.</strong> SQL Statement Execution</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="args.html"><strong aria-hidden="true">5.1.</strong> Statement Arguments</a></li><li class="chapter-item expanded "><a href="slices.html"><strong aria-hidden="true">5.2.</strong> Slices as Arguments</a></li><li class="chapter-item expanded "><a href="nulls.html"><strong aria-hidden="true">5.3.</strong> NULLs</a></li></ol></li><li class="chapter-item expanded "><a href="encoding.html"><strong aria-hidden="true">6.</strong> Character Sets</a></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">7.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">7.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">7.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">7.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">7.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">7.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">7.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">7.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">7.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">7.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">8.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">9.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">10.</strong> Testing</a></li></ol>
             </div>
             <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
         </nav>
@@ -144,43 +144,54 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="using-slices-as-statement-arguments"><a class="header" href="#using-slices-as-statement-arguments">Using Slices as Statement Arguments</a></h1>
-<p>Sibyl accepts a collection of values (as a slice) as a single positional or a named argument. The primary target of this feature is to make passing arguments for IN-list parameters easier. However, as Sibyl simply unrolls a slice into consecutive arguments, this feature can also be &quot;abused&quot; :-) to pass multiple consecutive arguments of the same type when it is convenient.</p>
+                        <h1 id="optional-features"><a class="header" href="#optional-features">Optional Features</a></h1>
+<p>Sibyl provides one optional opt-in feature - <code>unsafe-direct-binds</code>.</p>
+<p>By default Sibyl creates shadow buffers for arguments that are bound to <code>IN</code> parameter placeholders. With <code>unsafe-direct-binds</code> Sibyl instead binds arguments directly. This, of course, is somewhat more performant and conserves memory. However, <code>unsafe-direct-binds</code> makes it possible to violate Rust's immutability of references when a reference is mistakenly bound to the <code>OUT</code> or <code>INOUT</code> placeholder.</p>
 <h2 id="example"><a class="header" href="#example">Example</a></h2>
 <pre><code class="language-rust noplayground">    let stmt = session.prepare(&quot;
-        SELECT first_name, last_name, department_name, hire_date
-          FROM hr.employees e
-          JOIN hr.departments d
-            ON d.department_id = e.department_id
-         WHERE d.department_name IN (:departments, :2, :3, :4, :5)
-           AND d.department_id IN (
-                    SELECT department_id
-                      FROM hr.employees
-                  GROUP BY department_id
-                    HAVING Count(*) &gt;= :min_employees )
-           AND hire_date BETWEEN :hire_range AND :8
-      ORDER BY hire_date, department_name, last_name, first_name
+        SELECT country_name
+          FROM hr.countries
+         WHERE country_id = :COUNTRY_ID
     &quot;)?;
-    let date_from = Date::from_string(&quot;July      1, 2006&quot;, &quot;MONTH DD, YYYY&quot;, &amp;session)?;
-    let date_thru = Date::from_string(&quot;December 31, 2006&quot;, &quot;MONTH DD, YYYY&quot;, &amp;session)?;
+    let row = stmt.query_single(&quot;UK&quot;)?.unwrap();
+    let name : String = row.get(0)?;
+    // note that the `name` is not declared mutable
 
-    let rows = stmt.query(
-        (
-            (&quot;:DEPARTMENTS&quot;,   [&quot;Marketing&quot;, &quot;Purchasing&quot;, &quot;Human Resources&quot;, &quot;Shipping&quot;, &quot;IT&quot;].as_slice()),
-            (&quot;:MIN_EMPLOYEES&quot;, 5),
-            (&quot;:HIRE_RANGE&quot;,    [date_from, date_thru].as_slice()),
-        )
-    )?;</code></pre>
+    let stmt = session.prepare(&quot;
+    BEGIN
+        SELECT country_name
+          INTO :COUNTRY_NAME
+          FROM hr.countries
+         WHERE country_id = :COUNTRY_ID
+           AND country_name != :COUNTRY_NAME;
+    END;
+    &quot;)?;
+    stmt.execute((
+        (&quot;COUNTRY_ID&quot;, &quot;NL&quot;),
+        (&quot;COUNTRY_NAME&quot;, &amp;name),
+        // `:COUNTRY_NAME` is INOUT but `name` is bound only for reading
+    ))?;
+    println!(&quot;country_name={name}&quot;);</code></pre>
+<h3 id="default-safe-binding"><a class="header" href="#default-safe-binding">Default (Safe) Binding</a></h3>
+<pre><code class="language-rust noplayground">    #[cfg(not(feature=&quot;unsafe-direct-binds&quot;))]
+    // `name` has not changed despite the binding mistake
+    assert_eq!(name, &quot;United Kingdom&quot;);</code></pre>
+<p>The OCI actually did change the value as values bound to OUT placeholders are always changed. However, that has happened in the shadow buffer that Sibyl created to bind the value, thus actual value in Rust was not affected.</p>
+<h2 id="unsafe-direct-binding"><a class="header" href="#unsafe-direct-binding">Unsafe Direct Binding</a></h2>
+<p>The binding mistake allows unacceptable mutation of the bound value:</p>
+<pre><code class="language-rust noplayground">    #[cfg(feature=&quot;unsafe-direct-binds&quot;)]
+    assert_eq!(name, &quot;Netherlandsdom&quot;);</code></pre>
+<p>Note also that because the string was bound via a (read-only) reference Sibyl used read-only binding for it and thus the code that sets the <code>String</code> length to match the loaded value was not executed. As the result the new name still has the last 3 characters from the original name.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="args.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="using.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next" href="nulls.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next" href="example_project.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -190,11 +201,11 @@
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="args.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="using.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next" href="nulls.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next" href="example_project.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
