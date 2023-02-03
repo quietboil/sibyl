@@ -219,7 +219,7 @@ pub fn env() -> Result<Environment> {
 
 #[doc(hidden)]
 pub mod test_env {
-    #[cfg(feature="blocking")]
+    #[cfg(all(feature="blocking",not(docsrs)))]
     mod blocking {
         use once_cell::sync::OnceCell;
         use crate::{Environment, SessionPool, Session, Result};
@@ -238,11 +238,11 @@ pub mod test_env {
             pool.get_session()
         }
     }
-    #[cfg(feature="blocking")]
+    #[cfg(all(feature="blocking",not(docsrs)))]
     pub use self::blocking::get_session;
 
  
-    #[cfg(feature="nonblocking")]
+    #[cfg(all(feature="nonblocking",not(docsrs)))]
     mod nonblocking {
         use once_cell::sync::OnceCell;
         use async_once_cell::OnceCell as AsyncOnceCell;
@@ -262,6 +262,6 @@ pub mod test_env {
             pool.get_session().await
         }
     }
-    #[cfg(feature="nonblocking")]
+    #[cfg(all(feature="nonblocking",not(docsrs)))]
     pub use self::nonblocking::get_session;    
 }
