@@ -373,7 +373,7 @@ mod blocking {
         let data = [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21];
         let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         let mut id = 0;
-        let mut data_out = Vec::with_capacity(30);
+        let mut data_out = Vec::<u8>::with_capacity(30);
         let count = stmt.execute((data.as_ref(), text, &mut id, &mut data_out))?;
         assert_eq!(count, 1);
         assert!(id > 0);

@@ -126,6 +126,38 @@ impl<T> ToSql for &mut Option<T> where T: OracleDataType {
     }
 }
 
+impl ToSql for Vec<&mut dyn ToSql> {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.bind_to(pos, params, stmt, err)?;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.update_from_bind(pos, params)?;
+        }
+        Ok(pos)
+    }
+}
+
+impl ToSql for &mut Vec<&mut dyn ToSql> {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.bind_to(pos, params, stmt, err)?;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.update_from_bind(pos, params)?;
+        }
+        Ok(pos)
+    }
+}
+
 impl<T> ToSql for (&str, T) where T: ToSql {
     fn bind_to(&mut self, _pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         let idx = params.index_of(self.0)?;

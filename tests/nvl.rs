@@ -124,7 +124,7 @@ mod tests {
         // Nvl is not really necessary for Vec as an empty
         // Vec is seen as NULL by Oracle
 
-        let mut val = Vec::with_capacity(16);
+        let mut val = Vec::<u8>::with_capacity(16);
         let cnt = stmt.execute((true, &mut val, ()))?;
         assert!(cnt > 0);
         assert_eq!(val.as_slice(), &[0x48u8, 0x65, 0x6C, 0x6C, 0x6F, 0x2C, 0x20, 0x57, 0x6F, 0x72, 0x6C, 0x64, 0x21]);
@@ -408,6 +408,4 @@ mod tests {
 
         Ok(())
     }
-
-
 }
