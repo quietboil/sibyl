@@ -55,3 +55,7 @@ fn main() -> sibyl::Result<()> {
 
     Ok(())
 }
+
+
+#[cfg(feature="nonblocking")]
+fn main() {}
