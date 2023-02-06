@@ -20,32 +20,25 @@ fn main() -> sibyl::Result<()> {
                       FROM hr.employees
                   GROUP BY department_id
                     HAVING Count(*) >= :min_employees )
-           AND hire_date BETWEEN :from_date AND :thru_date
+           AND hire_date BETWEEN To_Date(:from_date,'MONTH DD, YYYY')
+                             AND To_Date(:thru_date,'MONTH DD, YYYY')
       ORDER BY hire_date
     ");
-    // Assume that the arguments where preparsed into the appropriate types
-    let mut dept1 = "Marketing";
-    let mut dept2 = "Purchasing";
-    let mut dept3 = "Human Resources";
-    let mut dept4 = "Shipping";
-    let mut dept5 = "IT";
-    let mut num_emp = 5;
-    let mut date_from = Date::from_string("October   1, 2006", "MONTH DD, YYYY", &session)?;
-    let mut date_thru = Date::from_string("December 31, 2006", "MONTH DD, YYYY", &session)?;
+    // Assume that values for them arrived from elsewhere, and were collected
+    // while the above SQL was being constructed
+    let mut args = Vec::new();
+    args.push("Marketing".to_string());
+    args.push("Purchasing".to_string());
+    args.push("Human Resources".to_string());
+    args.push("Shipping".to_string());
+    args.push("IT".to_string());
+    args.push("5".to_string());
+    args.push("October 1, 2006".to_string());
+    args.push("December 31, 2006".to_string());
 
     let stmt = session.prepare(&sql)?;
 
-    let mut args = Vec::<&mut dyn ToSql>::new();
-    args.push(&mut dept1); // :department_name
-    args.push(&mut dept2); // :dn2
-    args.push(&mut dept3); // :dn3
-    args.push(&mut dept4); // :dn4
-    args.push(&mut dept5); // :dn5
-    args.push(&mut num_emp as &mut dyn ToSql); // :min_employees
-    args.push(&mut date_from); // :from_date
-    args.push(&mut date_thru); // :thru_date
-
-    let row = stmt.query_single(args)?.expect("single row result");
+    let row = stmt.query_single(args.as_slice())?.expect("single row result");
     let first_name: &str = row.get(0)?;
     let last_name : &str = row.get(1)?;
     let dept_name : &str = row.get(2)?;

@@ -17,6 +17,7 @@
   - [Statement Arguments](args.md)
   - [Slices as Arguments](slices.md)
   - [NULLs](nulls.md)
+  - [Dynamic SQL](dyn_sql.md)
 - [Character Sets](encoding.md)
 
 - [Oracle Data Types](odt.md)
