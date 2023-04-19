@@ -32,6 +32,7 @@ tokio = ["tokio-rt"]
 actix = ["actix-rt"]
 async-std = ["async-rt"]
 async-global = ["async-global-executor"]
+static = []
 
 [package.metadata.docs.rs]
 features = ["blocking", "nonblocking", "tokio"]

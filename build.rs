@@ -20,7 +20,10 @@ fn main() {
         }
         println!("cargo:rustc-link-lib={}=oci", if is_msvc { "static" } else { "dylib" });
     } else {
+        #[cfg(not(feature = "static"))]
         println!("cargo:rustc-link-lib=dylib=clntsh");
+        #[cfg(feature = "static")]
+        println!("cargo:rustc-link-lib=static=clntsh");
     }
 }
 
