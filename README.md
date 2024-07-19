@@ -6,6 +6,10 @@ Sibyl is an [OCI][1]-based interface between Rust applications and Oracle databa
 [![Documentation](https://docs.rs/sibyl/badge.svg)](https://docs.rs/sibyl)
 ![MIT](https://img.shields.io/crates/l/sibyl.svg)
 
+## The Maximum Rust Version
+
+⚠ **Note** that Sibyl 0.6 cannot be compiled with Rustc 1.73.0 or later (where `unsafe` rules became somewhat tightened). Until Sibyl 0.7 with required updates is released, the maximum Rust version that can be used to compile projects where Sibyl is used would be 1.72.1.
+
 ## Example
 
 ### Blocking Mode
