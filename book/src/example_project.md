@@ -33,6 +33,11 @@ And then run it:
 ```shell
 DBNAME=localhost/orcl DBUSER=sibyl DBPASS=Or4cl3 REGION=Americas cargo run
 ```
+> ⚠ **Note** that depending on the Oracle client installed you might also need to adjust `PATH` on Windows or specify `LD_LIBRARY_PATH` on Linux:
+
+```shell
+LD_LIBRARY_PATH=/opt/instantclient_19_24 DBNAME=localhost/orcl DBUSER=sibyl DBPASS=Or4cl3 REGION=Americas cargo run
+```
 
 ## Expected Output
 

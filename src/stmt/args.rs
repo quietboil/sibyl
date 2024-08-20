@@ -10,6 +10,7 @@ mod bool;
 use super::bind::Params;
 use crate::types::OracleDataType;
 use crate::{oci::*, Result};
+use std::cell::UnsafeCell;
 use std::mem::size_of;
 
 /// A trait for types that can be used as SQL arguments
@@ -96,8 +97,9 @@ impl<T> ToSql for &Option<T> where T: OracleDataType {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
         if let Some(val) = self {
             // Coerse val into ref mut to satisfy `bind_to`
-            let val = val as *const T as *mut T;
-            let val = unsafe { &mut *val };
+            let val = val as *const T as *mut T as *const UnsafeCell<T>;
+            let val: &UnsafeCell<T> = unsafe { &*val };
+            let val = unsafe { &mut *val.get() };
             val.bind_to(pos, params, stmt, err)
         } else {
             Ok(pos + 1)

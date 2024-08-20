@@ -51,7 +51,7 @@ impl Position for &str {
 
 /// Represents a prepared for execution SQL or PL/SQL statement
 pub struct Statement<'a> {
-    session:     &'a Session<'a>,
+    session:  &'a Session<'a>,
     stmt:     Ptr<OCIStmt>,
     params:   Option<RwLock<Params>>,
     cols:     OnceCell<RwLock<Columns>>,

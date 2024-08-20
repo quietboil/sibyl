@@ -22,10 +22,11 @@ sibyl = { version = "0.6", features = ["nonblocking", "tokio"] }
 
 # Building
 
-The cargo build needs to know where the OCI client library is. You can provide that information via environment variable `OCI_LIB_DIR` on Windows or `LIBRARY_PATH` on Linux. On Linux `LIBRARY_PATH` would include the path to the `lib` directory with `libclntsh.so`. For example, you might build Sibyl's examples as:
+The cargo build needs to know where the OCI client library is. You can provide that information via environment variable `OCI_LIB_DIR` on Windows or `LIBRARY_PATH` on Linux. On Linux, depending on which Oracle client is installed and how it was installed, the `LD_LIBRARY_PATH` might also be needed. `LIBRARY_PATH` (and `LD_LIBRARY_PATH`) would include the path to the directory with `libclntsh.so`. For example, you might build Sibyl's examples as:
 
 ```shell
-export LIBRARY_PATH=/usr/lib/oracle/19.18/client64/lib
+export LIBRARY_PATH=/opt/instantclient_19_24
+export LD_LIBRARY_PATH=/opt/instantclient_19_24
 cargo build --examples --features=blocking
 ```
 
@@ -36,16 +37,14 @@ set OCI_LIB_DIR=%ORACLE_HOME%\bin
 cargo build --examples --features=blocking
 ```
 
-> *Note* that for `gnu` targets the build script will try to locate `OCI.DLL` by searching it on the current `PATH` if the `OCI_LIB_DIR` is not specified.
+> *Note* that for `gnu` targets the build script will try to locate `OCI.DLL` by searching it in the current `PATH` if the `OCI_LIB_DIR` is not specified.
 
-However, for `msvc` environment the `OCI_LIB_DIR` must point to the directory with `oci.lib`. For example, you might build those examples as:
+However, for `msvc` environment the `OCI_LIB_DIR` must exist and point to the directory with `oci.lib`.  The build will fail if `OCI_LIB_DIR` is not set. For example, you might build those examples as:
 
 ```plaintext
 set OCI_LIB_DIR=%ORACLE_HOME%\oci\lib\msvc
 cargo build --examples --features=blocking
 ```
-
-> *Note* that for `msvc` targets, that need `oci.lib`, the `OCI_LIB_DIR` is required. The build will fail if it is not set.
 
 Because of the above requirement, that the `OCI_LIB_DIR` must be set for `msvc` targets, it also must be specified for the `rust-analyzer`. For example, in VS Code this can be done in `.vscode\settings.json`:
 

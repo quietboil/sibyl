@@ -100,10 +100,14 @@ impl_oci_handle_attr!{ OCIServer, OCISession, OCIAuthInfo }
 impl AttrGet for &str {
     type ValueType = *const u8;
     fn new(ptr: *const u8, len: usize) -> Self {
-        unsafe {
-            std::str::from_utf8_unchecked(
-                std::slice::from_raw_parts(ptr, len)
-            )
+        if ptr.is_null() || len == 0 {
+            ""
+        } else {
+            unsafe {
+                std::str::from_utf8_unchecked(
+                    std::slice::from_raw_parts(ptr, len)
+                )
+            }
         }
     }
 }
