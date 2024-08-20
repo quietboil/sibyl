@@ -1,5 +1,5 @@
 <!DOCTYPE HTML>
-<html lang="en" class="sidebar-visible no-js light">
+<html lang="en" class="light" dir="ltr">
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
@@ -10,7 +10,7 @@
         
         <meta name="description" content="">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="theme-color" content="#ffffff" />
+        <meta name="theme-color" content="#ffffff">
 
         <link rel="icon" href="favicon.svg">
         <link rel="shortcut icon" href="favicon.png">
@@ -31,7 +31,8 @@
         <!-- Custom theme stylesheets -->
 
     </head>
-    <body>
+    <body class="sidebar-visible no-js">
+    <div id="body-container">
         <!-- Provide site root to javascript -->
         <script>
             var path_to_root = "";
@@ -60,40 +61,71 @@
             try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
             if (theme === null || theme === undefined) { theme = default_theme; }
             var html = document.querySelector('html');
-            html.classList.remove('no-js')
             html.classList.remove('light')
             html.classList.add(theme);
-            html.classList.add('js');
+            var body = document.querySelector('body');
+            body.classList.remove('no-js')
+            body.classList.add('js');
         </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
 
         <!-- Hide / unhide sidebar before it is displayed -->
         <script>
-            var html = document.querySelector('html');
-            var sidebar = 'hidden';
+            var body = document.querySelector('body');
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
             if (document.body.clientWidth >= 1080) {
                 try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
                 sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
             }
-            html.classList.remove('sidebar-visible');
-            html.classList.add("sidebar-" + sidebar);
+            sidebar_toggle.checked = sidebar === 'visible';
+            body.classList.remove('sidebar-visible');
+            body.classList.add("sidebar-" + sidebar);
         </script>
 
         <nav id="sidebar" class="sidebar" aria-label="Table of contents">
             <div class="sidebar-scrollbox">
                 <ol class="chapter"><li class="chapter-item expanded affix "><a href="intro.html">Introduction</a></li><li class="chapter-item expanded "><a href="using.html"><strong aria-hidden="true">1.</strong> Getting Started</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="opt_features.html"><strong aria-hidden="true">1.1.</strong> Optional Features</a></li></ol></li><li class="chapter-item expanded "><a href="example_project.html"><strong aria-hidden="true">2.</strong> Example Project</a></li><li class="chapter-item expanded affix "><li class="part-title">User Guide</li><li class="chapter-item expanded "><a href="env.html"><strong aria-hidden="true">3.</strong> Environment</a></li><li class="chapter-item expanded "><a href="conn.html"><strong aria-hidden="true">4.</strong> Connections</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="conn_own.html"><strong aria-hidden="true">4.1.</strong> Connection Per Thread</a></li><li class="chapter-item expanded "><a href="session_pool.html"><strong aria-hidden="true">4.2.</strong> Session Pool</a></li><li class="chapter-item expanded "><a href="conn_pool.html"><strong aria-hidden="true">4.3.</strong> Connection Pool</a></li></ol></li><li class="chapter-item expanded "><a href="exec.html" class="active"><strong aria-hidden="true">5.</strong> SQL Statement Execution</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="args.html"><strong aria-hidden="true">5.1.</strong> Statement Arguments</a></li><li class="chapter-item expanded "><a href="slices.html"><strong aria-hidden="true">5.2.</strong> Slices as Arguments</a></li><li class="chapter-item expanded "><a href="nulls.html"><strong aria-hidden="true">5.3.</strong> NULLs</a></li><li class="chapter-item expanded "><a href="dyn_sql.html"><strong aria-hidden="true">5.4.</strong> Dynamic SQL</a></li></ol></li><li class="chapter-item expanded "><a href="encoding.html"><strong aria-hidden="true">6.</strong> Character Sets</a></li><li class="chapter-item expanded "><a href="odt.html"><strong aria-hidden="true">7.</strong> Oracle Data Types</a></li><li><ol class="section"><li class="chapter-item expanded "><a href="odt/varchar.html"><strong aria-hidden="true">7.1.</strong> Varchar</a></li><li class="chapter-item expanded "><a href="odt/number.html"><strong aria-hidden="true">7.2.</strong> Number</a></li><li class="chapter-item expanded "><a href="odt/raw.html"><strong aria-hidden="true">7.3.</strong> RAW</a></li><li class="chapter-item expanded "><a href="odt/date.html"><strong aria-hidden="true">7.4.</strong> Date</a></li><li class="chapter-item expanded "><a href="odt/timestamp.html"><strong aria-hidden="true">7.5.</strong> Timestamp</a></li><li class="chapter-item expanded "><a href="odt/interval.html"><strong aria-hidden="true">7.6.</strong> Interval</a></li><li class="chapter-item expanded "><a href="odt/rowid.html"><strong aria-hidden="true">7.7.</strong> Row ID</a></li><li class="chapter-item expanded "><a href="odt/cursor.html"><strong aria-hidden="true">7.8.</strong> Cursor</a></li><li class="chapter-item expanded "><a href="odt/lobs.html"><strong aria-hidden="true">7.9.</strong> LOB</a></li></ol></li><li class="chapter-item expanded "><li class="part-title">Notes</li><li class="chapter-item expanded "><a href="issues.html"><strong aria-hidden="true">8.</strong> Known Issues</a></li><li class="chapter-item expanded "><a href="limits.html"><strong aria-hidden="true">9.</strong> Limitations</a></li><li class="chapter-item expanded "><a href="testing.html"><strong aria-hidden="true">10.</strong> Testing</a></li></ol>
             </div>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle"></div>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
         </nav>
+
+        <!-- Track and set sidebar scroll position -->
+        <script>
+            var sidebarScrollbox = document.querySelector('#sidebar .sidebar-scrollbox');
+            sidebarScrollbox.addEventListener('click', function(e) {
+                if (e.target.tagName === 'A') {
+                    sessionStorage.setItem('sidebar-scroll', sidebarScrollbox.scrollTop);
+                }
+            }, { passive: true });
+            var sidebarScrollTop = sessionStorage.getItem('sidebar-scroll');
+            sessionStorage.removeItem('sidebar-scroll');
+            if (sidebarScrollTop) {
+                // preserve sidebar scroll position when navigating via links within sidebar
+                sidebarScrollbox.scrollTop = sidebarScrollTop;
+            } else {
+                // scroll sidebar to current active section when navigating via "next/previous chapter" buttons
+                var activeSection = document.querySelector('#sidebar .active');
+                if (activeSection) {
+                    activeSection.scrollIntoView({ block: 'center' });
+                }
+            }
+        </script>
 
         <div id="page-wrapper" class="page-wrapper">
 
             <div class="page">
                                 <div id="menu-bar-hover-placeholder"></div>
-                <div id="menu-bar" class="menu-bar sticky bordered">
+                <div id="menu-bar" class="menu-bar sticky">
                     <div class="left-buttons">
-                        <button id="sidebar-toggle" class="icon-button" type="button" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
                             <i class="fa fa-bars"></i>
-                        </button>
+                        </label>
                         <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
                             <i class="fa fa-paint-brush"></i>
                         </button>
@@ -146,12 +178,12 @@
                     <main>
                         <h1 id="sql-statement-execution"><a class="header" href="#sql-statement-execution">SQL Statement Execution</a></h1>
 <p>All SQL or PL/SQL statements must be prepared before they can be executed:</p>
-<pre><code class="language-rust ignore">let stmt = session.prepare(&quot;
+<pre><code class="language-rust ignore">let stmt = session.prepare("
     SELECT employee_id, last_name, first_name
       FROM hr.employees
      WHERE manager_id = :id
   ORDER BY employee_id
-&quot;)?;</code></pre>
+")?;</code></pre>
 <p>A prepared statement can be executed either with the <code>query</code>, <code>query_single</code> or <code>execute</code> methods:</p>
 <ul>
 <li><code>query</code> is used for <code>SELECT</code> statements. In fact, Sibyl will complain if you try to <code>query</code> any other statement.</li>
@@ -159,21 +191,21 @@
 <li><code>execute</code> is used for all other, non-SELECT, DML and DDL.</li>
 </ul>
 <p><code>execute</code> returns the number of rows affected by the statement.</p>
-<p><code>query</code> returns what is colloquially called a &quot;streaming iterator&quot; which is typically iterated using <code>while</code>. For example (continuing the SELECT example from above):</p>
+<p><code>query</code> returns what is colloquially called a "streaming iterator" which is typically iterated using <code>while</code>. For example (continuing the SELECT example from above):</p>
 <pre><code class="language-rust ignore">let mut employees = HashMap::new();
-let stmt = session.prepare(&quot;
+let stmt = session.prepare("
     SELECT employee_id, last_name, first_name
       FROM hr.employees
      WHERE manager_id = :id
   ORDER BY employee_id
-&quot;)?;
+")?;
 let rows = stmt.query(103)?;
 while let Some( row ) = rows.next()? {
     let employee_id : u32 = row.get(0)?;
     let last_name : &amp;str  = row.get(1)?;
     let first_name : Option&lt;&amp;str&gt; = row.get(2)?;
     let name = first_name.map_or(last_name.to_string(),
-        |first_name| format!(&quot;{}, {}&quot;, last_name, first_name)
+        |first_name| format!("{}, {}", last_name, first_name)
     );
     employees.insert(employee_id, name);
 }</code></pre>
@@ -186,11 +218,11 @@ while let Some( row ) = rows.next()? {
 <p>Note that while Sibyl expects 0-based indexes to reference projection columns, it also accepts column names. Thus, the row processing loop of the previous example can be written as:</p>
 </blockquote>
 <pre><code class="language-rust ignore">while let Some( row ) = rows.next()? {
-    let employee_id : u32 = row.get(&quot;EMPLOYEE_ID&quot;)?;
-    let last_name : &amp;str  = row.get(&quot;LAST_NAME&quot;)?;
-    let first_name : Option&lt;&amp;str&gt; = row.get(&quot;FIRST_NAME&quot;)?;
+    let employee_id : u32 = row.get("EMPLOYEE_ID")?;
+    let last_name : &amp;str  = row.get("LAST_NAME")?;
+    let first_name : Option&lt;&amp;str&gt; = row.get("FIRST_NAME")?;
     let name = first_name.map_or(last_name.to_string(),
-        |first_name| format!(&quot;{}, {}&quot;, last_name, first_name)
+        |first_name| format!("{}, {}", last_name, first_name)
     );
     employees.insert(employee_id, name);
 }</code></pre>
@@ -213,7 +245,7 @@ impl sibyl::Position for Col {
 
 impl std::fmt::Display for Col {
     fn fmt(&amp;self, f: &amp;mut std::fmt::Formatter&lt;'_&gt;) -&gt; std::fmt::Result {
-        static COLS : [&amp;str;3] = [&quot;EMPLOYEE_ID&quot;, &quot;LAST_NAME&quot;, &quot;FIRST_NAME&quot;];
+        static COLS : [&amp;str;3] = ["EMPLOYEE_ID", "LAST_NAME", "FIRST_NAME"];
         let i = *self as usize;
         f.write_str(COLS[i])
     }
@@ -235,7 +267,7 @@ while let Some( row ) = rows.next()? {
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next" href="args.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="args.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <i class="fa fa-angle-right"></i>
                             </a>
 
@@ -249,7 +281,7 @@ while let Some( row ) = rows.next()? {
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next" href="args.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="args.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <i class="fa fa-angle-right"></i>
                     </a>
             </nav>
@@ -275,5 +307,6 @@ while let Some( row ) = rows.next()? {
         <!-- Custom JS scripts -->
 
 
+    </div>
     </body>
 </html>
