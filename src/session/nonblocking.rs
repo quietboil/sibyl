@@ -30,7 +30,12 @@ impl SvcCtx {
 
     fn set_nonblocking_mode(&self) -> Result<()> {
         let srv: Ptr<OCIServer> = attr::get(OCI_ATTR_SERVER, OCI_HTYPE_SVCCTX, self.svc.as_ref(), self.err.as_ref())?;
-        oci::attr_set(srv.as_ref(), OCI_HTYPE_SERVER, std::ptr::null(), 0, OCI_ATTR_NONBLOCKING_MODE, self.err.as_ref())
+        let mode : u8 = attr::get(OCI_ATTR_NONBLOCKING_MODE, OCI_HTYPE_SERVER, srv.as_ref(), self.as_ref())?;
+        if mode == 0 {
+            oci::attr_set(srv.as_ref(), OCI_HTYPE_SERVER, std::ptr::null(), 0, OCI_ATTR_NONBLOCKING_MODE, self.err.as_ref())
+        } else {
+            Ok(())
+        }
     }
 
     async fn from_session_pool(pool: &SessionPool<'_>) -> Result<Self> {
