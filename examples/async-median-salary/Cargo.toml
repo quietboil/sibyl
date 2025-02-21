@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sibyl = { version="0.6", features=["tokio","nonblocking"] }
-tokio = { version="1.38", features=["full"] }
+sibyl = { version="0.6", features=["tokio","nonblocking"], path="../.." }
+tokio = { version="1.43", features=["full"] }
