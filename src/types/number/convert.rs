@@ -30,7 +30,7 @@ fn u128_into_number(mut val: u128) -> OCINumber {
         unsafe {
             (*ptr).bytes[0] = len as u8 + 1;
             (*ptr).bytes[1] = exp;
-            (*ptr).bytes[2..2 + len].copy_from_slice(&digits[idx..]);
+            (&mut (*ptr).bytes)[2..2+len].copy_from_slice(&digits[idx..]);
         }
     }
     unsafe { num.assume_init() }
@@ -60,7 +60,7 @@ fn i128_into_number(mut val: i128) -> OCINumber {
         unsafe {
             (*ptr).bytes[0] = len as u8 + 1;
             (*ptr).bytes[1] = exp;
-            (*ptr).bytes[2..2 + len].copy_from_slice(&digits[idx..idx + len]);
+            (&mut (*ptr).bytes)[2..2+len].copy_from_slice(&digits[idx..idx + len]);
             num.assume_init()
         }
     }
