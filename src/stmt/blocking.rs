@@ -152,7 +152,7 @@ impl<'a> Statement<'a> {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn query(&'a self, mut args: impl ToSql) -> Result<Rows> {
+    pub fn query(&'a self, mut args: impl ToSql) -> Result<Rows<'a>> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
             return Err( Error::new("Use `execute` to execute statements other than SELECT") );
@@ -221,7 +221,7 @@ impl<'a> Statement<'a> {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn query_single(&'a self, mut args: impl ToSql) -> Result<Option<Row>> {
+    pub fn query_single(&'a self, mut args: impl ToSql) -> Result<Option<Row<'a>>> {
         let stmt_type: u16 = self.get_attr(OCI_ATTR_STMT_TYPE)?;
         if stmt_type != OCI_STMT_SELECT {
             return Err( Error::new("Use `execute` to execute statements other than SELECT") );
@@ -351,7 +351,7 @@ impl<'a> Statement<'a> {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn next_result(&'a self) -> Result<Option<Cursor>> {
+    pub fn next_result(&'a self) -> Result<Option<Cursor<'a>>> {
         let mut stmt = Ptr::<OCIStmt>::null();
         let mut stmt_type = 0u32;
         let res = unsafe {
