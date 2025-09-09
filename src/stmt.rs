@@ -119,15 +119,15 @@ impl<'a> Statement<'a> {
         attr::set(attr_type, attr_val, OCI_HTYPE_STMT, self.stmt.as_ref(), self.as_ref())
     }
 
-    pub(crate) fn read_columns(&self) -> RwLockReadGuard<Columns> {
+    pub(crate) fn read_columns(&self) -> RwLockReadGuard<'_,Columns> {
         self.cols.get().expect("locked columns").read()
     }
 
-    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<Columns> {
+    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<'_,Columns> {
         self.cols.get().expect("locked columns").write()
     }
 
-    pub(crate) fn session(&self) -> &Session {
+    pub(crate) fn session(&self) -> &Session<'_> {
         self.session
     }
 
@@ -571,7 +571,7 @@ impl<'a> Statement<'a> {
     # }
     ```
     */
-    pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
+    pub fn column(&self, pos: usize) -> Option<ColumnInfo<'_>> {
         self.cols.get()
             .and_then(|cols|
                 cols.read().column_param(pos)

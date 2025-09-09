@@ -86,7 +86,7 @@ impl Ctx for CursorSource<'_> {
 }
 
 impl CursorSource<'_> {
-    pub(crate) fn session(&self) -> &Session {
+    pub(crate) fn session(&self) -> &Session<'_> {
         match self {
             &Self::Statement(stmt) => stmt.session(),
             &Self::Row(row)        => row.session(),
@@ -141,15 +141,15 @@ impl ToSql for &mut Cursor<'_> {
 }
 
 impl<'a> Cursor<'a> {
-    pub(crate) fn read_columns(&self) -> RwLockReadGuard<Columns> {
+    pub(crate) fn read_columns(&self) -> RwLockReadGuard<'_, Columns> {
         self.cols.get().expect("locked columns").read()
     }
 
-    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<Columns> {
+    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<'_, Columns> {
         self.cols.get().expect("locked columns").write()
     }
 
-    pub(crate) fn session(&self) -> &Session {
+    pub(crate) fn session(&self) -> &Session<'_> {
         self.source.session()
     }
 
@@ -501,7 +501,7 @@ impl<'a> Cursor<'a> {
         # }
         ```
     */
-    pub fn column(&self, pos: usize) -> Option<ColumnInfo> {
+    pub fn column(&self, pos: usize) -> Option<ColumnInfo<'_>> {
         self.cols.get()
             .and_then(|cols|
                 cols.read().column_param(pos)

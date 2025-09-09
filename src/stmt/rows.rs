@@ -46,21 +46,21 @@ impl Ctx for DataSource<'_> {
 }
 
 impl DataSource<'_> {
-    pub(crate) fn read_columns(&self) -> RwLockReadGuard<Columns> {
+    pub(crate) fn read_columns(&self) -> RwLockReadGuard<'_, Columns> {
         match self {
             &Self::Statement(stmt) => stmt.read_columns(),
             &Self::Cursor(cursor)  => cursor.read_columns(),
         }
     }
 
-    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<Columns> {
+    pub(crate) fn write_columns(&self) -> RwLockWriteGuard<'_, Columns> {
         match self {
             &Self::Statement(stmt) => stmt.write_columns(),
             &Self::Cursor(cursor)  => cursor.write_columns(),
         }
     }
 
-    pub(crate) fn session(&self) -> &Session {
+    pub(crate) fn session(&self) -> &Session<'_> {
         match self {
             &Self::Statement(stmt) => stmt.session(),
             &Self::Cursor(cursor)  => cursor.session(),
@@ -94,7 +94,7 @@ enum RowSource<'a> {
 }
 
 impl RowSource<'_> {
-    fn rset(&self) -> &DataSource {
+    fn rset(&self) -> &DataSource<'_> {
         match self {
             Self::Single(ds) => ds,
             &Self::Multi(ds) => ds,
@@ -154,7 +154,7 @@ impl<'a> Row<'a> {
         Self { src: RowSource::Single(rows.src()) }
     }
 
-    pub(crate) fn session(&self) -> &Session {
+    pub(crate) fn session(&self) -> &Session<'_> {
         self.src.rset().session()
     }
 

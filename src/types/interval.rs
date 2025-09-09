@@ -152,7 +152,7 @@ impl<'a, T> Interval<'a, T> where T: DescriptorType<OCIType=OCIInterval> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn to_number(&self) -> Result<Number> {
+    pub fn to_number(&self) -> Result<Number<'_>> {
         let mut num = Number::new(self.ctx);
         oci::interval_to_number(self.ctx.as_context(), self.ctx.as_ref(), self, num.as_mut())?;
         Ok( num )

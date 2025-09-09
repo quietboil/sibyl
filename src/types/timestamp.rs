@@ -286,7 +286,7 @@ impl<'a, T> DateTime<'a, T> where T: DescriptorType<OCIType=OCIDateTime> {
         # Ok::<(),oracle::Error>(())
         ```
     */
-    pub fn subtract<U, I>(&self, other: &DateTime<U>) -> Result<Interval<I>>
+    pub fn subtract<U, I>(&self, other: &DateTime<U>) -> Result<Interval<'_,I>>
     where U: DescriptorType<OCIType=OCIDateTime>
         , I: DescriptorType<OCIType=OCIInterval>
     {
