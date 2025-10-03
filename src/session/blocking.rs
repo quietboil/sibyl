@@ -108,7 +108,7 @@ impl<'a> Session<'a> {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn prepare(&self, sql: &str) -> Result<Statement> {
+    pub fn prepare(&self, sql: &str) -> Result<Statement<'_>> {
         Statement::new(sql, self)
     }
 

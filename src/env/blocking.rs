@@ -37,7 +37,7 @@ impl Environment {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Session> {
+    pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Session<'_>> {
         Session::new(self, dbname, username, password)
     }
 
@@ -84,7 +84,7 @@ impl Environment {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn create_session_pool(&self, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<SessionPool> {
+    pub fn create_session_pool(&self, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<SessionPool<'_>> {
         SessionPool::new(self, dbname, username, password, min, inc, max)
     }
 
@@ -128,7 +128,7 @@ impl Environment {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn create_connection_pool(&self, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<ConnectionPool> {
+    pub fn create_connection_pool(&self, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<ConnectionPool<'_>> {
         ConnectionPool::new(self, dbname, username, password, min, inc, max)
     }
 }

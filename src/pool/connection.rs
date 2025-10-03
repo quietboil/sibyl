@@ -139,7 +139,7 @@ impl<'a> ConnectionPool<'a> {
         # }
         ```
     */
-    pub fn get_session(&self, user: &str, pass: &str) -> Result<Session> {
+    pub fn get_session(&self, user: &str, pass: &str) -> Result<Session<'_>> {
         Session::from_connection_pool(self, user, pass)
     }
 

@@ -51,7 +51,7 @@ impl<'a> Cursor<'a> {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn rows(&self) -> Result<Rows> {
+    pub fn rows(&self) -> Result<Rows<'_>> {
         if self.cols.get().is_none() {
             let cols = Columns::new(Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), Ptr::from(self.as_ref()), self.max_long)?;
             self.cols.get_or_init(|| RwLock::new(cols));

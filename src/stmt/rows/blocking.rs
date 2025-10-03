@@ -42,7 +42,7 @@ impl<'a> Rows<'a> {
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn next(&self) -> Result<Option<Row>> {
+    pub fn next(&self) -> Result<Option<Row<'_>>> {
         if self.last_result.load(Ordering::Acquire) == OCI_NO_DATA {
             Ok( None )
         } else {

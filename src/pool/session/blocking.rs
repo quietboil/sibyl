@@ -111,7 +111,7 @@ impl<'a> SessionPool<'a> {
         # }
         ```
     */
-    pub fn get_session(&self) -> Result<Session> {
+    pub fn get_session(&self) -> Result<Session<'_>> {
         Session::from_session_pool(self)
     }
 }
