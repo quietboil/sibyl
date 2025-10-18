@@ -11,8 +11,6 @@ mod nonblocking;
 use std::{sync::Arc, marker::PhantomData};
 use crate::{Result, Environment, oci::*, types::Ctx};
 use crate::pool::session::SPool;
-#[cfg(feature="nonblocking")]
-use crate::task;
 
 /// Representation of the service context.
 /// It will be behinfd `Arc` as it needs to survive the `Session`
@@ -29,24 +27,17 @@ pub(crate) struct SvcCtx {
 
 #[cfg(not(docsrs))]
 impl Drop for SvcCtx {
-    #[cfg(feature="blocking")]
     fn drop(&mut self) {
         let _ = &self.inf;
         let _ = &self.spool;
+
+        #[cfg(feature="nonblocking")]
+        let _ = self.set_blocking_mode(); // best effort, nothing we can do if it fails
+
         let svc : &OCISvcCtx = self.as_ref();
         let err : &OCIError  = self.as_ref();
         oci_trans_rollback(svc, err);
         oci_session_release(svc, err);
-    }
-
-    #[cfg(feature="nonblocking")]
-    fn drop(&mut self) {
-        let _ = &self.inf;
-        let mut svc = Ptr::<OCISvcCtx>::null();
-        svc.swap(&mut self.svc);
-        let err = Handle::take(&mut self.err);
-        let env = self.env.clone();
-        task::spawn_detached(futures::SessionRelease::new(svc, err, env, self.spool.clone()));
     }
 }
 
@@ -532,7 +523,7 @@ impl Session<'_> {
     # fn main() -> Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let orig_name = session.current_schema()?;
-    // Workaround for an isssue that was introduced by the instant client 19.15 - 
+    // Workaround for an isssue that was introduced by the instant client 19.15 -
     // `current_schema` returns empty string until set by `set_current_schema`
     // Client 19.13 and earlier return the schema's name upon connect.
     let dbuser = std::env::var("DBUSER").expect("user name");
@@ -590,7 +581,7 @@ impl Session<'_> {
     # fn main() -> Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let orig_name = session.current_schema()?;
-    // Workaround for an isssue that was introduced by the instant client 19.15 - 
+    // Workaround for an isssue that was introduced by the instant client 19.15 -
     // `current_schema` returns empty string until set by `set_current_schema`
     // Client 19.13 and earlier return the schema's name upon connect.
     let dbuser = std::env::var("DBUSER").expect("user name");
