@@ -1,0 +1,7 @@
+[workspace]
+members = ["select_clobs", "insert_clob", "update_clob"]
+resolver = "1"
+
+[workspace.dependencies]
+sibyl = {path = "../..", features = ["nonblocking", "tokio"]}
+tokio = {version = "1.48", features = ["rt", "rt-multi-thread", "macros"]}

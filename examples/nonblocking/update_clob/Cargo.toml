@@ -1,0 +1,8 @@
+[package]
+name = "update_clob"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+sibyl = {workspace = true}
+tokio = {workspace = true, features = ["rt", "rt-multi-thread", "macros", "fs"]}
