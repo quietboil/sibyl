@@ -6,10 +6,6 @@ use crate::oci::*;
 use std::sync::atomic::Ordering;
 
 impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
-    pub(crate) fn make(locator: Descriptor<T>, session: &'a Session) -> Self {
-        Self::make_new(locator, session)
-    }
-
     /**
     Closes a previously opened internal or external LOB.
 
@@ -35,57 +31,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
     # Example
 
-    ```
-    use sibyl::{ CLOB, RowID };
-
-    # let session = sibyl::test_env::get_session()?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ")?;
-    # stmt.execute(())?;
-    let stmt = session.prepare("
-        INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :row_id
-    ")?;
-    let mut rowid = RowID::new(&session)?;
-    stmt.execute(&mut rowid)?;
-
-    // must lock LOB's row before writing into it
-    let stmt = session.prepare("
-        SELECT text FROM test_lobs WHERE rowid = :row_id FOR UPDATE
-    ")?;
-    let row = stmt.query_single(&rowid)?.unwrap();
-    let mut lob : CLOB = row.get(0)?;
-
-    let text = [
-        "Love seeketh not itself to please,\n",
-        "Nor for itself hath any care,\n",
-        "But for another gives its ease,\n",
-        "And builds a Heaven in Hell's despair.\n",
-    ];
-
-    lob.open()?;
-    lob.append(text[0])?;
-    lob.append(text[1])?;
-    lob.append(text[2])?;
-    lob.append(text[3])?;
-    lob.close()?;
-
-    assert_eq!(lob.len()?, text[0].len() + text[1].len() + text[2].len() + text[3].len());
-    # Ok::<(),Box<dyn std::error::Error>>(())
-    ```
+    See [`LOB<T>::open()`]
     */
     pub fn close(&self) -> Result<()> {
         oci::lob_close(self.as_ref(), self.as_ref(), self.as_ref())?;
@@ -184,6 +130,20 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
 impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalLob {
     /**
+        Tests if a locator points to a temporary LOB.
+
+        # Returns
+
+        * `true` - if this LOB locator points to a temporary LOB
+        * `flase` - if it does not.
+     */
+    pub async fn is_temp(&self) -> Result<bool> {
+        let mut is_temp = oci::Aligned::new(0u8);
+        oci::lob_is_temporary(self.as_ref(), self.as_ref(), self.as_ref(), is_temp.as_mut_ptr())?;
+        Ok( <u8>::from(is_temp) != 0 )
+    }
+
+    /**
     Appends another LOB value at the end of this LOB.
 
     # Example
@@ -213,6 +173,7 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     let lob2 = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
     lob2.append(text2)?;
     // Cannot use `len` shortcut with `text2` because of `RIGHT SINGLE QUOTATION MARK`
+    // after "bells"
     assert_eq!(lob2.len()?, text2.chars().count());
 
     lob1.append_lob(&lob2)?;
@@ -368,90 +329,72 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     use sibyl::*;
 
     # let session = sibyl::test_env::get_session()?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ")?;
-    # stmt.execute(())?;
-    let stmt = session.prepare("INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :ROW_ID")?;
-    let mut rowid = RowID::new(&session)?;
-    stmt.execute(&mut rowid)?;
+    #
+    let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
 
-    let stmt = session.prepare("SELECT text FROM test_lobs WHERE rowid = :ROW_ID FOR UPDATE")?;
-    let row = stmt.query_single(&rowid)?.expect("just inserted row");
-    let mut lob : CLOB = row.get(0)?;
+    //-------------------
 
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     let file_len = file.len()?;
 
-    lob.open()?;
     file.open_file()?;
     lob.load_from_file(&file, 0, file_len, 0)?;
     file.close_file()?;
 
     let lob_len = lob.len()?;
-    assert_eq!(lob_len, 13);
+    assert_eq!(lob_len, 14);
 
     let mut text = String::new();
     lob.read(0, lob_len, &mut text)?;
 
-    assert_eq!(text, "Hello, World!");
+    assert_eq!(text, "Hello, World!\n");
 
-    file.set_file_name("MEDIA_DIR", "hello_world_cyrillic.txt")?;
+    //-------------------
+
+    file.set_file_name("MEDIA_DIR", "konnichiwa_sekai.txt")?;
     let file_len = file.len()?;
 
     file.open_file()?;
-    lob.load_from_file(&file, 0, file_len, 0)?;
+    lob.load_from_file(&file, 0, file_len, lob_len)?;
     file.close()?;
 
     let lob_len = lob.len()?;
-    assert_eq!(lob_len, 16);
+    assert_eq!(lob_len, 14 + 9);
 
     text.clear();
     lob.read(0, lob_len, &mut text)?;
 
-    assert_eq!(text, "Здравствуй, Мир!");
+    assert_eq!(text, "Hello, World!\nこんにちは世界！\n");
+
+    //-------------------
 
     file.set_file_name("MEDIA_DIR", "hello_supplemental.txt")?;
     let file_len = file.len()?;
 
-    lob.trim(0)?;
     file.open_file()?;
-    lob.load_from_file(&file, 0, file_len, 0)?;
+    lob.load_from_file(&file, 0, file_len, lob_len)?;
     file.close()?;
 
     let lob_len = lob.len()?;
-    // Note that Oracle encoded 4 symbols (see below) into 8 characters
-    assert_eq!(lob_len, 8);
+    // Note that Oracle encoded 4 symbols (see below) into 8 "characters"
+    assert_eq!(lob_len, 14 + 9 + 9);
 
     text.clear();
-    // The reading stops at the end of LOB value if we request more
+    // The reading stops at the end of the LOB value if we request more
     // characters than the LOB contains
     let num_read = lob.read(0, 100, &mut text)?;
-    assert_eq!(num_read, 8);
+    assert_eq!(num_read, 14 + 9 + 9);
 
-    assert_eq!(text, "🚲🛠📬🎓");
+    assert_eq!(text, "Hello, World!\nこんにちは世界！\n🚲🛠📬🎓\n");
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
-    pub fn load_from_file(&self, src: &BFile, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
+    pub fn load_from_file(&self, src: &BFile, src_offset: usize, amount: usize, dst_offset: usize) -> Result<()> {
         oci::lob_load_from_file(
             self.as_ref(), self.as_ref(),
             self.as_ref(), src.as_ref(),
-            amount as u64, (offset + 1) as u64, (src_offset + 1) as u64
+            amount as u64, (dst_offset + 1) as u64, (src_offset + 1) as u64
         )
     }
 
@@ -498,6 +441,10 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     benefit because LOB chunks are versioned and, if all writes are done on a chunk basis, no extra
     versioning is done or duplicated. Users could batch up the write until they have enough for a chunk
     instead of issuing several write calls for the same chunk.
+
+    # Example
+
+    See [`LOB<T>::write_first()`]
     */
     pub fn chunk_size(&self) -> Result<usize> {
         let mut size = self.chunk_size.load(Ordering::Relaxed);
@@ -573,6 +520,65 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
 
     - It is an error to open the same LOB twice.
 
+    # Example
+
+    ```
+    use sibyl::CLOB;
+    /*
+        CREATE TABLE test_lobs (
+            id       INTEGER GENERATED ALWAYS AS IDENTITY,
+            text     CLOB,
+            data     BLOB,
+            ext_file BFILE
+        );
+     */
+    # let session = sibyl::test_env::get_session()?;
+    let stmt = session.prepare("
+        DECLARE
+            row_id ROWID;
+        BEGIN
+            INSERT INTO test_lobs (text) VALUES (Empty_Blob()) RETURNING rowid INTO row_id;
+            SELECT text INTO :NEW_LOB FROM test_lobs WHERE rowid = row_id FOR UPDATE;
+        END;
+    ")?;
+    let mut lob = CLOB::new(&session)?;
+    stmt.execute(&mut lob)?;
+
+    let text = [
+        "Love seeketh not itself to please,\n",
+        "Nor for itself hath any care,\n",
+        "But for another gives its ease,\n",
+        "And builds a Heaven in Hell's despair.\n",
+    ];
+
+    lob.open()?;
+    /*
+     * It is not necessary to open a LOB to perform operations on it.
+     * When using function-based indexes, extensible indexes or context,
+     * and making multiple calls to update or write to the LOB, you should
+     * first call `open`, then update the LOB as many times as you want,
+     * and finally call `close`. This sequence of operations ensures that
+     * the indexes are only updated once at the end of all the write
+     * operations instead of once for each write operation.
+     *
+     * If you do not wrap your LOB operations inside the open or close API,
+     * then the functional and domain indexes are updated each time you write
+     * to the LOB. This can adversely affect performance.
+     *
+     * If you have functional or domain indexes, Oracle recommends that you
+     * enclose write operations to the LOB within the open or close statements.
+     */
+    lob.append(text[0])?;
+    lob.append(text[1])?;
+    lob.append(text[2])?;
+    lob.append(text[3])?;
+    lob.close()?;
+
+    session.commit()?;
+
+    assert_eq!(lob.len()?, text[0].len() + text[1].len() + text[2].len() + text[3].len());
+    # Ok::<(),Box<dyn std::error::Error>>(())
+    ```
     */
     pub fn open(&self) -> Result<()> {
         oci::lob_open(self.as_ref(), self.as_ref(), self.as_ref(), OCI_LOB_READWRITE)?;
@@ -619,6 +625,15 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         )?;
         Ok( (byte_cnt as usize, char_cnt as usize) )
     }
+
+    fn create_temp(session: &'a Session<'a>, csform: u8, lob_type: u8, cache: Cache) -> Result<LOB<'a,T>> {
+        let lob_descriptor = Descriptor::<T>::new(session)?;
+        oci::lob_create_temporary(
+            session.as_ref(), session.as_ref(), lob_descriptor.as_ref(),
+            OCI_DEFAULT as _, csform, lob_type, cache as _, OCI_DURATION_SESSION
+        )?;
+        Ok(Self::make_temp(lob_descriptor, session))
+    }
 }
 
 impl<'a> LOB<'a,OCICLobLocator> {
@@ -633,12 +648,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     The temporary LOB is freed automatically either when a LOB goes out of scope or at the end of the session whichever comes first.
     */
     pub fn temp(session: &'a Session, csform: CharSetForm, cache: Cache) -> Result<Self> {
-        let locator = Descriptor::<OCICLobLocator>::new(session)?;
-        oci::lob_create_temporary(
-            session.as_ref(), session.as_ref(), locator.as_ref(),
-            OCI_DEFAULT as u16, csform as u8, OCI_TEMP_CLOB, cache as u8, OCI_DURATION_SESSION
-        )?;
-        Ok(Self::make_temp(locator, session))
+        Self::create_temp(session, csform as _, OCI_TEMP_CLOB, cache)
     }
 
     /**
@@ -646,9 +656,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
     # Parameters
 
-    - `offset` - The absolute offset from the beginning of the LOB. For character LOBs, it is the number of characters
-            from the beginning of the LOB; for binary LOBs, it is the number of bytes
-    - `text` - Text to write into the LOB.
+    - `offset` - the absolute offset (in number of characters) from the beginning of the LOB,
+    - `text` - slice of text to be written into this LOB.
 
     # Returns
 
@@ -707,7 +716,9 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
     # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
+
     lob.open()?;
+
     let chunk_size = lob.chunk_size()?;
     let data = vec![42u8;chunk_size];
     let text = std::str::from_utf8(&data)?;
@@ -720,6 +731,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
     }
     let written = lob.write_last(text)?;
     assert_eq!(written, chunk_size);
+
+    lob.close()?;
 
     assert_eq!(lob.len()?, chunk_size * 10);
     # Ok::<(),Box<dyn std::error::Error>>(())
@@ -744,6 +757,10 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # Returns
 
     The number of characters written to the database for this piece.
+
+    # Example
+
+    See [`LOB<T>::write_first()`]
     */
     pub fn write_next(&self, text: &str) -> Result<usize> {
         let (_, char_count) = self.write_piece(OCI_NEXT_PIECE, 0, 0, text.as_bytes())?;
@@ -761,6 +778,9 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
     The number of characters written to the database for the last piece.
 
+    # Example
+
+    See [`LOB<T>::write_first()`]
     */
     pub fn write_last(&self, text: &str) -> Result<usize> {
         let (_, char_count) = self.write_piece(OCI_LAST_PIECE, 0, 0, text.as_bytes())?;
@@ -819,10 +839,11 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
     # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
-    lob.open()?;
     let chunk_size = lob.chunk_size()?;
     let data = vec![42u8;chunk_size];
     let text = std::str::from_utf8(&data)?;
+
+    lob.open()?;
 
     let written = lob.append_first(text)?;
     assert_eq!(written, chunk_size);
@@ -832,6 +853,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
     }
     let written = lob.append_last(text)?;
     assert_eq!(written, chunk_size);
+
+    lob.close()?;
 
     assert_eq!(lob.len()?, chunk_size * 10);
     # Ok::<(),Box<dyn std::error::Error>>(())
@@ -857,6 +880,9 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
     The number of characters written to the database for this piece.
 
+    # Example
+
+    See [`LOB<T>::append_first()`]
     */
     pub fn append_next(&self, text: &str) -> Result<usize> {
         let (_, char_count) = self.append_piece(OCI_NEXT_PIECE, 0, text.as_bytes())?;
@@ -874,6 +900,9 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
     The number of charcaters written to the database for the last piece.
 
+    # Example
+
+    See [`LOB<T>::append_first()`]
     */
     pub fn append_last(&self, text: &str) -> Result<usize> {
         let (_, char_count) = self.append_piece(OCI_LAST_PIECE, 0, text.as_bytes())?;
@@ -915,6 +944,9 @@ impl<'a> LOB<'a,OCICLobLocator> {
     ```
     */
     pub fn read(&self, offset: usize, len: usize, buf: &mut String) -> Result<usize> {
+        if len == 0 {
+            return Ok(len);
+        }
         let buf = unsafe { buf.as_mut_vec() };
         let bytes_available = buf.capacity() - buf.len();
         let bytes_needed = len * 4;
@@ -955,18 +987,17 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No)?;
     let chunk_size = lob.chunk_size()?;
-    lob.open()?;
     let fragment = vec![42u8;chunk_size];
     let fragment_as_text = String::from_utf8(fragment)?;
-    let written = lob.append_first(&fragment_as_text)?;
-    let mut total_written = written;
+
+    lob.open()?;
+
+    let mut written = lob.append_first(&fragment_as_text)?;
     for _i in 0..10 {
-        let written = lob.append_next(&fragment_as_text)?;
-        total_written += written;
+        written += lob.append_next(&fragment_as_text)?;
     }
-    let written = lob.append_last(&fragment_as_text)?;
-    total_written += written;
-    assert_eq!(chunk_size * 12, total_written);
+    written += lob.append_last(&fragment_as_text)?;
+    assert_eq!(written, chunk_size * 12);
 
     let mut text = String::new();
     let piece_size = chunk_size;
@@ -981,6 +1012,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
     }
     assert_eq!(text_len, chunk_size * 5);
     assert_eq!(text_len, text.len());
+
+    lob.close()?;
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
@@ -1006,6 +1039,10 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # Returns
 
     `true` if `read_next` should be called again to continue reading the specified LOB fragment.
+
+    # Example
+
+    See [`LOB<T>::read_first()`]
     */
     pub fn read_next(&self, piece_size: usize, buf: &mut String, num_read: &mut usize) -> Result<bool> {
         let buf = unsafe { buf.as_mut_vec() };
@@ -1026,12 +1063,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     The temporary LOB is freed automatically either when a LOB goes out of scope or at the end of the session whichever comes first.
     */
     pub fn temp(session: &'a Session, cache: Cache) -> Result<Self> {
-        let locator = Descriptor::<OCIBLobLocator>::new(session)?;
-        oci::lob_create_temporary(
-            session.as_ref(), session.as_ref(), locator.as_ref(),
-            OCI_DEFAULT as u16, 0u8, OCI_TEMP_BLOB, cache as u8, OCI_DURATION_SESSION
-        )?;
-        Ok(Self::make_temp(locator, session))
+        Self::create_temp(session, 0u8, OCI_TEMP_BLOB, cache)
     }
 
     /**
@@ -1079,40 +1111,10 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
     # Example
     ```
-    use sibyl::{BLOB, RowID};
+    use sibyl::{BLOB, Cache};
 
     # let session = sibyl::test_env::get_session()?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ")?;
-    # stmt.execute(())?;
-    let stmt = session.prepare("
-        insert into test_lobs (data) values (empty_blob()) returning rowid into :row_id
-    ")?;
-    let mut rowid = RowID::new(&session)?;
-    stmt.execute(&mut rowid)?;
-
-    // must lock LOB's row before writing the LOB
-    let stmt = session.prepare("
-        SELECT data FROM test_lobs WHERE rowid = :row_id FOR UPDATE
-    ")?;
-    let row = stmt.query_single(&rowid)?.unwrap();
-    let mut lob : BLOB = row.get(0)?;
-
-    lob.open()?;
+    let lob = BLOB::temp(&session, Cache::No)?;
     let chunk_size = lob.chunk_size()?;
     let data = vec![42u8;chunk_size];
 
@@ -1163,7 +1165,6 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     # Returns
 
     The number of bytes written to the database for the last piece.
-
     */
     pub fn write_last(&self, data: &[u8]) -> Result<usize> {
         let (byte_count, _) = self.write_piece(OCI_LAST_PIECE, 0, 0, data)?;
@@ -1296,13 +1297,15 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     use sibyl::{BLOB, Cache, BFile};
 
     # let session = sibyl::test_env::get_session()?;
+    let lob = BLOB::temp(&session, Cache::No)?;
+
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "modem.jpg")?;
     assert!(file.file_exists()?);
     let file_len = file.len()?;
     file.open_readonly()?;
-    let lob = BLOB::temp(&session, Cache::No)?;
     lob.load_from_file(&file, 0, file_len, 0)?;
+    file.close_file()?;
     assert_eq!(lob.len()?, file_len);
 
     let mut data = Vec::new();
@@ -1314,6 +1317,9 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     ```
     */
     pub fn read(&self, offset: usize, len: usize, buf: &mut Vec<u8>) -> Result<usize> {
+        if len == 0 {
+            return Ok(0);
+        }
         let (_, byte_count, _) = self.read_piece(OCI_ONE_PIECE, len, offset, len, 0, 0, buf)?;
         Ok( byte_count )
     }
@@ -1342,24 +1348,27 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     use sibyl::{BLOB, Cache, BFile};
 
     # let (feature_release, _, _, _, _) = sibyl::client_version();
-    # if feature_release <= 19 {
+    # // if feature_release <= 19 {
     # let session = sibyl::test_env::get_session()?;
+    let lob = BLOB::temp(&session, Cache::No)?;
+    let chunk_size = lob.chunk_size()?;
+
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "monitor.jpg")?;
     assert!(file.file_exists()?);
     let file_len = file.len()?;
     file.open_readonly()?;
-    let lob = BLOB::temp(&session, Cache::No)?;
     lob.load_from_file(&file, 0, file_len, 0)?;
+    file.close_file()?;
     assert_eq!(lob.len()?, file_len);
 
-    let chunk_size = lob.chunk_size()?;
-    let mut data = Vec::new();
+
     let piece_size = chunk_size;
     let offset = 0;
     let length = file_len;
-    let mut bytes_read = 0usize;
 
+    let mut data = Vec::new();
+    let mut bytes_read = 0usize;
     let mut has_next = lob.read_first(piece_size, offset, length, &mut data, &mut bytes_read)?;
 
     let mut data_len = bytes_read;
@@ -1373,7 +1382,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
     assert_eq!(data_len, file_len);
     assert_eq!(data.len(), file_len);
-    # }
+    # // }
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
 
@@ -1491,18 +1500,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 
     # Example
 
-    ```
-    use sibyl::BFile;
-
-    # let session = sibyl::test_env::get_session()?;
-    let file = BFile::new(&session)?;
-    file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
-
-    file.open_file()?;
-
-    assert!(file.is_file_open()?);
-    # Ok::<(),Box<dyn std::error::Error>>(())
-    ```
+    See [`LOB<T>::is_file_open()`]
     */
     pub fn open_file(&self) -> Result<()> {
         oci::lob_file_open(self.as_ref(), self.as_ref(), self.as_ref(), OCI_FILE_READONLY)?;
@@ -1538,7 +1536,7 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     let num_read = file.read(0, file_len, &mut data)?;
 
     assert_eq!(num_read, file_len);
-    assert_eq!(data, [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21]);
+    assert_eq!(data, [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21, 0x00, 0x0a]);
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
@@ -1578,14 +1576,13 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     let file_len = file.len()?;
     file.open_readonly()?;
 
-    let mut data = Vec::new();
     let piece_size = 8192;
     let offset = 0;
     let length = file_len;
+
+    let mut data = Vec::new();
     let mut bytes_read = 0usize;
-
     let mut has_next = file.read_first(piece_size, offset, length, &mut data, &mut bytes_read)?;
-
     let mut data_len = bytes_read;
     assert_eq!(data.len(), data_len);
     while has_next {

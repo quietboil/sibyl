@@ -333,6 +333,8 @@ pub struct Columns {
     cols: Vec<Column>,
     env:  Ptr<OCIEnv>,
     err:  Ptr<OCIError>,
+    #[cfg(feature="nonblocking")]
+    lob_col_present: bool,
 }
 
 impl Drop for Columns {
@@ -351,6 +353,9 @@ impl Columns {
         let mut names = HashMap::with_capacity(num_columns);
         let mut cols  = Vec::with_capacity(num_columns);
 
+        #[cfg(feature="nonblocking")]
+        let mut lob_col_present = false;
+
         let utf8_factor = std::env::var("ORACLE_UTF8_CONV_FACTOR").ok().and_then(|val| val.parse::<u32>().ok()).unwrap_or(1);
         for i in 0..num_columns {
             let col_info = param::get((i + 1) as u32, OCI_HTYPE_STMT, stmt.as_ref(), err.as_ref())?;
@@ -359,6 +364,14 @@ impl Columns {
                 SQLT_LNG | SQLT_LBI => max_long_fetch_size,
                 _ => col_info.get_attr::<u16>(OCI_ATTR_DATA_SIZE, err.as_ref())? as u32 * utf8_factor,
             };
+
+            #[cfg(feature="nonblocking")]
+            if !lob_col_present {
+                lob_col_present = match data_type {
+                    SQLT_CLOB | SQLT_BLOB => true,
+                    _ => false,
+                };
+            }
             cols.push(Column::new(ColumnBuffer::new(data_type, data_size, &env, &err)?, col_info));
 
             // Now, that columns buffers are in the vector and thus their locations in memory are fixed,
@@ -378,7 +391,12 @@ impl Columns {
             let name : &str = cols[i].inf.get_attr(OCI_ATTR_NAME, err.as_ref())?;
             names.insert(name, i);
         }
-        Ok(Self { names, cols, env, err })
+
+        #[cfg(feature="nonblocking")]
+        let res = Self { names, cols, env, err, lob_col_present };
+        #[cfg(not(feature="nonblocking"))]
+        let res = Self { names, cols, env, err };
+        Ok(res)
     }
 
     pub(crate) fn col_index(&self, name: &str) -> Option<usize> {
@@ -402,5 +420,14 @@ impl Columns {
 
     pub(crate) fn column_param<'a>(&'a self, index: usize) -> Option<Ptr<OCIParam>> {
         self.col(index).map(|col| col.inf.get_ptr())
+    }
+
+    /// Returns `true` if the one or more columns in the projection is a LOB column.
+    /// 
+    /// This function is used only in the nonblocking mode, but it is easier to maintain
+    /// it unconditionally than to put it and data it references behind `cfg`.
+    #[cfg(feature="nonblocking")]
+    pub(crate) fn has_lob_col(&self) -> bool {
+        self.lob_col_present
     }
 }

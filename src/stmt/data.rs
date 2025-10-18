@@ -248,10 +248,8 @@ macro_rules! impl_from_lob {
                 assert_not_null(row, col)?;
                 match col.data() {
                     $var ( row_loc ) => {
-                        if lob::is_initialized(row_loc, row.as_ref(), row.as_ref())? {
-                            let mut loc : Descriptor<$t> = Descriptor::new(row)?;
-                            loc.swap(row_loc);
-                            Ok( LOB::<$t>::make(loc, row.session()) )
+                        if lob::is_initialized(&row_loc.get_ptr(), row.as_ref(), row.as_ref())? {
+                            Ok( LOB::<$t>::at_column(row_loc, row.session()) )
                         } else {
                             Err(Error::new("already consumed"))
                         }
@@ -320,70 +318,73 @@ mod tests {
 
     #[test]
     fn from_lob() -> Result<()> {
-        let session = crate::test_env::get_session()?;
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE test_large_object_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        bin     BLOB,
-                        text    CLOB,
-                        ntxt    NCLOB,
-                        fbin    BFILE
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ")?;
-        stmt.execute(())?;
+        let session = crate::test_env::get_session()?;        
 
-        let stmt = session.prepare("
-            INSERT INTO test_large_object_data (fbin) VALUES (BFileName('MEDIA_DIR',:NAME))
-            RETURNING id INTO :ID
-        ")?;
-        let mut hw_id = 0usize;
-        let count = stmt.execute(((":NAME", "hello_world.txt"), (":ID", &mut hw_id)))?;
-        assert_eq!(count, 1);
-        let mut hs_id = 0usize;
-        let count = stmt.execute(((":NAME", "hello_supplemental.txt"), (":ID", &mut hs_id)))?;
-        assert_eq!(count, 1);
-
-        let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id IN (:ID1, :ID2) ORDER BY id")?;
-        let rows = stmt.query(((":ID1", &hw_id), (":ID2", &hs_id)))?;
-
-        if let Some(row) = rows.next()? {
-            let lob : BFile = row.get(0)?;
+        let (feature_release, _, _, _, _) = client_version();
+        if feature_release <= 19 {
+            // 19 barfs a two-task error when one of the BFileName arguments is a constant and another is a parameter
+            // see below the BFileName call in the 23ai INSERT.
+            let stmt = session.prepare("
+                INSERT INTO test_large_object_data (fbin) 
+                     VALUES (BFileName(:DIR_NAME,:FILE_NAME))
+                  RETURNING fbin
+                       INTO :NEW_LOB
+            ")?;
+            let mut lob = BFile::new(&session)?;
+            let count = stmt.execute(((":DIR_NAME", "MEDIA_DIR"), (":FILE_NAME", "hello_world.txt"), (":NEW_LOB", &mut lob)))?;
+            assert_eq!(count, 1);
             assert!(lob.file_exists()?);
             let (dir, name) = lob.file_name()?;
-            assert_eq!(dir, "MEDIA_DIR");
-            assert_eq!(name, "hello_world.txt");
-            assert_eq!(lob.len()?, 28);
-        }
+            assert_eq!((dir.as_str(), name.as_str()), ("MEDIA_DIR","hello_world.txt"));
+            assert_eq!(lob.len()?, 30);
 
-        if let Some(row) = rows.next()? {
-            let lob : BFile = row.get(0)?;
+            let count = stmt.execute(((":DIR_NAME", "MEDIA_DIR"), (":FILE_NAME", "hello_supplemental.txt"), (":NEW_LOB", &mut lob)))?;
+            assert_eq!(count, 1);
             assert!(lob.file_exists()?);
             let (dir, name) = lob.file_name()?;
-            assert_eq!(dir, "MEDIA_DIR");
-            assert_eq!(name, "hello_supplemental.txt");
-            assert_eq!(lob.len()?, 18);
+            assert_eq!((dir.as_str(), name.as_str()), ("MEDIA_DIR","hello_supplemental.txt"));
+            assert_eq!(lob.len()?, 20);
+        } else {
+            // 23 (maybe also 21) throws "ORA-03120: two-task conversion routine" when `fbin` is RETURNING from INSERT
+            // If there is problem with bidning BFile to a parameter placeholder, I do not see it. Plus 19 has no issues with it.
+            // On the other hand, 23 client was connecting to the 19c database. Maybe it freaks out in this case.
+            let stmt = session.prepare("
+                INSERT INTO test_large_object_data (fbin)
+                     VALUES (BFileName('MEDIA_DIR',:FILE_NAME))
+                  RETURNING ROWID
+                       INTO :ROW_ID
+            ")?;
+            let mut rowid1 = RowID::new(&session)?;
+            let count = stmt.execute(("hello_world.txt", &mut rowid1, ()))?;
+            assert_eq!(count, 1);
 
-            match get_bfile(&row) {
-                Ok(_) => panic!("unexpected duplicate LOB locator"),
-                Err(Error::Interface(msg)) => assert_eq!(msg, "already consumed"),
-                Err(err) => panic!("unexpected error: {:?}", err)
-            }
+            let mut rowid2 = RowID::new(&session)?;
+            let count = stmt.execute(("hello_supplemental.txt", &mut rowid2, ()))?;
+            assert_eq!(count, 1);
+
+            // Not locking the row as BFiles are read-only
+            let stmt = session.prepare("
+                SELECT fbin FROM test_large_object_data WHERE ROWID = :ROW_ID
+            ")?;
+            let rows = stmt.query(&rowid1)?;
+            let row = rows.next()?.expect("first row");
+            let lob: BFile = row.get(0)?;
+
+            assert!(lob.file_exists()?);
+            let (dir, name) = lob.file_name()?;
+            assert_eq!((dir.as_str(), name.as_str()), ("MEDIA_DIR","hello_world.txt"));
+            assert_eq!(lob.len()?, 30);
+
+            let rows = stmt.query(&rowid2)?;
+            let row = rows.next()?.expect("first row");
+            let lob: BFile = row.get(0)?;
+
+            assert!(lob.file_exists()?);
+            let (dir, name) = lob.file_name()?;
+            assert_eq!((dir.as_str(), name.as_str()), ("MEDIA_DIR","hello_supplemental.txt"));
+            assert_eq!(lob.len()?, 20);
         }
-
         Ok(())
-    }
-
-    fn get_bfile<'a>(row: &'a Row<'a>) -> Result<BFile<'a>> {
-        let lob : BFile = row.get(0)?;
-        Ok(lob)
     }
 
     #[test]

@@ -6,12 +6,52 @@ and `write_first`, `write_next`, `write_last` methods - are not supported in non
 */
 
 use super::{LOB, InternalLob, LOB_IS_OPEN, LOB_FILE_IS_OPEN, LOB_IS_TEMP};
-use crate::{Result, BFile, oci::*, session::{Session, SvcCtx}, Error};
-use std::sync::{atomic::Ordering, Arc};
+use crate::{oci::*, session::Session, task, BFile, Error, Result};
+use std::sync::atomic::Ordering;
+
+fn check_oci_result(res: i32, err: Ptr<OCIError>) -> Result<()> {
+    if res < 0 {
+        Err(Error::oci(err.as_ref(), res))
+    } else {
+        Ok(())
+    }
+}
 
 impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
-    fn get_svc(&self) -> Arc<SvcCtx> {
-        self.inner.svc.clone()
+    fn get_ptr<O>(&self) -> Ptr<O>
+    where
+        O: OCIStruct,
+        LOB<'a,T>: AsRef<O>
+    {
+        let oci_ref : &O = self.as_ref();
+        Ptr::from(oci_ref)
+    }
+
+    fn get_env_ptr(&self) -> Ptr<OCIEnv> {
+        self.get_ptr()
+    }
+
+    fn get_err_ptr(&self) -> Ptr<OCIError> {
+        self.get_ptr()
+    }
+
+    fn get_svc_ptr(&self) -> Ptr<OCISvcCtx> {
+        self.get_ptr()
+    }
+
+    fn get_lob_ptr(&self) -> Ptr<OCILobLocator> {
+        self.get_ptr()
+    }
+
+    async fn execute_blocking<F,R>(&self, f: F) -> Result<R>
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        self.inner.svc.set_blocking_mode()?;
+        let res = task::execute_blocking(f).await;
+        self.inner.svc.set_nonblocking_mode()?;
+        res
     }
 
     /**
@@ -39,59 +79,21 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
     # Example
 
-    ```
-    use sibyl::*;
-
-    # sibyl::block_on(async {
-    # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ").await?;
-    # stmt.execute(()).await?;
-    let stmt = session.prepare("INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :ROW_ID").await?;
-    let mut rowid = RowID::new(&session)?;
-    stmt.execute(&mut rowid).await?;
-
-    let stmt = session.prepare("SELECT text FROM test_lobs WHERE rowid = :ROW_ID FOR UPDATE").await?;
-    let row = stmt.query_single(&rowid).await?.expect("just inserted row");
-    let mut lob : CLOB = row.get(0)?;
-
-    let text = [
-        "Love seeketh not itself to please,\n",
-        "Nor for itself hath any care,\n",
-        "But for another gives its ease,\n",
-        "And builds a Heaven in Hell's despair.\n",
-    ];
-
-    lob.open().await?;
-    lob.append(text[0]).await?;
-    lob.append(text[1]).await?;
-    lob.append(text[2]).await?;
-    lob.append(text[3]).await?;
-    lob.close().await?;
-
-    assert_eq!(lob.len().await?, text[0].len() + text[1].len() + text[2].len() + text[3].len());
-    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-    ```
+    See [`LOB<T>::open()`]
     */
     pub async fn close(&self) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobClose::new(self.get_svc(), lob).await?;
-        self.inner.status_flags.fetch_and(!LOB_IS_OPEN, Ordering::Relaxed);
-        Ok(())
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe { OCILobClose(svc.get(), err.get(), loc.get()) }
+        }).await?;
+        if res < 0 {
+            Err(Error::oci(err.as_ref(), res))
+        } else {
+            self.inner.status_flags.fetch_and(!LOB_IS_OPEN, Ordering::Relaxed);
+            Ok(())
+        }
     }
 
     /**
@@ -109,9 +111,19 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         included in the length count.
     */
     pub async fn len(&self) -> Result<usize> {
-        let lob: &OCILobLocator = self.as_ref();
-        let len = futures::LobGetLength::new(self.get_svc(), lob).await?;
-        Ok( len as usize )
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let len = self.execute_blocking(move || -> Result<u64> {
+            let mut len = 0;
+            let res = unsafe { OCILobGetLength2(svc.get(), err.get(), loc.get(), &mut len) };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok(len)
+            }
+        }).await??;
+        Ok(len as usize)
     }
 
     /**
@@ -130,8 +142,19 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     because the operating system file on the server side must be checked to see if it is open.
     */
     pub async fn is_open(&self) -> Result<bool> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobIsOpen::new(self.get_svc(), lob).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let is_open = self.execute_blocking(move || -> Result<bool> {
+            let mut flag = Aligned::new(0u8);
+            let res = unsafe { OCILobIsOpen(svc.get(), err.get(), loc.get(), flag.as_mut_ptr()) };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok(<u8>::from(flag) != 0)
+            }
+        }).await??;
+        Ok(is_open)
     }
 
     /**
@@ -148,10 +171,18 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
     */
     pub async fn open_readonly(&self) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobOpen::new(self.get_svc(), lob, OCI_LOB_READONLY).await?;
-        self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
-        Ok(())
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe { OCILobOpen(svc.get(), err.get(), loc.get(), OCI_LOB_READONLY) }
+        }).await?;
+        if res < 0 {
+            Err(Error::oci(err.as_ref(), res))
+        } else {
+            self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
+            Ok(())
+        }
     }
 
     /**
@@ -166,27 +197,59 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
         if piece_size > space_available {
             buf.reserve(piece_size - space_available);
         }
-        let lob: &OCILobLocator = self.as_ref();
-        let (res, num_bytes, num_chars) = futures::LobRead::new(self.get_svc(), lob, piece, piece_size, offset, byte_len, char_len, cs_form, buf).await?;
+        let data_ptr = Ptr::new(unsafe { buf.as_mut_ptr().add(buf.len()) });
+
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+
+        let (res, num_bytes, num_chars) = self.execute_blocking(move || -> Result<(i32, u64, u64)> {
+            let mut byte_cnt = byte_len as u64;
+            let mut char_cnt = char_len as u64;
+            let res = lob_read2(
+                svc.as_ref(), err.as_ref(), loc.as_ref(),
+                &mut byte_cnt, &mut char_cnt, (offset + 1) as _,
+                data_ptr.get_mut(), piece_size as _, piece,
+                AL32UTF8, cs_form
+            );
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok((res, byte_cnt, char_cnt))
+            }
+        }).await??;
+
         unsafe {
-            buf.set_len(buf.len() + num_bytes);
+            buf.set_len(buf.len() + num_bytes as usize);
         }
-        Ok( (res == OCI_NEED_DATA, num_bytes, num_chars) )
+        Ok( (res == OCI_NEED_DATA, num_bytes as usize, num_chars as usize) )
     }
 }
 
 impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalLob {
-    pub(crate) fn make(locator: Descriptor<T>, session: &'a Session) -> Self {
-        let this = Self::make_new(locator, session);
-        let _ = this.is_temp();
-        this
-    }
+    /**
+        Tests if a locator points to a temporary LOB.
 
+        # Returns
+
+        * `true` - if this LOB locator points to a temporary LOB
+        * `flase` - if it does not.
+     */
     pub async fn is_temp(&self) -> Result<bool> {
-        let stmt = self.session.prepare("BEGIN :RES := DBMS_LOB.ISTEMPORARY(:LOC); END;").await?;
-        let mut flag = 0;
-        stmt.execute((&mut flag, self, ())).await?;
-        let is_temp = flag != 0;
+        let env = self.get_env_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+
+        let is_temp = self.execute_blocking(move || -> Result<bool> {
+            let mut flag = Aligned::new(0u8);
+            let res = unsafe { OCILobIsTemporary(env.as_ref(), err.as_ref(), loc.as_ref(), flag.as_mut_ptr()) };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok(<u8>::from(flag) != 0)
+            }
+        }).await??;
+
         if is_temp {
             self.inner.status_flags.fetch_or(LOB_IS_TEMP, Ordering::Release);
         } else {
@@ -225,7 +288,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
 
     let lob2 = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
     lob2.append(text2).await?;
-    // Cannot use `len` shortcut with `text2` because of the `RIGHT SINGLE QUOTATION MARK` in it
+    // Cannot use `len` shortcut with `text2` because of the `RIGHT SINGLE QUOTATION MARK`
+    // in it after "bells"
     assert_eq!(lob2.len().await?, text2.chars().count());
 
     lob1.append_lob(&lob2).await?;
@@ -235,9 +299,14 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     */
     pub async fn append_lob(&self, other_lob: &Self) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        let src: &OCILobLocator = other_lob.as_ref();
-        futures::LobAppend::new(self.get_svc(), lob, src).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let dst = self.get_lob_ptr();
+        let src = Ptr::<OCILobLocator>::from(other_lob.as_ref());
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe { OCILobAppend(svc.get(), err.get(), dst.get(), src.get()) }
+        }).await?;
+        check_oci_result(res, err)
     }
 
     /**
@@ -346,8 +415,19 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     */
     pub async fn copy(&self, src: &Self, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobCopy::new(self.get_svc(), lob, offset, src.as_ref(), src_offset, amount).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let dst = self.get_lob_ptr();
+        let src = Ptr::<OCILobLocator>::from(src.as_ref());
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe {
+                OCILobCopy2(
+                    svc.get(), err.get(), dst.get(), src.get(),
+                    amount as _, offset as _, src_offset as _
+                )
+            }
+        }).await?;
+        check_oci_result(res, err)
     }
 
     /**
@@ -387,89 +467,80 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
 
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ").await?;
-    # stmt.execute(()).await?;
-    let stmt = session.prepare("INSERT INTO test_lobs (text) VALUES (Empty_Clob()) RETURNING rowid INTO :ROW_ID").await?;
-    let mut rowid = RowID::new(&session)?;
-    stmt.execute(&mut rowid).await?;
+    let lob = CLOB::temp(&session, CharSetForm::Implicit, Cache::No).await?;
 
-    let stmt = session.prepare("SELECT text FROM test_lobs WHERE rowid = :ROW_ID FOR UPDATE").await?;
-    let row = stmt.query_single(&rowid).await?.expect("just inserted row");
-    let mut lob : CLOB = row.get(0)?;
+    //-------------------
 
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
     let file_len = file.len().await?;
 
-    lob.open().await?;
     file.open_file().await?;
     lob.load_from_file(&file, 0, file_len, 0).await?;
     file.close_file().await?;
 
     let lob_len = lob.len().await?;
-    assert_eq!(lob_len, 13);
+    assert_eq!(lob_len, 14);
 
     let mut text = String::new();
     lob.read(0, lob_len, &mut text).await?;
 
-    assert_eq!(text, "Hello, World!");
+    assert_eq!(text, "Hello, World!\n");
 
-    file.set_file_name("MEDIA_DIR", "hello_world_cyrillic.txt")?;
+    //-------------------
+    
+    file.set_file_name("MEDIA_DIR", "konnichiwa_sekai.txt")?;
     let file_len = file.len().await?;
 
     file.open_file().await?;
-    lob.load_from_file(&file, 0, file_len, 0).await?;
+    lob.load_from_file(&file, 0, file_len, lob_len).await?;
     file.close().await?;
 
     let lob_len = lob.len().await?;
-    assert_eq!(lob_len, 16);
+    assert_eq!(lob_len, 14 + 9);
 
     text.clear();
     lob.read(0, lob_len, &mut text).await?;
 
-    assert_eq!(text, "Здравствуй, Мир!");
+    assert_eq!(text, "Hello, World!\nこんにちは世界！\n");
+
+    //-------------------
 
     file.set_file_name("MEDIA_DIR", "hello_supplemental.txt")?;
     let file_len = file.len().await?;
 
-    lob.trim(0).await?;
     file.open_file().await?;
-    lob.load_from_file(&file, 0, file_len, 0).await?;
+    lob.load_from_file(&file, 0, file_len, lob_len).await?;
     file.close().await?;
 
     let lob_len = lob.len().await?;
-    // Note that Oracle encoded 4 symbols (see below) into 8 characters
-    assert_eq!(lob_len, 8);
+    // Note that Oracle encoded 4 symbols (see below) into 8 "characters"
+    assert_eq!(lob_len, 14 + 9 + 9);
 
     text.clear();
-    // The reading stops at the end of LOB value if we request more
+    // The reading stops at the end of the LOB value if we request more
     // characters than the LOB contains
     let num_read = lob.read(0, 100, &mut text).await?;
-    assert_eq!(num_read, 8);
+    assert_eq!(num_read, 14 + 9 + 9);
 
-    assert_eq!(text, "🚲🛠📬🎓");
+    assert_eq!(text, "Hello, World!\nこんにちは世界！\n🚲🛠📬🎓\n");
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
     pub async fn load_from_file(&self, src: &'a BFile<'a>, src_offset: usize, amount: usize, offset: usize) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        let src: &OCILobLocator = src.as_ref();
-        futures::LobLoadFromFile::new(self.get_svc(), lob, offset, src, src_offset, amount).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let dst = self.get_lob_ptr();
+        let src = Ptr::<OCILobLocator>::from(src.as_ref());
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe {
+                OCILobLoadFromFile2(
+                    svc.get(), err.get(), dst.get(), src.get(),
+                    amount as _, (offset + 1) as _, (src_offset + 1) as _
+                )
+            }
+        }).await?;
+        check_oci_result(res, err)
     }
 
     /**
@@ -484,12 +555,25 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
         to the start of the LOB fragment to erase
     - `amount` - The number of characters or bytes to erase.
 
-    Returns the actual number of characters or bytes erased.
+    # Returns
+
+    The actual number of characters or bytes erased.
     */
     pub async fn erase(&self, offset: usize, amount: usize) -> Result<usize> {
-        let lob: &OCILobLocator = self.as_ref();
-        let count = futures::LobErase::new(self.get_svc(), lob, offset, amount).await?;
-        Ok( count as usize )
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        self.execute_blocking(move || -> Result<usize> {
+            let mut len = amount as u64;
+            let res = unsafe {
+                OCILobErase2(svc.get(), err.get(), loc.get(), &mut len, offset as _)
+            };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok(len as usize)
+            }
+        }).await?
     }
 
     /**
@@ -516,11 +600,21 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     pub async fn chunk_size(&self) -> Result<usize> {
         let mut size = self.chunk_size.load(Ordering::Relaxed);
         if size == 0 {
-            let lob: &OCILobLocator = self.as_ref();
-            size = futures::LobGetChunkSize::new(self.get_svc(), lob).await?;
+            let svc = self.get_svc_ptr();
+            let err = self.get_err_ptr();
+            let loc = self.get_lob_ptr();
+            size = self.execute_blocking(move || -> Result<u32> {
+                let mut chunk_size = size;
+                let res = unsafe { OCILobGetChunkSize(svc.get(), err.get(), loc.get(), &mut chunk_size) };
+                if res < 0 {
+                    Err(Error::oci(err.as_ref(), res))
+                } else {
+                    Ok(chunk_size)
+                }
+            }).await??;
             self.chunk_size.store(size, Ordering::Relaxed);
         }
-        Ok( size as usize )
+        Ok(size as usize)
     }
 
     /**
@@ -529,8 +623,26 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     This function only works on SecureFiles.
     */
     pub async fn content_type(&self) -> Result<String> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobGetContentType::new(self.get_svc(), lob).await
+        let env = self.get_env_ptr();
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        self.execute_blocking(move || -> Result<String> {
+            let mut buf = Vec::with_capacity(OCI_LOB_CONTENTTYPE_MAXSIZE);
+            let mut len = 0u32;
+            let res = unsafe {
+                OCILobGetContentType(env.get(), svc.get(), err.get(), loc.get(), buf.as_mut_ptr(), &mut len, 0)
+            };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                let txt = unsafe {
+                    buf.set_len(len as _);
+                    String::from_utf8_unchecked(buf.as_slice().to_vec())
+                };
+                Ok(txt)
+            }
+        }).await?
     }
 
     /**
@@ -538,9 +650,22 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
 
     This function only works on SecureFiles.
     */
-    pub async    fn set_content_type(&self, content_type: &str) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobSetContentType::new(self.get_svc(), lob, content_type).await
+    pub async fn set_content_type(&self, content_type: &str) -> Result<()> {
+        let env = self.get_env_ptr();
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let ctx_ptr = Ptr::new(content_type.as_ptr());
+        let ctx_len = content_type.len() as u32;
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe {
+                OCILobSetContentType(
+                    env.get(), svc.get(), err.get(), loc.get(),
+                    ctx_ptr.get(), ctx_len, 0
+                )
+            }
+        }).await?;
+        check_oci_result(res, err)
     }
 
     /**
@@ -575,12 +700,78 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
 
     - It is an error to open the same LOB twice.
 
+    # Example
+
+    ```
+    use sibyl::CLOB;
+    /*
+        CREATE TABLE test_lobs (
+            id       INTEGER GENERATED ALWAYS AS IDENTITY,
+            text     CLOB,
+            data     BLOB,
+            ext_file BFILE
+        );
+     */
+    # sibyl::block_on(async {
+    # let session = sibyl::test_env::get_session().await?;
+    let stmt = session.prepare("
+           INSERT INTO test_lobs (text)
+           VALUES (Empty_Clob())
+        RETURNING text
+             INTO :NEW_TEXT
+    ").await?;
+    let mut lob = CLOB::new(&session)?;
+    stmt.execute(&mut lob).await?;
+
+    let text = [
+        "Love seeketh not itself to please,\n",
+        "Nor for itself hath any care,\n",
+        "But for another gives its ease,\n",
+        "And builds a Heaven in Hell's despair.\n",
+    ];
+
+    lob.open().await?;
+    /*
+     * It is not necessary to open a LOB to perform operations on it.
+     * When using function-based indexes, extensible indexes or context,
+     * and making multiple calls to update or write to the LOB, you should
+     * first call `open`, then update the LOB as many times as you want,
+     * and finally call `close`. This sequence of operations ensures that
+     * the indexes are only updated once at the end of all the write
+     * operations instead of once for each write operation.
+     *
+     * If you do not wrap your LOB operations inside the open or close API,
+     * then the functional and domain indexes are updated each time you write
+     * to the LOB. This can adversely affect performance.
+     *
+     * If you have functional or domain indexes, Oracle recommends that you
+     * enclose write operations to the LOB within the open or close statements.
+     */
+    lob.append(text[0]).await?;
+    lob.append(text[1]).await?;
+    lob.append(text[2]).await?;
+    lob.append(text[3]).await?;
+    lob.close().await?;
+
+    session.commit().await?;
+
+    assert_eq!(lob.len().await?, text[0].len() + text[1].len() + text[2].len() + text[3].len());
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
     */
     pub async fn open(&self) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobOpen::new(self.get_svc(), lob, OCI_LOB_READWRITE).await?;
-        self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
-        Ok(())
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe { OCILobOpen(svc.get(), err.get(), loc.get(), OCI_LOB_READWRITE) }
+        }).await?;
+        if res < 0 {
+            Err(Error::oci(err.as_ref(), res))
+        } else {
+            self.inner.status_flags.fetch_or(LOB_IS_OPEN, Ordering::Relaxed);
+            Ok(())
+        }
     }
 
     /**
@@ -594,18 +785,96 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     of bytes in the LOB.
     */
     pub async fn trim(&self, new_len: usize) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobTrim::new(self.get_svc(), lob, new_len).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe { OCILobTrim2(svc.get(), err.get(), loc.get(), new_len as _) }
+        }).await?;
+        check_oci_result(res, err)
     }
 
     async fn write_piece(&self, piece: u8, offset: usize, cs_form: u8, data: &[u8]) -> Result<(usize,usize)> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobWrite::new(self.get_svc(), lob, piece, cs_form, offset, data).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+
+        let data_ptr = Ptr::new(data.as_ptr());
+        let data_len = data.len() as u64;
+
+        self.execute_blocking(move || -> Result<(usize, usize)> {
+            let mut num_bytes = if piece == OCI_ONE_PIECE { data_len } else { 0u64 };
+            let mut num_chars = 0u64;
+            let res = unsafe {
+                OCILobWrite2(
+                    svc.get(), err.get(), loc.get(),
+                    &mut num_bytes, &mut num_chars, (offset + 1) as _,
+                    data_ptr.get(), data_len, piece,
+                    std::ptr::null(), std::ptr::null(),
+                    AL32UTF8, cs_form
+                )
+            };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok((num_bytes as usize, num_chars as usize))
+            }
+        }).await?
     }
 
     async fn append_piece(&self, piece: u8, cs_form: u8, data: &[u8]) -> Result<(usize,usize)> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobWriteAppend::new(self.get_svc(), lob, piece, cs_form, data).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+
+        let data_ptr = Ptr::new(data.as_ptr());
+        let data_len = data.len() as u64;
+
+        self.execute_blocking(move || -> Result<(usize, usize)> {
+            let mut num_bytes = if piece == OCI_ONE_PIECE { data_len } else { 0u64 };
+            let mut num_chars = 0u64;
+            let res = unsafe {
+                OCILobWriteAppend2(
+                    svc.get(), err.get(), loc.get(),
+                    &mut num_bytes, &mut num_chars,
+                    data_ptr.get(), data_len, piece,
+                    std::ptr::null(), std::ptr::null(),
+                    AL32UTF8, cs_form
+                )
+            };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok((num_bytes as usize, num_chars as usize))
+            }
+        }).await?
+    }
+
+    async fn create_temp(session: &'a Session<'a>, csform: u8, lob_type: u8, cache: Cache) -> Result<LOB<'a,T>> {
+        let lob_descriptor = Descriptor::new(session)?;
+
+        let svc: Ptr<OCISvcCtx> = Ptr::from(session.as_ref());
+        let err: Ptr<OCIError> = Ptr::from(session.as_ref());
+        let lob: &OCILobLocator = &lob_descriptor;
+        let lob = Ptr::from(lob);
+
+        let svc_ctx = session.get_svc();
+        svc_ctx.set_blocking_mode()?;
+        let res = task::execute_blocking(move || -> i32 {
+            unsafe {
+                OCILobCreateTemporary(
+                    svc.get(), err.get(), lob.get(),
+                    OCI_DEFAULT as _, csform, lob_type, cache as _, OCI_DURATION_SESSION
+                )
+            }
+        }).await;
+        svc_ctx.set_nonblocking_mode()?;
+        let res = res?;
+        if res < 0 {
+            Err(Error::oci(err.as_ref(), res))
+        } else {
+            Ok(Self::make_temp(lob_descriptor, session))
+        }
     }
 }
 
@@ -621,9 +890,7 @@ impl<'a> LOB<'a,OCICLobLocator> {
     The temporary LOB is freed automatically either when a LOB goes out of scope or at the end of the session whichever comes first.
     */
     pub async fn temp(session: &'a Session<'a>, csform: CharSetForm, cache: Cache) -> Result<LOB<'a,OCICLobLocator>> {
-        let locator = Descriptor::new(session)?;
-        futures::LobCreateTemporary::new(session.get_svc(), &locator, OCI_TEMP_CLOB, csform as u8, cache as u8).await?;
-        Ok(Self::make_temp(locator, session))
+        Self::create_temp(session, csform as _, OCI_TEMP_CLOB, cache).await
     }
 
     /**
@@ -631,8 +898,8 @@ impl<'a> LOB<'a,OCICLobLocator> {
 
     # Parameters
 
-    * `offset` - the absolute offset (in number of characters) from the beginning of the LOB,
-    * `text` - slice of text to be written into this LOB.
+    - `offset` - the absolute offset (in number of characters) from the beginning of the LOB,
+    - `text` - slice of text to be written into this LOB.
 
     # Returns
 
@@ -737,40 +1004,19 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
-    pub async fn read(&self, mut offset: usize, len: usize, out: &mut String) -> Result<usize> {
-        offset += 1;
-
-        let space_available = out.capacity() - out.len();
-        if len > space_available {
-            out.reserve(len - space_available);
+    pub async fn read(&self, offset: usize, len: usize, buf: &mut String) -> Result<usize> {
+        if len == 0 {
+            return Ok(len);
         }
-
-        let stmt = self.session.prepare("BEGIN DBMS_LOB.READ(:LOC, :AMT, :POS, :DATA); END;").await?;
-
-        let mut buf = String::with_capacity(32768);
-        let mut remainder = len;
-        while remainder > 0 {
-            let mut amount = std::cmp::min(remainder, 32767);
-            let res = stmt.execute((self, &mut amount, offset, &mut buf)).await;
-            match res {
-                Ok(num_rows) if num_rows == 0 => {
-                    break;
-                }
-                Ok(_) => {
-                    offset += amount;
-                    remainder -= amount;
-                    out.push_str(&buf);
-                    buf.clear();
-                },
-                Err(Error::Oracle(NO_DATA_FOUND,_)) => {
-                    break;
-                },
-                Err(err) => {
-                    return Err(err);
-                }
-            }
+        let buf = unsafe { buf.as_mut_vec() };
+        let bytes_available = buf.capacity() - buf.len();
+        let bytes_needed = len * 4;
+        if bytes_needed > bytes_available {
+            buf.reserve(bytes_needed - bytes_available);
         }
-        Ok( offset - 1 )
+        let cs_form = self.charset_form()? as u8;
+        let (_, _, char_count) = self.read_piece(OCI_ONE_PIECE, bytes_needed, offset, 0, len, cs_form, buf).await?;
+        Ok(char_count)
     }
 }
 
@@ -785,9 +1031,7 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     The temporary LOB is freed automatically either when a LOB goes out of scope or at the end of the session whichever comes first.
     */
     pub async fn temp(session: &'a Session<'a>, cache: Cache) -> Result<LOB<'a,OCIBLobLocator>> {
-        let locator = Descriptor::new(session)?;
-       futures::LobCreateTemporary::new(session.get_svc(), &locator, OCI_TEMP_BLOB, 0u8, cache as u8).await?;
-        Ok(Self::make_temp(locator, session))
+        Self::create_temp(session, 0u8, OCI_TEMP_BLOB, cache).await
     }
 
     /**
@@ -873,13 +1117,15 @@ impl<'a> LOB<'a,OCIBLobLocator> {
 
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
+    let lob = BLOB::temp(&session, Cache::No).await?;
+
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "modem.jpg")?;
     assert!(file.file_exists().await?);
     let file_len = file.len().await?;
     file.open_readonly().await?;
-    let lob = BLOB::temp(&session, Cache::No).await?;
     lob.load_from_file(&file, 0, file_len, 0).await?;
+    file.close_file().await?;
     assert_eq!(lob.len().await?, file_len);
 
     let mut data = Vec::new();
@@ -890,53 +1136,16 @@ impl<'a> LOB<'a,OCIBLobLocator> {
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
-    pub async fn read(&self, mut offset: usize, len: usize, out: &mut Vec<u8>) -> Result<usize> {
-        offset += 1;
-
-        let space_available = out.capacity() - out.len();
-        if len > space_available {
-            out.reserve(len - space_available);
+    pub async fn read(&self, offset: usize, len: usize, buf: &mut Vec<u8>) -> Result<usize> {
+        if len == 0 {
+            return Ok(0);
         }
-        let buf_ptr = out.as_mut_ptr();
-
-        let stmt = self.session.prepare("BEGIN DBMS_LOB.READ(:LOC, :AMT, :POS, :DATA); END;").await?;
-
-        let mut remainder = len;
-        while remainder > 0 {
-            let piece_ptr = unsafe { buf_ptr.add(out.len()) };
-            let mut piece_len = std::cmp::min(remainder, 32767);
-            let mut piece = unsafe { std::slice::from_raw_parts_mut(piece_ptr, piece_len) };
-
-            let res = stmt.execute((self, &mut piece_len, offset, &mut piece)).await;
-            match res {
-                Ok(num_rows) if num_rows == 0 => {
-                    break;
-                }
-                Ok(_) => {
-                    offset += piece_len;
-                    remainder -= piece_len;
-                    unsafe {
-                        out.set_len(out.len() + piece_len);
-                    }
-                },
-                Err(Error::Oracle(NO_DATA_FOUND,_)) => {
-                    break;
-                },
-                Err(err) => {
-                    return Err(err);
-                }
-            }
-        }
-        let num_read = offset - 1;
-        Ok( num_read )
+        let (_, byte_count, _) = self.read_piece(OCI_ONE_PIECE, len, offset, len, 0, 0, buf).await?;
+        Ok( byte_count )
     }
 }
 
 impl<'a> LOB<'a,OCIBFileLocator> {
-    pub(crate) fn make(locator: Descriptor<OCIBFileLocator>, session: &'a Session) -> Self {
-        Self::make_new(locator, session)
-    }
-
     /**
     Closes a previously opened BFILE.
 
@@ -947,10 +1156,18 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     have no effect.
     */
     pub async fn close_file(&self) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobFileClose::new(self.get_svc(), lob).await?;
-        self.inner.status_flags.fetch_and(!LOB_FILE_IS_OPEN, Ordering::Relaxed);
-        Ok(())
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe { OCILobFileClose(svc.get(), err.get(), loc.get()) }
+        }).await?;
+        if res < 0 {
+            Err(Error::oci(err.as_ref(), res))
+        } else {
+            self.inner.status_flags.fetch_and(!LOB_FILE_IS_OPEN, Ordering::Relaxed);
+            Ok(())
+        }
     }
 
     /**
@@ -971,8 +1188,18 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     */
     pub async fn file_exists(&self) -> Result<bool> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobFileExists::new(self.get_svc(), lob).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        self.execute_blocking(move || -> Result<bool> {
+            let mut flag = Aligned::new(0u8);
+            let res = unsafe { OCILobFileExists(svc.get(), err.get(), loc.get(), flag.as_mut_ptr()) };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok(<u8>::from(flag) != 0)
+            }
+        }).await?
     }
 
     /**
@@ -1000,8 +1227,22 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     ```
     */
     pub async fn is_file_open(&self) -> Result<bool> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobFileIsOpen::new(self.get_svc(), lob).await
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let res = self.execute_blocking(move || -> Result<bool> {
+            let mut flag = Aligned::new(0u8);
+            let res = unsafe { OCILobFileIsOpen(svc.get(), err.get(), loc.get(), flag.as_mut_ptr()) };
+            if res < 0 {
+                Err(Error::oci(err.as_ref(), res))
+            } else {
+                Ok(<u8>::from(flag) != 0)
+            }
+        }).await?;
+        if res.is_ok() {
+            self.inner.status_flags.fetch_or(LOB_FILE_IS_OPEN, Ordering::Relaxed);
+        }
+        res
     }
 
     /**
@@ -1012,27 +1253,27 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     BFILE locator. Subsequent calls to this function using the same BFILE locator
     have no effect.
 
+    # Returns
+
+    True if the BFILE was opened using this particular locator; returns false if it was not.
+
     # Example
 
-    ```
-    use sibyl::BFile;
-
-    # sibyl::block_on(async {
-    # let session = sibyl::test_env::get_session().await?;
-    let file = BFile::new(&session)?;
-    file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
-
-    file.open_file().await?;
-
-    assert!(file.is_file_open().await?);
-    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
-    ```
+    See [`LOB<T>::is_file_open()`]
     */
     pub async fn open_file(&self) -> Result<()> {
-        let lob: &OCILobLocator = self.as_ref();
-        futures::LobFileOpen::new(self.get_svc(), lob).await?;
-        self.inner.status_flags.fetch_or(LOB_FILE_IS_OPEN, Ordering::Relaxed);
-        Ok(())
+        let svc = self.get_svc_ptr();
+        let err = self.get_err_ptr();
+        let loc = self.get_lob_ptr();
+        let res = self.execute_blocking(move || -> i32 {
+            unsafe { OCILobFileOpen(svc.get(), err.get(), loc.get(), OCI_FILE_READONLY) }
+        }).await?;
+        if res < 0 {
+            Err(Error::oci(err.as_ref(), res))
+        } else {
+            self.inner.status_flags.fetch_or(LOB_FILE_IS_OPEN, Ordering::Relaxed);
+            Ok(())
+        }
     }
 
     /**
@@ -1064,11 +1305,14 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     let num_read = file.read(0, file_len, &mut data).await?;
 
     assert_eq!(num_read, file_len);
-    assert_eq!(data, [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21]);
+    assert_eq!(data, [0xfeu8, 0xff, 0x00, 0x48, 0x00, 0x65, 0x00, 0x6c, 0x00, 0x6c, 0x00, 0x6f, 0x00, 0x2c, 0x00, 0x20, 0x00, 0x57, 0x00, 0x6f, 0x00, 0x72, 0x00, 0x6c, 0x00, 0x64, 0x00, 0x21, 0x00, 0x0a]);
     # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
     ```
     */
     pub async fn read(&self, offset: usize, len: usize, buf: &mut Vec<u8>) -> Result<usize> {
+        if len == 0 {
+            return Ok(0);
+        }
         let (_, byte_count, _) = self.read_piece(OCI_ONE_PIECE, len, offset, len, 0, 0, buf).await?;
         Ok(byte_count)
     }

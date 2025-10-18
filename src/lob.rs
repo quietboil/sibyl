@@ -10,19 +10,15 @@ mod nonblocking;
 
 use std::sync::{Arc, atomic::{AtomicU32, Ordering}};
 use crate::{Result, Session, oci::{self, *}, stmt::{ToSql, Params}, session::SvcCtx};
-#[cfg(feature="nonblocking")]
-use crate::task;
 
 /// A marker trait for internal LOB descriptors - CLOB, NCLOB and BLOB.
 pub trait InternalLob {}
 impl InternalLob for OCICLobLocator {}
 impl InternalLob for OCIBLobLocator {}
 
-pub(crate) fn is_initialized<T>(locator: &Descriptor<T>, env: &OCIEnv, err: &OCIError) -> Result<bool>
-where T: DescriptorType<OCIType=OCILobLocator>
-{
+pub(crate) fn is_initialized(locator: &Ptr<OCILobLocator>, env: &OCIEnv, err: &OCIError) -> Result<bool> {
     let mut flag = oci::Aligned::new(0u8);
-    oci::lob_locator_is_init(env, err, locator, flag.as_mut_ptr())?;
+    oci::lob_locator_is_init(env, err, locator.as_ref(), flag.as_mut_ptr())?;
     Ok( <u8>::from(flag) != 0 )
 }
 
@@ -30,21 +26,24 @@ pub(crate) const LOB_IS_TEMP       : u32 = 1;
 pub(crate) const LOB_IS_OPEN       : u32 = 2;
 pub(crate) const LOB_FILE_IS_OPEN  : u32 = 4;
 
-struct LobInner<T> where T: DescriptorType<OCIType=OCILobLocator>  + 'static {
-    locator: Descriptor<T>,
+struct LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 'static {
+    locator: Ptr<T::OCIType>,
+    _descriptor: Option<Descriptor<T>>,
     svc: Arc<SvcCtx>,
     status_flags: AtomicU32,
 }
 
 #[cfg(not(docsrs))]
 impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 'static {
-    #[cfg(feature="blocking")]
     fn drop(&mut self) {
         let svc: &OCISvcCtx     = self.as_ref();
         let err: &OCIError      = self.as_ref();
         let loc: &OCILobLocator = self.as_ref();
         let status_flags = self.status_flags.load(Ordering::Acquire);
 
+        #[cfg(feature="nonblocking")]
+        let _ = self.svc.set_blocking_mode();
+        
         if status_flags & LOB_IS_OPEN != 0 {
             unsafe {
                 OCILobClose(svc, err, loc);
@@ -59,21 +58,17 @@ impl<T> Drop for LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> + 's
                 OCILobFreeTemporary(svc, err, loc);
             }
         } else {
+            let env: &OCIEnv = self.as_ref();
             let mut flag = oci::Aligned::new(0u8);
-            if oci::lob_is_temporary(svc, err, loc, flag.as_mut_ptr()).is_ok() && <u8>::from(flag) != 0 {
+            if oci::lob_is_temporary(env, err, loc, flag.as_mut_ptr()).is_ok() && <u8>::from(flag) != 0 {
                 unsafe {
                     OCILobFreeTemporary(svc, err, loc);
                 }
             }
         }
-    }
 
-    #[cfg(feature="nonblocking")]
-    fn drop(&mut self) {
-        let ctx = self.svc.clone();
-        let loc = Descriptor::take(&mut self.locator);
-        let flags = self.status_flags.load(Ordering::Acquire);
-        task::spawn_detached(futures::LobDrop::new(ctx, loc, flags));
+        #[cfg(feature="nonblocking")]
+        let _ = self.svc.set_nonblocking_mode();
     }
 }
 
@@ -102,12 +97,17 @@ impl<T> AsRef<OCISvcCtx> for LobInner<T> where T: DescriptorType<OCIType=OCILobL
 }
 
 impl<T> LobInner<T> where T: DescriptorType<OCIType=OCILobLocator> {
-    fn new(locator: Descriptor<T>, svc: Arc<SvcCtx>) -> Self {
-        Self { locator, svc, status_flags: AtomicU32::new(0) }
+    fn new(descriptor: Descriptor<T>, svc: Arc<SvcCtx>) -> Self {
+        Self { locator: descriptor.get_ptr(), _descriptor: Some(descriptor), svc, status_flags: AtomicU32::new(0) }
     }
 
-    fn new_temp(locator: Descriptor<T>, svc: Arc<SvcCtx>) -> Self {
-        Self { locator, svc, status_flags: AtomicU32::new(LOB_IS_TEMP) }
+    fn new_temp(descriptor: Descriptor<T>, svc: Arc<SvcCtx>) -> Self {
+        Self { locator: descriptor.get_ptr(), _descriptor: Some(descriptor), svc, status_flags: AtomicU32::new(LOB_IS_TEMP) }
+    }
+
+    fn at_column(descriptor: &Descriptor<T>, svc: Arc<SvcCtx>) -> Self {
+        // Descriptor stays at the column buffer
+        Self { locator: descriptor.get_ptr(), _descriptor: None, svc, status_flags: AtomicU32::new(0) }
     }
 }
 
@@ -119,13 +119,13 @@ pub struct LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + 'static
     session: &'a Session<'a>,
 }
 
-impl<'a,T> AsRef<Descriptor<T>> for LOB<'a,T>
-    where T: DescriptorType<OCIType=OCILobLocator>
-{
-    fn as_ref(&self) -> &Descriptor<T> {
-        &self.inner.locator
-    }
-}
+// impl<'a,T> AsRef<Descriptor<T>> for LOB<'a,T>
+//     where T: DescriptorType<OCIType=OCILobLocator>
+// {
+//     fn as_ref(&self) -> &Descriptor<T> {
+//         &self.inner.locator
+//     }
+// }
 
 impl<'a,T> AsRef<OCILobLocator> for LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     fn as_ref(&self) -> &OCILobLocator {
@@ -153,17 +153,25 @@ impl<'a,T> AsRef<OCISvcCtx> for LOB<'a,T> where T: DescriptorType<OCIType=OCILob
 
 impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
-    fn make_new(locator: Descriptor<T>, session: &'a Session) -> Self {
+    fn make_new(lob_descriptor: Descriptor<T>, session: &'a Session) -> Self {
         Self {
-            inner: LobInner::new(locator, session.get_svc()),
+            inner: LobInner::new(lob_descriptor, session.get_svc()),
             chunk_size: AtomicU32::new(0),
             session
         }
     }
 
-    fn make_temp(locator: Descriptor<T>, session: &'a Session) -> Self {
+    fn make_temp(lob_descriptor: Descriptor<T>, session: &'a Session) -> Self {
         Self {
-            inner: LobInner::new_temp(locator, session.get_svc()),
+            inner: LobInner::new_temp(lob_descriptor, session.get_svc()),
+            chunk_size: AtomicU32::new(0),
+            session
+        }
+    }
+
+    pub(crate) fn at_column(column_lob_descriptor: &Descriptor<T>, session: &'a Session) -> Self {
+        Self {
+            inner: LobInner::at_column(column_lob_descriptor, session.get_svc()),
             chunk_size: AtomicU32::new(0),
             session
         }
@@ -175,13 +183,13 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     The application must fetch the LOB descriptor from the database before querying this attribute.
     */
     pub fn is_remote(&self) -> Result<bool> {
-        let is_remote: u8 = self.inner.locator.get_attr(OCI_ATTR_LOB_REMOTE, self.as_ref())?;
+        let is_remote: u8 = attr::get(OCI_ATTR_LOB_REMOTE, T::get_type(), self.inner.locator.as_ref(), self.as_ref())?;
         Ok( is_remote != 0 )
     }
 
     /// Returns the LOB's `SQLT` type, i.e. SQLT_CLOB, SQLT_BLOB or SQLT_BFILE.
     pub fn get_type(&self) -> Result<u16> {
-        let lob_type: u16 = self.inner.locator.get_attr(OCI_ATTR_LOB_TYPE, self.as_ref())?;
+        let lob_type: u16 = attr::get(OCI_ATTR_LOB_TYPE, T::get_type(), self.inner.locator.as_ref(), self.as_ref())?;
         Ok( lob_type )
     }
 
@@ -208,68 +216,49 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
 
     Two NULL locators are considered not equal by this function.
 
-    # Example
-
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    # Example (blocking)
 
     ```
     use sibyl::CLOB;
-
+    /*
+        CREATE TABLE test_lobs (
+            id       INTEGER GENERATED ALWAYS AS IDENTITY,
+            text     CLOB,
+            data     BLOB,
+            ext_file BFILE
+        )
+     */
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
     # let session = sibyl::test_env::get_session()?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ")?;
-    # stmt.execute(())?;
     let stmt = session.prepare("
-        INSERT INTO test_lobs (text) VALUES (empty_clob()) RETURN id INTO :id
+        INSERT INTO test_lobs (text) VALUES (empty_clob()) RETURNING id INTO :ID
     ")?;
-    let mut id : usize = 0;
+    let mut id = 0;
     stmt.execute(&mut id)?;
 
-    // must lock LOB's row before writing into the LOB
     let stmt = session.prepare("
-        SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE
+        SELECT text FROM test_lobs WHERE id = :ID
     ")?;
     let row = stmt.query_single(&id)?.unwrap();
     let lob : CLOB = row.get(0)?;
-
+    
     let text = "
         To Mercy, Pity, Peace, and Love
         All pray in their distress;
         And to these virtues of delight
         Return their thankfulness.
     ";
-    lob.open()?;
     lob.append(text)?;
-    lob.close()?;
     session.commit()?;
 
     // Retrieve this CLOB twice into two different locators
-    let stmt = session.prepare("
-        SELECT text FROM test_lobs WHERE id = :id
-    ")?;
-    let row = stmt.query_single(&id)?.unwrap();
-    let lob1 : CLOB = row.get(0)?;
+    let row1 = stmt.query_single(&id)?.unwrap();
+    let lob1 : CLOB = row1.get(0)?;
 
-    let row = stmt.query_single(&id)?.unwrap();
-    let lob2 : CLOB = row.get(0)?;
+    let row2 = stmt.query_single(&id)?.unwrap();
+    let lob2 : CLOB = row2.get(0)?;
 
     // Even though locators are different, they point to
     // the same LOB which makes them "equal"
@@ -278,51 +267,62 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
+    # fn main()  {}
+    ```
+
+    # Example (nonblocking)
+
+    ```
+    use sibyl::CLOB;
+    /*
+        CREATE TABLE test_lobs (
+            id       INTEGER GENERATED ALWAYS AS IDENTITY,
+            text     CLOB,
+            data     BLOB,
+            ext_file BFILE
+        )
+     */
+    # use sibyl::Result;
+    # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ").await?;
-    # stmt.execute(()).await?;
-    # let stmt = session.prepare("INSERT INTO test_lobs (text) VALUES (empty_clob()) RETURN id INTO :id").await?;
-    # let mut id : usize = 0;
-    # stmt.execute(&mut id).await?;
-    # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :ID FOR UPDATE").await?;
-    # let row = stmt.query_single(&id).await?.unwrap();
-    # let lob : CLOB = row.get(0)?;
-    # let text = "
-    #     To Mercy, Pity, Peace, and Love
-    #     All pray in their distress;
-    #     And to these virtues of delight
-    #     Return their thankfulness.
-    # ";
-    # lob.open().await?;
-    # lob.append(text).await?;
-    # lob.close().await?;
-    # session.commit().await?;
-    # let stmt = session.prepare("SELECT text FROM test_lobs WHERE id = :id").await?;
-    # let row = stmt.query_single(&id).await?.unwrap();
-    # let lob1 : CLOB = row.get(0)?;
-    # let row = stmt.query_single(&id).await?.unwrap();
-    # let lob2 : CLOB = row.get(0)?;
-    # assert!(lob1.is_equal(&lob2)?, "CLOB1 == CLOB2");
-    # assert!(lob2.is_equal(&lob1)?, "CLOB2 == CLOB1");
+    let stmt = session.prepare("
+        INSERT INTO test_lobs (text) VALUES (Empty_CLOB()) RETURNING id INTO :ID
+    ").await?;
+    let mut id = 0;
+    stmt.execute(&mut id).await?;
+
+    let stmt = session.prepare("
+        SELECT text FROM test_lobs WHERE id = :ID
+    ").await?;
+    let row = stmt.query_single(&id).await?.unwrap();
+    let lob : CLOB = row.get(0)?;
+    
+    let text = "
+        To Mercy, Pity, Peace, and Love
+        All pray in their distress;
+        And to these virtues of delight
+        Return their thankfulness.
+    ";
+    lob.append(text).await?;
+    session.commit().await?;
+
+    // Retrieve this CLOB twice into two different locators
+    let row1 = stmt.query_single(&id).await?.unwrap();
+    let lob1 : CLOB = row1.get(0)?;
+
+    let row2 = stmt.query_single(&id).await?.unwrap();
+    let lob2 : CLOB = row2.get(0)?;
+
+    // Even though locators are different, they point to
+    // the same LOB which makes them "equal"
+    assert!(lob1.is_equal(&lob2)?, "CLOB1 == CLOB2");
+    assert!(lob2.is_equal(&lob1)?, "CLOB2 == CLOB1");
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main()  {}
     ```
     */
     pub fn is_equal<U>(&self, other: &LOB<'a,U>) -> Result<bool>
@@ -373,37 +373,24 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     to initialize the LOB to empty. Once the LOB is empty, `write` can be called to
     populate the LOB with data.
 
-    # Example
-
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    # Example (blocking)
 
     ```
     use sibyl::{ CLOB };
-
+    /*
+        CREATE TABLE test_lobs (
+            id       INTEGER GENERATED ALWAYS AS IDENTITY,
+            text     CLOB,
+            data     BLOB,
+            ext_file BFILE
+        )
+     */
     # use sibyl::Result;
     # #[cfg(feature="blocking")]
     # fn main() -> Result<()> {
     # let session = sibyl::test_env::get_session()?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ")?;
-    # stmt.execute(())?;
     let stmt = session.prepare("
-        INSERT INTO test_lobs (text) VALUES (:new_lob) RETURNING id INTO :id
+        INSERT INTO test_lobs (text) VALUES (:NEW_LOB) RETURNING id INTO :ID
     ")?;
     let mut id : usize = 0;
     let lob = CLOB::empty(&session)?;
@@ -412,41 +399,36 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
+    # fn main() {}
+    ```
+
+    # Example (nonblocking)
+
+    ```
+    use sibyl::{ CLOB };
+
+    # use sibyl::Result;
+    # #[cfg(feature="nonblocking")]
     # fn main() -> Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     declare
-    #         name_already_used exception; pragma exception_init(name_already_used, -955);
-    #     begin
-    #         execute immediate '
-    #             create table test_lobs (
-    #                 id       number generated always as identity,
-    #                 text     clob,
-    #                 data     blob,
-    #                 ext_file bfile
-    #             )
-    #         ';
-    #     exception
-    #         when name_already_used then null;
-    #     end;
-    # ").await?;
-    # stmt.execute(()).await?;
-    # let stmt = session.prepare("
-    #     insert into test_lobs (text) values (:new_lob) returning id into :id
-    # ").await?;
-    # let mut id : usize = 0;
-    # let lob = CLOB::empty(&session)?;
-    # stmt.execute((&lob, &mut id, ())).await?;
+    let stmt = session.prepare("
+        INSERT INTO test_lobs (text) VALUES (:NEW_LOB) RETURNING id INTO :ID
+    ").await?;
+    let mut id : usize = 0;
+    let lob = CLOB::empty(&session)?;
+    stmt.execute((&lob, &mut id, ())).await?;
     # assert!(id > 0);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn empty(session: &'a Session) -> Result<Self> {
-        let locator = Descriptor::<T>::new(session)?;
-        locator.set_attr(OCI_ATTR_LOBEMPTY, 0u32, session.as_ref())?;
-        Ok(Self::make_new(locator, session))
+        let lob_descriptor = Descriptor::<T>::new(session)?;
+        lob_descriptor.set_attr(OCI_ATTR_LOBEMPTY, 0u32, session.as_ref())?;
+        Ok(Self::make_new(lob_descriptor, session))
     }
 
     /**
@@ -457,7 +439,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     populate the LOB with data.
     */
     pub fn clear(&self) -> Result<()> {
-        self.inner.locator.set_attr(OCI_ATTR_LOBEMPTY, 0u32, self.as_ref())
+        attr::set(OCI_ATTR_LOBEMPTY, 0u32, T::get_type(), self.inner.locator.as_ref(), self.as_ref())
+        // self.inner.locator.set_attr(OCI_ATTR_LOBEMPTY, 0u32, self.as_ref())
     }
 }
 
@@ -619,7 +602,7 @@ impl<T> ToSql for &mut LOB<'_, T> where T: DescriptorType<OCIType=OCILobLocator>
 }
 
 impl LOB<'_,OCICLobLocator> {
-    /// Debug helper that fetches first 50 (at most) bytes of CLOB content
+    /// Debug helper that fetches first 50 (at most) bytes of the CLOB content
     #[cfg(feature="blocking")]
     fn content_head(&self) -> Result<String> {
         const MAX_LEN : usize = 50;

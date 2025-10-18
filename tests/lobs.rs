@@ -12,37 +12,15 @@ mod blocking {
     use sibyl::*;
     use super::read_text_file;
 
-    fn check_or_create_test_table(session: &Session) -> Result<()> {
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE test_large_object_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        bin     BLOB,
-                        text    CLOB,
-                        ntxt    NCLOB,
-                        fbin    BFILE
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ")?;
-        stmt.execute(())?;
-        Ok(())
-    }
-
     fn check_file(lob: BFile) -> Result<()> {
+        let (dir, name) = lob.file_name()?;
+        assert_eq!(dir, "MEDIA_DIR");
+        assert_eq!(name, "mousepad_comp_ad.pdf");
+
         assert!(lob.is_initialized()?, "is initialized");
         assert!(lob.file_exists()?, "file exists");
         let file_len = lob.len()?;
         assert_eq!(file_len, 539977);
-
-        let (dir, name) = lob.file_name()?;
-        assert_eq!(dir, "MEDIA_DIR");
-        assert_eq!(name, "mousepad_comp_ad.pdf");
 
         let mut data = Vec::new();
 
@@ -144,31 +122,51 @@ mod blocking {
 
     #[test]
     fn read_file() -> Result<()> {
-        let (feature_release, _, _, _, _) = sibyl::client_version();
-        // 21c cannot insert BFileName into 19c table - fails with "ORA-03120: two-task conversion routine: integer overflow"
+        let session = sibyl::test_env::get_session()?;
+
+        let (feature_release, _, _, _, _) = client_version();
         if feature_release <= 19 {
-            let session = sibyl::test_env::get_session()?;
-            check_or_create_test_table(&session)?;
-
-            let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIR,:FILENAME)) RETURNING id, fbin INTO :ID, :NEW_BFILE")?;
-            let mut id : usize = 0;
+            let stmt = session.prepare("
+                INSERT INTO test_large_object_data (fbin)
+                     VALUES (BFileName(:DIRNAME,:FILENAME))
+                  RETURNING fbin
+                       INTO :NEW_BFILE
+            ")?;
             let mut lob : BFile = BFile::new(&session)?;
-            stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut id, &mut lob))?;
-
+            stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut lob))?;
             check_file(lob)?;
+        } else {
+            // 23 throws "ORA-03120: two-task conversion routine" when `fbin` is RETURNING from INSERT
+            // If there is problem with bidning BFile to a parameter placeholder, I do not see it. Plus 19 has no issues with it.
+            // However, 23 client was connecting to the 19c database. Maybe it freaks out in this case.
+            let stmt = session.prepare("
+                INSERT INTO test_large_object_data (fbin)
+                     VALUES (BFileName(:DIRNAME,:FILENAME))
+                  RETURNING ROWID
+                       INTO :ROW_ID
+            ")?;
+            let mut rowid = RowID::new(&session)?;
+            stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut rowid))?;
 
-            let lob : BFile = BFile::new(&session)?;
-            lob.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
-
+            let stmt = session.prepare("
+                SELECT fbin FROM test_large_object_data WHERE ROWID = :ROW_ID
+            ")?;
+            let rows = stmt.query(&rowid)?;
+            let row = rows.next()?.expect("first row");
+            let lob: BFile = row.get(0)?;
             check_file(lob)?;
         }
+
+        let lob : BFile = BFile::new(&session)?;
+        lob.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
+
+        check_file(lob)?;
         Ok(())
     }
 
     #[test]
     fn read_blob() -> Result<()> {
         let session = sibyl::test_env::get_session()?;
-        check_or_create_test_table(&session)?;
 
         let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID")?;
         let mut id : usize = 0;
@@ -198,7 +196,6 @@ mod blocking {
     #[test]
     fn write_blob() -> Result<()> {
         let session = sibyl::test_env::get_session()?;
-        check_or_create_test_table(&session)?;
 
         // load the data
         let file = BFile::new(&session)?;
@@ -308,7 +305,6 @@ mod blocking {
     #[test]
     fn read_write_clob() -> Result<()> {
         let session = sibyl::test_env::get_session()?;
-        check_or_create_test_table(&session)?;
 
         // load the data
         let text = read_text_file("src/oci.rs");
@@ -399,38 +395,23 @@ mod nonblocking {
     use sibyl::*;
     use crate::read_text_file;
 
-    async fn check_or_create_test_table(session: &Session<'_>) -> Result<()> {
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE test_large_object_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        bin     BLOB,
-                        text    CLOB,
-                        ntxt    NCLOB,
-                        fbin    BFILE
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ").await ?;
-        stmt.execute(()).await?;
-        Ok(())
-    }
-
     async fn check_file(lob: BFile<'_>) -> Result<()> {
         assert!(lob.is_initialized()?, "is initialized");
-        assert!(lob.file_exists().await?, "file exists");
-
-        let file_len = lob.len().await?;
-        assert_eq!(file_len, 539977);
 
         let (dir, name) = lob.file_name()?;
         assert_eq!(dir, "MEDIA_DIR");
         assert_eq!(name, "mousepad_comp_ad.pdf");
+
+        let mut file_exists = lob.file_exists().await?;
+        if !file_exists {
+            // for some reason async `file_exists()` would return `false`
+            // in some cases on the first try ¯\_(ツ)_/¯
+            file_exists = lob.file_exists().await?;
+        }
+        assert!(file_exists, "file exists");
+
+        let file_len = lob.len().await?;
+        assert_eq!(file_len, 539977);
 
         let mut data = Vec::new();
 
@@ -456,17 +437,39 @@ mod nonblocking {
     fn read_file() -> Result<()> {
         block_on(async {
             let session = sibyl::test_env::get_session().await?;
-            check_or_create_test_table(&session).await?;
 
-            let stmt = session.prepare("INSERT INTO test_large_object_data (fbin) VALUES (BFileName(:DIRNAME,:FILENAME)) RETURNING id INTO :ID").await?;
-            let mut id : usize = 0;
-            stmt.execute(((":DIRNAME", "MEDIA_DIR"), (":FILENAME", "mousepad_comp_ad.pdf"), (":ID", &mut id))).await?;
+            let (feature_release, _, _, _, _) = client_version();
+            if feature_release <= 19 {
+                let stmt = session.prepare("
+                    INSERT INTO test_large_object_data (fbin)
+                         VALUES (BFileName(:DIRNAME,:FILENAME))
+                      RETURNING fbin
+                           INTO :NEW_BFILE
+                ").await?;
+                let mut lob : BFile = BFile::new(&session)?;
+                stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut lob)).await?;
+                check_file(lob).await?;
+            } else {
+                // 23 throws "ORA-03120: two-task conversion routine" when `fbin` is RETURNING from INSERT
+                // If there is problem with bidning BFile to a parameter placeholder, I do not see it. Plus 19 has no issues with it.
+                // However, 23 client was connecting to the 19c database. Maybe it freaks out in this case.
+                let stmt = session.prepare("
+                    INSERT INTO test_large_object_data (fbin)
+                         VALUES (BFileName(:DIRNAME,:FILENAME))
+                      RETURNING ROWID
+                           INTO :ROW_ID
+                ").await?;
+                let mut rowid = RowID::new(&session)?;
+                stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut rowid)).await?;
 
-            let stmt = session.prepare("SELECT fbin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let row = stmt.query_single(&id).await?.expect("just inserted row with new BFile");
-            let lob : BFile = row.get(0)?;
-
-            check_file(lob).await?;
+                let stmt = session.prepare("
+                    SELECT fbin FROM test_large_object_data WWHERE ROWID = :ROW_ID
+                ").await?;
+                let rows = stmt.query(&rowid).await?;
+                let row = rows.next().await?.expect("first row");
+                let lob: BFile = row.get(0)?;
+                check_file(lob).await?;
+            }
 
             let lob : BFile = BFile::new(&session)?;
             lob.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
@@ -499,34 +502,27 @@ mod nonblocking {
     fn read_blob() -> Result<()> {
         block_on(async {
             let session = sibyl::test_env::get_session().await?;
-            check_or_create_test_table(&session).await?;
 
             let stmt = session.prepare("
-                INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING rowid INTO :ROW_ID
+                INSERT INTO test_large_object_data (bin)
+                     VALUES (Empty_Blob())
+                  RETURNING bin
+                       INTO :NEW_LOB
             ").await?;
-            let mut rowid = RowID::new(&session)?;
-            stmt.execute(&mut rowid).await?;
-
-            let stmt = session.prepare("
-                SELECT bin FROM test_large_object_data WHERE rowid = :ROW_ID FOR UPDATE
-            ").await?;
-            let row = stmt.query_single(&rowid).await?.expect("just inserted row with the empty BLOB");
-            let lob : BLOB = row.get(0)?;
+            let mut lob = BLOB::new(&session)?;
+            stmt.execute(&mut lob).await?;
 
             let file = BFile::new(&session)?;
             file.set_file_name("MEDIA_DIR", "mousepad_comp_ad.pdf")?;
             let file_len = file.len().await?;
 
-            lob.open().await?;
             file.open_file().await?;
             lob.load_from_file(&file, 0, file_len, 0).await?;
             file.close_file().await?;
-            lob.close().await?;
+
             session.commit().await?;
 
-            check_blob(lob).await?;
-
-            Ok(())
+            check_blob(lob).await
         })
     }
 
@@ -534,7 +530,6 @@ mod nonblocking {
     fn write_blob() -> Result<()> {
         block_on(async {
             let session = sibyl::test_env::get_session().await?;
-            check_or_create_test_table(&session).await?;
 
             // load the data
             let file = BFile::new(&session)?;
@@ -553,27 +548,21 @@ mod nonblocking {
             assert!(!file.is_open().await?, "source file is closed");
 
             // make 2 blobs - one for writing and another for appending
-            let stmt = session.prepare("INSERT INTO test_large_object_data (bin) VALUES (Empty_Blob()) RETURNING id INTO :ID").await?;
+            let stmt = session.prepare("
+                INSERT INTO test_large_object_data (bin)
+                     VALUES (Empty_Blob())
+                  RETURNING id, bin
+                       INTO :ID, :NEW_LOB
+            ").await?;
             let mut ids = [0usize; 2];
-            stmt.execute(&mut ids[0]).await?;
-            stmt.execute(&mut ids[1]).await?;
+            let mut lobs = [BLOB::new(&session)?, BLOB::new(&session)?];
+            stmt.execute((&mut ids[0], &mut lobs[0], ())).await?;
+            stmt.execute((&mut ids[1], &mut lobs[1], ())).await?;
 
-            // retrieve BLOB and lock its row so we could write into it
-            let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID FOR UPDATE").await?;
-            let row = stmt.query_single(ids[0]).await?.expect("one row");
-            let lob : BLOB = row.get(0)?;
-
-            lob.open().await?;
-            let written = lob.write(0, &data).await?;
-            lob.close().await?;
+            let written = lobs[0].write(0, &data).await?;
             assert_eq!(written, file_len);
 
-            let row = stmt.query_single(ids[1]).await?.expect("one row");
-            let lob : BLOB = row.get(0)?;
-
-            lob.open().await?;
-            let written = lob.append(&data).await?;
-            lob.close().await?;
+            let written = lobs[1].append(&data).await?;
             assert_eq!(written, file_len);
 
             session.commit().await?;
@@ -581,11 +570,9 @@ mod nonblocking {
             // read them back and check that they all match the source
             let stmt = session.prepare("SELECT bin FROM test_large_object_data WHERE id = :ID").await?;
             for id in ids {
-                if id > 0 {
-                    let row = stmt.query_single(&id).await?.expect("one row");
-                    let lob : BLOB = row.get(0)?;
-                    check_blob(lob).await?;
-                }
+                let row = stmt.query_single(&id).await?.expect("one row");
+                let lob : BLOB = row.get(0)?;
+                check_blob(lob).await?;
             }
 
             Ok(())
@@ -601,7 +588,6 @@ mod nonblocking {
 
         block_on(async {
             let session = sibyl::test_env::get_session().await?;
-            check_or_create_test_table(&session).await?;
 
             // make 2 clobs - one for writing and another for appending
             let stmt = session.prepare("INSERT INTO test_large_object_data (text) VALUES (Empty_Clob()) RETURNING id INTO :ID").await?;
@@ -663,19 +649,12 @@ mod nonblocking {
     fn temp_blob_dbms() -> Result<()> {
         block_on(async {
             let session = sibyl::test_env::get_session().await?;
-            check_or_create_test_table(&session).await?;
 
             let mut lob = BLOB::empty(&session)?;
             let is_temp = lob.is_temp().await?;
             assert!(!is_temp);
 
-            let (feature_release, _, _, _, _) = sibyl::client_version();
-             
-            let stmt = if feature_release == 21 {
-                session.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE, DBMS_LOB.SESSION); END;").await?
-            } else {
-                session.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE, DBMS_LOB.CALL); END;").await?
-            };
+            let stmt = session.prepare("BEGIN DBMS_LOB.CREATETEMPORARY(:LOC, FALSE, DBMS_LOB.SESSION); END;").await?;
             stmt.execute(&mut lob).await?;
             let is_temp = lob.is_temp().await?;
             assert!(is_temp);

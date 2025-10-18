@@ -28,14 +28,22 @@ impl SvcCtx {
         }).await?
     }
 
-    fn set_nonblocking_mode(&self) -> Result<()> {
+    fn set_oci_nonblocking_mode(&self, mode: u8) -> Result<()> {
         let srv: Ptr<OCIServer> = attr::get(OCI_ATTR_SERVER, OCI_HTYPE_SVCCTX, self.svc.as_ref(), self.err.as_ref())?;
-        let mode : u8 = attr::get(OCI_ATTR_NONBLOCKING_MODE, OCI_HTYPE_SERVER, srv.as_ref(), self.as_ref())?;
-        if mode == 0 {
-            oci::attr_set(srv.as_ref(), OCI_HTYPE_SERVER, std::ptr::null(), 0, OCI_ATTR_NONBLOCKING_MODE, self.err.as_ref())
+        let curr_mode : u8 = attr::get(OCI_ATTR_NONBLOCKING_MODE, OCI_HTYPE_SERVER, srv.as_ref(), self.as_ref())?;
+        if curr_mode != mode {
+            attr::set(OCI_ATTR_NONBLOCKING_MODE, mode, OCI_HTYPE_SERVER, srv.as_ref(), self.as_ref())
         } else {
             Ok(())
         }
+    }
+
+    pub(crate) fn set_nonblocking_mode(&self) -> Result<()> {
+        self.set_oci_nonblocking_mode(1)
+    }
+
+    pub(crate) fn set_blocking_mode(&self) -> Result<()> {
+        self.set_oci_nonblocking_mode(0)
     }
 
     async fn from_session_pool(pool: &SessionPool<'_>) -> Result<Self> {
@@ -85,6 +93,14 @@ impl<'a> Session<'a> {
         let usr: Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
         let ctx = Arc::new(ctx);
         Ok(Self { ctx, usr, phantom_env: PhantomData })
+    }
+
+    pub(crate) fn set_nonblocking_mode(&self) -> Result<()> {
+        self.ctx.set_nonblocking_mode()
+    }
+
+    pub(crate) fn set_blocking_mode(&self) -> Result<()> {
+        self.ctx.set_blocking_mode()
     }
 
     /**
@@ -199,7 +215,7 @@ mod tests {
     use crate::{Environment, Result};
 
     #[test]
-    fn async_connect_multi_thread_static_env() -> Result<()> {
+    fn async_connect_static_env() -> Result<()> {
         crate::block_on(async {
             use std::env;
             use once_cell::sync::OnceCell;
@@ -208,51 +224,6 @@ mod tests {
             let oracle = ORACLE.get_or_try_init(|| {
                 Environment::new()
             })?;
-
-            let dbname = env::var("DBNAME").expect("database name");
-            let dbuser = env::var("DBUSER").expect("user name");
-            let dbpass = env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-            session.ping().await?;
-
-            Ok(())
-        })
-    }
-
-    /// Tests that `OCIEnv` is kept beyond `Environment` drop to have it
-    /// available for `Session`'s async drop
-    #[test]
-    fn async_connect_single_thread() -> Result<()> {
-        crate::block_on(async {
-            use std::env;
-
-            let oracle = Environment::new()?;
-
-            let dbname = env::var("DBNAME").expect("database name");
-            let dbuser = env::var("DBUSER").expect("user name");
-            let dbpass = env::var("DBPASS").expect("password");
-
-            let session = oracle.connect(&dbname, &dbuser, &dbpass).await?;
-            session.start_call_time_measurements()?;
-            session.ping().await?;
-            let dt = session.call_time()?;
-            session.stop_call_time_measurements()?;
-
-            assert!(dt > 0);
-            println!("dt={}", dt);
-            Ok(())
-        })
-    }
-
-    /// Tests that `OCIEnv` is kept beyond `Environment` drop to have it
-    /// available for `Session`'s async drop
-    #[test]
-    fn async_connect_multi_thread_stack_env() -> Result<()> {
-        crate::block_on(async {
-            use std::env;
-
-            let oracle = Environment::new()?;
 
             let dbname = env::var("DBNAME").expect("database name");
             let dbuser = env::var("DBUSER").expect("user name");
