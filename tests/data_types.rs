@@ -5,22 +5,6 @@ mod blocking {
     #[test]
     fn character_datatypes() -> Result<()> {
         let session = sibyl::test_env::get_session()?;
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE test_character_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        text    VARCHAR2(97),
-                        ntext   NVARCHAR2(99)
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ")?;
-        stmt.execute(())?;
 
         let mut ids = Vec::with_capacity(3);
         let stmt = session.prepare("
@@ -108,26 +92,6 @@ mod blocking {
         use std::cmp::Ordering::Equal;
 
         let session = sibyl::test_env::get_session()?;
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE test_datetime_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        dt      DATE,
-                        ts      TIMESTAMP(9),
-                        tsz     TIMESTAMP(9) WITH TIME ZONE,
-                        tsl     TIMESTAMP(9) WITH LOCAL TIME ZONE,
-                        iym     INTERVAL YEAR(9) TO MONTH,
-                        ids     INTERVAL DAY(8) TO SECOND(9)
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ")?;
-        stmt.execute(())?;
 
         let stmt = session.prepare("
             INSERT INTO test_datetime_data (dt, ts, tsz, tsl, iym, ids) VALUES (:DT, :TS, :TSZ, :TSL, :IYM, :IDS)
@@ -228,24 +192,6 @@ mod blocking {
     #[test]
     fn large_object_datatypes() -> Result<()> {
         let session = sibyl::test_env::get_session()?;
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE test_large_object_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        bin     BLOB,
-                        text    CLOB,
-                        ntxt    NCLOB,
-                        fbin    BFILE
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ")?;
-        stmt.execute(())?;
 
         let stmt = session.prepare("
             INSERT INTO test_large_object_data (bin, text, ntxt, fbin)
@@ -348,22 +294,6 @@ mod blocking {
     #[test]
     fn long_and_raw_datatypes() -> Result<()> {
         let session = sibyl::test_env::get_session()?;
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE long_and_raw_test_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        bin     RAW(100),
-                        text    LONG
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ")?;
-        stmt.execute(())?;
 
         // Cannot return LONG
         let stmt = session.prepare("
@@ -393,21 +323,6 @@ mod blocking {
     #[test]
     fn long_raw_datatype() -> Result<()> {
         let session = sibyl::test_env::get_session()?;
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE test_long_raw_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        bin     LONG RAW
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ")?;
-        stmt.execute(())?;
 
         let stmt = session.prepare("
             INSERT INTO test_long_raw_data (bin) VALUES (:BIN)
@@ -433,23 +348,6 @@ mod blocking {
         use std::cmp::Ordering::Equal;
 
         let session = sibyl::test_env::get_session()?;
-        let stmt = session.prepare("
-            DECLARE
-                name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-            BEGIN
-                EXECUTE IMMEDIATE '
-                    CREATE TABLE test_numeric_data (
-                        id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                        num     NUMBER,
-                        flt     BINARY_FLOAT,
-                        dbl     BINARY_DOUBLE
-                    )
-                ';
-            EXCEPTION
-              WHEN name_already_used THEN NULL;
-            END;
-        ")?;
-        stmt.execute(())?;
 
         let stmt = session.prepare("
             INSERT INTO test_numeric_data (num, flt, dbl) VALUES (:NUM, :NUM, :NUM)
@@ -756,23 +654,6 @@ mod nonblocking {
             let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
-                DECLARE
-                    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-                BEGIN
-                    EXECUTE IMMEDIATE '
-                        CREATE TABLE test_character_data (
-                            id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                            text    VARCHAR2(97),
-                            ntext   NVARCHAR2(99)
-                        )
-                    ';
-                EXCEPTION
-                  WHEN name_already_used THEN NULL;
-                END;
-            ").await?;
-            stmt.execute(()).await?;
-
-            let stmt = session.prepare("
                 INSERT INTO test_character_data (text, ntext) VALUES (:TEXT, '> ' || :TEXT)
                 RETURNING id, text, ntext INTO :ID, :TEXT_OUT, :NTXT_OUT
             ").await?;
@@ -862,27 +743,6 @@ mod nonblocking {
         block_on(async {
             use std::cmp::Ordering::Equal;
             let session = sibyl::test_env::get_session().await?;
-
-            let stmt = session.prepare("
-                DECLARE
-                    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-                BEGIN
-                    EXECUTE IMMEDIATE '
-                        CREATE TABLE test_datetime_data (
-                            id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                            dt      DATE,
-                            ts      TIMESTAMP(9),
-                            tsz     TIMESTAMP(9) WITH TIME ZONE,
-                            tsl     TIMESTAMP(9) WITH LOCAL TIME ZONE,
-                            iym     INTERVAL YEAR(9) TO MONTH,
-                            ids     INTERVAL DAY(8) TO SECOND(9)
-                        )
-                    ';
-                EXCEPTION
-                WHEN name_already_used THEN NULL;
-                END;
-            ").await?;
-            stmt.execute(()).await?;
 
             let stmt = session.prepare("
                 INSERT INTO test_datetime_data (dt, ts, tsz, tsl, iym, ids) VALUES (:DT, :TS, :TSZ, :TSL, :IYM, :IDS)
@@ -990,23 +850,6 @@ mod nonblocking {
         block_on(async {
             let session = sibyl::test_env::get_session().await?;
 
-            let stmt = session.prepare("
-                DECLARE
-                    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-                BEGIN
-                    EXECUTE IMMEDIATE '
-                        CREATE TABLE long_and_raw_test_data (
-                            id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                            bin     RAW(100),
-                            text    LONG
-                        )
-                    ';
-                EXCEPTION
-                WHEN name_already_used THEN NULL;
-                END;
-            ").await?;
-            stmt.execute(()).await?;
-
             // Cannot return LONG
             let stmt = session.prepare("
                 INSERT INTO long_and_raw_test_data (bin, text) VALUES (:BIN, :TEXT)
@@ -1047,22 +890,6 @@ mod nonblocking {
             let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
-                DECLARE
-                    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-                BEGIN
-                    EXECUTE IMMEDIATE '
-                        CREATE TABLE test_long_raw_data (
-                            id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                            bin     LONG RAW
-                        )
-                    ';
-                EXCEPTION
-                WHEN name_already_used THEN NULL;
-                END;
-            ").await?;
-            stmt.execute(()).await?;
-
-            let stmt = session.prepare("
                 INSERT INTO test_long_raw_data (bin) VALUES (:BIN)
                 RETURNING id INTO :ID
             ").await?;
@@ -1087,24 +914,6 @@ mod nonblocking {
         block_on(async {
             use std::cmp::Ordering::Equal;
             let session = sibyl::test_env::get_session().await?;
-
-            let stmt = session.prepare("
-                DECLARE
-                    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-                BEGIN
-                    EXECUTE IMMEDIATE '
-                        CREATE TABLE test_numeric_data (
-                            id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                            num     NUMBER,
-                            flt     BINARY_FLOAT,
-                            dbl     BINARY_DOUBLE
-                        )
-                    ';
-                EXCEPTION
-                WHEN name_already_used THEN NULL;
-                END;
-            ").await?;
-            stmt.execute(()).await?;
 
             let stmt = session.prepare("
                 INSERT INTO test_numeric_data (num, flt, dbl) VALUES (:NUM, :NUM, :NUM)
@@ -1418,24 +1227,6 @@ mod nonblocking {
     fn large_object_datatypes() -> Result<()> {
         block_on(async {
             let session = sibyl::test_env::get_session().await?;
-            let stmt = session.prepare("
-                DECLARE
-                    name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-                BEGIN
-                    EXECUTE IMMEDIATE '
-                        CREATE TABLE test_large_object_data (
-                            id      NUMBER GENERATED ALWAYS AS IDENTITY,
-                            bin     BLOB,
-                            text    CLOB,
-                            ntxt    NCLOB,
-                            fbin    BFILE
-                        )
-                    ';
-                EXCEPTION
-                WHEN name_already_used THEN NULL;
-                END;
-            ").await?;
-            stmt.execute(()).await?;
 
             let stmt = session.prepare("
                 INSERT INTO test_large_object_data (bin, text, ntxt, fbin)

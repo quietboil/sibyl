@@ -25,21 +25,14 @@ file.close_file()?;
 // ... or do not close now as it will be closed
 // automatically when `file` goes out of scope
 
-// Insert new BLOB and lock its row
+// Insert an empty BLOB and return it
 let stmt = session.prepare("
-    DECLARE
-        row_id ROWID;
-    BEGIN
-        INSERT INTO lob_example (bin) VALUES (Empty_Blob()) RETURNING rowid INTO row_id;
-        SELECT bin INTO :NEW_BLOB FROM lob_example WHERE rowid = row_id FOR UPDATE;
-    END;
+    INSERT INTO lob_example (bin) VALUES (Empty_Blob()) RETURNING bin INTO :NEW_LOB;
 ")?;
 let mut lob = BLOB::new(&session)?;
 stmt.execute(&mut lob)?;
 
-lob.open()?;
 let num_bytes_written = lob.write(0, &data)?;
-lob.close()?;
 
 session.commit()?;
 ```

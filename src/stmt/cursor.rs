@@ -654,10 +654,7 @@ impl<'a> Cursor<'a> {
         If the actual value is expected to be larger than that, then the "column size"
         has to be changed before `query` is run.
 
-        # Example
-
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+        # Example (blocking)
 
         ```
         use sibyl::Cursor;
@@ -667,34 +664,17 @@ impl<'a> Cursor<'a> {
         # fn main() -> Result<()> {
         # let session = sibyl::test_env::get_session()?;
         # let stmt = session.prepare("
-        #     DECLARE
-        #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-        #     BEGIN
-        #         EXECUTE IMMEDIATE '
-        #             CREATE TABLE long_and_raw_test_data (
-        #                 id      NUMBER GENERATED ALWAYS AS IDENTITY,
-        #                 bin     RAW(100),
-        #                 text    LONG
-        #             )
-        #         ';
-        #     EXCEPTION
-        #       WHEN name_already_used THEN NULL;
-        #     END;
-        # ")?;
-        # stmt.execute(())?;
-        # let stmt = session.prepare("
-        #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT)
-        #     RETURNING id INTO :ID
+        #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT)  RETURNING id INTO :ID
         # ")?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         # let mut id = 0;
         # let count = stmt.execute(((":TEXT", &text), (":ID", &mut id)))?;
         let stmt = session.prepare("
             BEGIN
-                OPEN :long_texts FOR
+                OPEN :LONG_TEXTS FOR
                     SELECT text
                       FROM long_and_raw_test_data
-                     WHERE id = :id
+                     WHERE id = :ID
                 ;
             END;
         ")?;
@@ -704,54 +684,51 @@ impl<'a> Cursor<'a> {
         let rows = long_texts.rows()?;
         let row = rows.next()?.expect("first (and only) row");
         let txt : &str = row.get(0)?;
-        # assert_eq!(txt, text);
+        
+        assert_eq!(txt, text);
         # Ok(())
         # }
+        # #[cfg(feature="nonblocking")]
+        # fn main()  {}
+        ```
+
+        # Example (nonblocking)
+
+        ```
+        use sibyl::Cursor;
+
+        # use sibyl::Result;
         # #[cfg(feature="nonblocking")]
         # fn main() -> Result<()> {
         # sibyl::block_on(async {
         # let session = sibyl::test_env::get_session().await?;
         # let stmt = session.prepare("
-        #     DECLARE
-        #         name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);
-        #     BEGIN
-        #         EXECUTE IMMEDIATE '
-        #             CREATE TABLE long_and_raw_test_data (
-        #                 id      NUMBER GENERATED ALWAYS AS IDENTITY,
-        #                 bin     RAW(100),
-        #                 text    LONG
-        #             )
-        #         ';
-        #     EXCEPTION
-        #       WHEN name_already_used THEN NULL;
-        #     END;
-        # ").await?;
-        # stmt.execute(()).await?;
-        # let stmt = session.prepare("
-        #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT)
-        #     RETURNING id INTO :ID
+        #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT) RETURNING id INTO :ID
         # ").await?;
         # let text = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
         # let mut id = 0;
         # let count = stmt.execute(((":TEXT", &text), (":ID", &mut id))).await?;
-        # let stmt = session.prepare("
-        #     BEGIN
-        #         OPEN :long_texts FOR
-        #             SELECT text
-        #               FROM long_and_raw_test_data
-        #              WHERE id = :id
-        #         ;
-        #     END;
-        # ").await?;
-        # let mut long_texts = Cursor::new(&stmt)?;
-        # stmt.execute(((":ID", &id), (":LONG_TEXTS", &mut long_texts))).await?;
-        # long_texts.set_max_long_size(100_000);
-        # let rows = long_texts.rows().await?;
-        # let row = rows.next().await?.expect("first (and only) row");
-        # let txt : &str = row.get(0)?;
-        # assert_eq!(txt, text);
+        let stmt = session.prepare("
+            BEGIN
+                OPEN :long_texts FOR
+                    SELECT text
+                      FROM long_and_raw_test_data
+                     WHERE id = :ID
+                ;
+            END;
+        ").await?;
+        let mut long_texts = Cursor::new(&stmt)?;
+        stmt.execute(((":ID", &id), (":LONG_TEXTS", &mut long_texts))).await?;
+        long_texts.set_max_long_size(100_000);
+        let rows = long_texts.rows().await?;
+        let row = rows.next().await?.expect("first (and only) row");
+        let txt : &str = row.get(0)?;
+        
+        assert_eq!(txt, text);
         # Ok(()) })
         # }
+        # #[cfg(feature="blocking")]
+        # fn main()  {}
         ```
     */
     pub fn set_max_long_size(&mut self, size: u32) {

@@ -56,6 +56,8 @@ impl<'a> SessionPool<'a> {
         use std::{env, sync::Arc};
 
         fn main() -> Result<()> {
+            // `sibyl::block_on` is used to run Sibyl's async doc tests
+            // and would not be used when `main` can be declared as async.
             sibyl::block_on(async {
                 static ORACLE : OnceCell<Environment> = OnceCell::new();
                 let oracle = ORACLE.get_or_try_init(|| {
@@ -72,6 +74,8 @@ impl<'a> SessionPool<'a> {
                 let mut workers = Vec::with_capacity(10);
                 for _i in 0..workers.capacity() {
                     let pool = pool.clone();
+                    // `sibyl::spawn` abstracts `spawn` for Sibyl's use with different async
+                    // runtimes. One does not need it when a specific runtime is selected.
                     let handle = sibyl::spawn(async move {
                         let session = pool.get_session().await?;
 
@@ -90,80 +94,31 @@ impl<'a> SessionPool<'a> {
                 Ok(())
             })
         }
-        # async fn select_latest_hire(session: &Session<'_>) -> Result<String> {
-        #     let stmt = session.prepare("
-        #         SELECT first_name, last_name, hire_date
-        #           FROM (
-        #                 SELECT first_name, last_name, hire_date
-        #                      , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
-        #                   FROM hr.employees
-        #                )
-        #          WHERE hire_date_rank = 1
-        #     ").await?;
-        #     if let Some( row ) = stmt.query_single(()).await? {
-        #         let first_name : Option<&str> = row.get(0)?;
-        #         let last_name : &str = row.get(1)?;
-        #         let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-        #         let hire_date : Date = row.get(2)?;
-        #         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
-        #         Ok(format!("{} was hired on {}", name, hire_date))
-        #     } else {
-        #         Ok("Not found".to_string())
-        #     }
-        # }
-        ```
 
+        async fn select_latest_hire(session: &Session<'_>) -> Result<String> {
+            let stmt = session.prepare("
+                SELECT first_name, last_name, hire_date
+                  FROM (
+                        SELECT first_name, last_name, hire_date
+                             , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
+                          FROM hr.employees
+                       )
+                 WHERE hire_date_rank = 1
+            ").await?;
+            if let Some( row ) = stmt.query_single(()).await? {
+                let first_name : Option<&str> = row.get(0)?;
+                let last_name : &str = row.get(1)?;
+                let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
+                let hire_date : Date = row.get(2)?;
+                let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
+                Ok(format!("{} was hired on {}", name, hire_date))
+            } else {
+                Ok("Not found".to_string())
+            }
+        }
+        ```
     */
     pub async fn get_session(&self) -> Result<Session<'_>> {
         Session::from_session_pool(self).await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{Result, Error, Environment, spawn};
-
-    #[test]
-    fn async_session_pool() -> Result<()> {
-        crate::block_on(async {
-            use std::sync::Arc;
-            use once_cell::sync::OnceCell;
-
-            static ORACLE : OnceCell<Environment> = OnceCell::new();
-            let oracle = ORACLE.get_or_try_init(|| {
-                Environment::new()
-            })?;
-
-            let dbname = std::env::var("DBNAME").expect("database name");
-            let dbuser = std::env::var("DBUSER").expect("user name");
-            let dbpass = std::env::var("DBPASS").expect("password");
-
-            let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-            let pool = Arc::new(pool);
-
-            let mut workers = Vec::with_capacity(100);
-            for _i in 0..workers.capacity() {
-                let pool = pool.clone();
-                let handle = spawn(async move {
-                    let session = pool.get_session().await?;
-                    session.start_call_time_measurements()?;
-                    session.ping().await?;
-                    let dt = session.call_time()?;
-                    session.stop_call_time_measurements()?;
-                    Ok::<_,Error>(dt)
-                });
-                workers.push(handle);
-            }
-            for handle in workers {
-                let worker_result = handle.await;
-                #[cfg(any(feature="tokio", feature="actix"))]
-                let worker_result = worker_result.expect("completed task result");
-
-                let dt = worker_result?;
-                assert!(dt > 0, "ping time");
-            }
-
-            Ok(())
-        })
     }
 }

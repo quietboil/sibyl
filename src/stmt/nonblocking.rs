@@ -164,7 +164,7 @@ impl<'a> Statement<'a> {
     }
 
     /**
-    Convenience method to execute a query that returns a single rows.
+    Convenience method to execute a query that returns a single row.
 
     If the query returns more than one row, `query_single` will return only the first
     row and ignore the rest.
@@ -181,7 +181,7 @@ impl<'a> Statement<'a> {
     # Returns
 
     - `None` - if query did not return any rows
-    - `Some(row) - a single row (even if query returned more than one row)
+    - `Some(row) - a single row (even if the query might return more than one row)
 
     # Example
 

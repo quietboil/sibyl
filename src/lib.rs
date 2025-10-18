@@ -233,7 +233,7 @@ pub mod test_env {
                 let dbuser = std::env::var("DBUSER").expect("user name");
                 let dbpass = std::env::var("DBPASS").expect("password");    
                 let oracle = ORACLE.get_or_try_init(|| Environment::new())?;
-                oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10)
+                oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 100)
             })?;
             pool.get_session()
         }
@@ -257,7 +257,7 @@ pub mod test_env {
                 let dbuser = std::env::var("DBUSER").expect("user name");
                 let dbpass = std::env::var("DBPASS").expect("password");    
                 let oracle = ORACLE.get_or_try_init(|| Environment::new())?;
-                oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await
+                oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 100).await
             }).await?;
             pool.get_session().await
         }
