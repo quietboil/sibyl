@@ -18,7 +18,7 @@ pub(crate) fn free(txt: &mut Ptr<OCIString>, env: &OCIEnv, err: &OCIError) {
     }
 }
 
-pub(crate) fn capacity(txt: &OCIString, env: &OCIEnv, err: &OCIError) -> Result<usize> {
+pub(crate) fn capacity(txt: *const OCIString, env: &OCIEnv, err: &OCIError) -> Result<usize> {
     let mut size = 0u32;
     oci::string_alloc_size(env, err, txt, &mut size)?;
     Ok( size as usize )
@@ -193,7 +193,7 @@ impl<'a> Varchar<'a> {
         ```
     */
     pub fn capacity(&self) -> Result<usize> {
-        capacity(&self.txt, self.ctx.as_ref(), self.ctx.as_ref())
+        capacity(self.txt.get(), self.ctx.as_ref(), self.ctx.as_ref())
     }
 
     /**

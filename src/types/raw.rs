@@ -129,13 +129,19 @@ impl<'a> Raw<'a> {
     */
     pub fn capacity(&self) -> Result<usize> {
         let mut size = 0u32;
-        oci::raw_alloc_size(self.ctx.as_ref(), self.ctx.as_ref(), &self.raw, &mut size)?;
+        oci::raw_alloc_size(self.ctx.as_ref(), self.ctx.as_ref(), self.raw.get(), &mut size)?;
         Ok( size as usize )
     }
 
     /**
-        Changes the size of the memory of this raw binary in the object cache.
-        Previous content is not preserved.
+        This function resizes the memory of the given variable-length raw in the object cache.
+        The previous contents of the raw are not preserved.
+
+        # Parameters
+
+        * `new_size` - New size of the raw data in bytes.
+
+        If the new_size is 0, then this function frees the memory occupied by raw.
 
         # Example
         ```
@@ -145,13 +151,13 @@ impl<'a> Raw<'a> {
         let mut bin = Raw::with_capacity(10, &env)?;
         assert!(bin.capacity()? >= 10);
 
-        bin.resize(20);
+        bin.resize(20)?;
         assert!(bin.capacity()? >= 20);
 
-        bin.resize(0);
+        bin.resize(0)?;
         assert_eq!(bin.capacity()?, 0);
 
-        bin.resize(16);
+        bin.resize(16)?;
         assert!(bin.capacity()? >= 16);
         # Ok::<(),oracle::Error>(())
         ```
