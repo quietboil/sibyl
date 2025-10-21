@@ -140,13 +140,11 @@ impl<'a> Statement<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, first_name, last_name
@@ -157,17 +155,26 @@ impl<'a> Statement<'a> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     SELECT employee_id, first_name, last_name
-    #       FROM hr.employees
-    #      WHERE manager_id = :id
-    # ").await?;
-    # stmt.set_prefetch_rows(5)?;
+    let stmt = session.prepare("
+        SELECT employee_id, first_name, last_name
+          FROM hr.employees
+         WHERE manager_id = :id
+    ").await?;
+    stmt.set_prefetch_rows(5)?;
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_prefetch_rows(&self, num_rows: u32) -> Result<()> {
@@ -185,7 +192,9 @@ impl<'a> Statement<'a> {
 
     * `size` - The maximum sizeof data that will be fetched
 
-    # Example (blocking)
+    # Example
+
+    ## Blocking
 
     ```
     /*
@@ -195,10 +204,24 @@ impl<'a> Statement<'a> {
             text    LONG
         )
      */
-    # use sibyl::Result;
-    # static TEXT : &str = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
+    static TEXT : &str = "
+        When I have fears that I may cease to be
+        Before my pen has gleaned my teeming brain,
+        Before high-pilèd books, in charactery,
+        Hold like rich garners the full ripened grain;
+        When I behold, upon the night’s starred face,
+        Huge cloudy symbols of a high romance,
+        And think that I may never live to trace
+        Their shadows with the magic hand of chance;
+        And when I feel, fair creature of an hour,
+        That I shall never look upon thee more,
+        Never have relish in the faery power
+        Of unreflecting love—then on the shore
+        Of the wide world I stand alone, and think
+        Till love and fame to nothingness do sink.
+    ";
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     # let stmt = session.prepare("
     #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT) RETURNING id INTO :ID
@@ -213,20 +236,34 @@ impl<'a> Statement<'a> {
     stmt.set_max_long_size(100_000);
     let row = stmt.query_single(&id)?.unwrap();
     let txt : &str = row.get(0)?;
-    # assert_eq!(txt, TEXT);
+    assert_eq!(txt, TEXT);
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main()  {}
+    # fn main() {}
     ```
 
-    # Example (nonblocking)
+    ## Nonblocking
 
     ```
-    # use sibyl::Result;
-    # static TEXT: &str = "When I have fears that I may cease to be Before my pen has gleaned my teeming brain, Before high-pilèd books, in charactery, Hold like rich garners the full ripened grain; When I behold, upon the night’s starred face, Huge cloudy symbols of a high romance, And think that I may never live to trace Their shadows with the magic hand of chance; And when I feel, fair creature of an hour, That I shall never look upon thee more, Never have relish in the faery power Of unreflecting love—then on the shore Of the wide world I stand alone, and think Till love and fame to nothingness do sink.";
+    static TEXT : &str = "
+        When I have fears that I may cease to be
+        Before my pen has gleaned my teeming brain,
+        Before high-pilèd books, in charactery,
+        Hold like rich garners the full ripened grain;
+        When I behold, upon the night’s starred face,
+        Huge cloudy symbols of a high romance,
+        And think that I may never live to trace
+        Their shadows with the magic hand of chance;
+        And when I feel, fair creature of an hour,
+        That I shall never look upon thee more,
+        Never have relish in the faery power
+        Of unreflecting love—then on the shore
+        Of the wide world I stand alone, and think
+        Till love and fame to nothingness do sink.
+    ";
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     # let stmt = session.prepare("
@@ -242,11 +279,11 @@ impl<'a> Statement<'a> {
     stmt.set_max_long_size(100_000);
     let row = stmt.query_single(&id).await?.unwrap();
     let txt : &str = row.get(0)?;
-    # assert_eq!(txt, TEXT);
+    assert_eq!(txt, TEXT);
     # Ok(()) })
     # }
     # #[cfg(feature="blocking")]
-    # fn main()  {}
+    # fn main() {}
     ```
     */
     pub fn set_max_long_size(&mut self, size: u32) {
@@ -258,13 +295,11 @@ impl<'a> Statement<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
@@ -273,23 +308,34 @@ impl<'a> Statement<'a> {
     ")?;
     let rows = stmt.query(103)?;
     let num_cols = stmt.column_count()?;
+
     assert_eq!(num_cols, 3);
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     SELECT employee_id, last_name, first_name
-    #       FROM hr.employees
-    #      WHERE manager_id = :id
-    # ").await?;
-    # let rows = stmt.query(103).await?;
-    # let num_cols = stmt.column_count()?;
-    # assert_eq!(num_cols, 3);
+    let stmt = session.prepare("
+        SELECT employee_id, last_name, first_name
+          FROM hr.employees
+         WHERE manager_id = :id
+    ").await?;
+    let rows = stmt.query(103).await?;
+    let num_cols = stmt.column_count()?;
+
+    assert_eq!(num_cols, 3);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn column_count(&self) -> Result<usize> {
@@ -309,13 +355,11 @@ impl<'a> Statement<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, first_name, last_name
@@ -337,27 +381,36 @@ impl<'a> Statement<'a> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     SELECT employee_id, first_name, last_name
-    #       FROM hr.employees
-    #      WHERE manager_id = :id
-    #   ORDER BY employee_id
-    # ").await?;
-    # stmt.set_prefetch_rows(5)?;
-    # let rows = stmt.query(103).await?;
-    # let mut ids = Vec::new();
-    # while let Some( row ) = rows.next().await? {
-    #     let id : i32 = row.get(0)?;
-    #     ids.push(id);
-    # }
-    # assert_eq!(stmt.row_count()?, 4);
-    # assert_eq!(ids.len(), 4);
-    # assert_eq!(ids.as_slice(), &[104, 105, 106, 107]);
+    let stmt = session.prepare("
+        SELECT employee_id, first_name, last_name
+          FROM hr.employees
+         WHERE manager_id = :id
+      ORDER BY employee_id
+    ").await?;
+    stmt.set_prefetch_rows(5)?;
+    let rows = stmt.query(103).await?;
+    let mut ids = Vec::new();
+    while let Some( row ) = rows.next().await? {
+        let id : i32 = row.get(0)?;
+        ids.push(id);
+    }
+    assert_eq!(stmt.row_count()?, 4);
+    assert_eq!(ids.len(), 4);
+    assert_eq!(ids.as_slice(), &[104, 105, 106, 107]);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn row_count(&self) -> Result<usize> {
@@ -384,56 +437,81 @@ impl<'a> Statement<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         UPDATE hr.employees
-           SET manager_id = :new_manager_id
-         WHERE employee_id = :employee_id
-        RETURN commission_pct INTO :commission_pct
+           SET manager_id = :NEW_MANAGER_ID
+         WHERE employee_id = :EMPLOYEE_ID
+        RETURN commission_pct
+          INTO :COMMISSION_PCT
     ")?;
     let mut commission_pct = 0f64;
-    stmt.execute(
-        (
-            (":EMPLOYEE_ID", 133),
-            (":NEW_MANAGER_ID", 120),
-            (":COMMISSION_PCT", &mut commission_pct),
-        )
-    )?;
+    stmt.execute((
+        (":EMPLOYEE_ID", 133),
+        (":NEW_MANAGER_ID", 120),
+        (":COMMISSION_PCT", &mut commission_pct),
+    ))?;
     let commission_pct_is_null = stmt.is_null(":COMMISSION_PCT")?;
     assert!(commission_pct_is_null);
+
+    // Alternatively an Option could be bound to a RETURNING
+    // parameter that might be NULL
+    let mut commission_pct = Some(0u64);
+    stmt.execute((
+        (":EMPLOYEE_ID", 133),
+        (":NEW_MANAGER_ID", 120),
+        (":COMMISSION_PCT", &mut commission_pct),
+    ))?;
+    assert!(commission_pct.is_none());
     # session.rollback()?;
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     UPDATE hr.employees
-    #        SET manager_id = :new_manager_id
-    #      WHERE employee_id = :employee_id
-    #     RETURN commission_pct INTO :commission_pct
-    # ").await?;
-    # let mut commission_pct = 0f64;
-    # stmt.execute(
-    #     (
-    #         (":EMPLOYEE_ID", 133),
-    #         (":NEW_MANAGER_ID", 120),
-    #         (":COMMISSION_PCT", &mut commission_pct)
-    #     )
-    # ).await?;
-    # let commission_pct_is_null = stmt.is_null(":COMMISSION_PCT")?;
-    # assert!(commission_pct_is_null);
+    let stmt = session.prepare("
+        UPDATE hr.employees
+           SET manager_id = :NEW_MANAGER_ID
+         WHERE employee_id = :EMPLOYEE_ID
+        RETURN commission_pct
+          INTO :COMMISSION_PCT
+    ").await?;
+    let mut commission_pct = 0f64;
+    stmt.execute((
+        (":EMPLOYEE_ID", 133),
+        (":NEW_MANAGER_ID", 120),
+        (":COMMISSION_PCT", &mut commission_pct)
+    )).await?;
+    let commission_pct_is_null = stmt.is_null(":COMMISSION_PCT")?;
+    assert!(commission_pct_is_null);
+
+    // Alternatively an Option could be bound to a RETURNING
+    // parameter that might be NULL
+    let mut commission_pct = Some(0u64);
+    stmt.execute((
+        (":EMPLOYEE_ID", 133),
+        (":NEW_MANAGER_ID", 120),
+        (":COMMISSION_PCT", &mut commission_pct),
+    )).await?;
+    assert!(commission_pct.is_none());
     # session.rollback().await?;
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn is_null(&self, pos: impl Position) -> Result<bool> {
@@ -447,12 +525,13 @@ impl<'a> Statement<'a> {
     or `Vec` byte slices cannot adjust their length when the size of the returned data is
     smaller than their size. This method can be used to do so after the data are fetched.
 
-    # Examples
+    # Example
+
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
     BEGIN
@@ -463,29 +542,41 @@ impl<'a> Statement<'a> {
     stmt.execute(data.as_mut())?;
 
     assert_eq!(data, [0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00]);
-    // Note the "trailing" original zeros ----^^^^--^^^^--^^^^--^^^^    
+    // Note the "trailing" original zeros ----^^^^--^^^^--^^^^--^^^^
     assert_eq!(stmt.len_of("VAL")?, 4);
+
     let res = data[0..stmt.len_of("VAL")?].as_ref();
     assert_eq!(res.len(), 4);
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    # BEGIN
-    #     :VAL := Utl_Raw.Cast_To_Raw('data');
-    # END;
-    # ").await?;
-    # let mut data = [0; 8];
-    # stmt.execute(data.as_mut()).await?;
-    # assert_eq!(data, [0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00]);
-    # assert_eq!(stmt.len_of(0)?, 4);
-    # let res = data[0..stmt.len_of(0)?].as_ref();
-    # assert_eq!(res.len(), 4);
+    let stmt = session.prepare("
+    BEGIN
+        :VAL := Utl_Raw.Cast_To_Raw('data');
+    END;
+    ").await?;
+    let mut data = [0; 8];
+    stmt.execute(data.as_mut()).await?;
+
+    assert_eq!(data, [0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x00]);
+    assert_eq!(stmt.len_of(0)?, 4);
+
+    let res = data[0..stmt.len_of(0)?].as_ref();
+    assert_eq!(res.len(), 4);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn len_of(&self, pos: impl Position) -> Result<usize> {
@@ -504,15 +595,13 @@ impl<'a> Statement<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
     use sibyl::ColumnType;
 
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT employee_id, last_name, first_name
@@ -521,6 +610,7 @@ impl<'a> Statement<'a> {
     ")?;
     let rows = stmt.query(103)?;
     let col = stmt.column(0).expect("employee_id column info");
+
     assert_eq!(col.name()?, "EMPLOYEE_ID");
     assert_eq!(col.data_type()?, ColumnType::Number);
     assert_eq!(col.precision()?, 6);
@@ -531,25 +621,37 @@ impl<'a> Statement<'a> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    use sibyl::ColumnType;
+
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     SELECT employee_id, last_name, first_name
-    #       FROM hr.employees
-    #      WHERE manager_id = :id
-    # ").await?;
-    # let rows = stmt.query(103).await?;
-    # let col = stmt.column(0).expect("employee_id column info");
-    # assert_eq!(col.name()?, "EMPLOYEE_ID");
-    # assert_eq!(col.data_type()?, ColumnType::Number);
-    # assert_eq!(col.precision()?, 6);
-    # assert_eq!(col.scale()?, 0);
-    # assert!(!col.is_null()?);
-    # assert!(col.is_visible()?);
-    # assert!(!col.is_identity()?);
+    let stmt = session.prepare("
+        SELECT employee_id, last_name, first_name
+          FROM hr.employees
+         WHERE manager_id = :id
+    ").await?;
+    let rows = stmt.query(103).await?;
+    let col = stmt.column(0).expect("employee_id column info");
+
+    assert_eq!(col.name()?, "EMPLOYEE_ID");
+    assert_eq!(col.data_type()?, ColumnType::Number);
+    assert_eq!(col.precision()?, 6);
+    assert_eq!(col.scale()?, 0);
+    assert!(!col.is_null()?);
+    assert!(col.is_visible()?);
+    assert!(!col.is_identity()?);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn column(&self, pos: usize) -> Option<ColumnInfo<'_>> {

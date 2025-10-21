@@ -158,20 +158,18 @@ impl<'a> Cursor<'a> {
 
         # Example
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+        ## Blocking
 
         ```
         use sibyl::{Cursor, Number};
         use std::cmp::Ordering::Equal;
 
-        # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
+        # fn main() -> sibyl::Result<()> {
         # let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             BEGIN
-                OPEN :lowest_payed_employee FOR
+                OPEN :LOWEST_PAYED_EMPLOYEE FOR
                     SELECT department_name, first_name, last_name, salary
                     FROM (
                         SELECT first_name, last_name, salary, department_id
@@ -182,7 +180,7 @@ impl<'a> Cursor<'a> {
                     ON d.department_id = e.department_id
                     WHERE ord = 1
                 ;
-                OPEN :median_salary_employees FOR
+                OPEN :MEDIAN_SALARY_EMPLOYEES FOR
                     SELECT department_name, first_name, last_name, salary
                     FROM (
                             SELECT first_name, last_name, salary, department_id
@@ -254,79 +252,105 @@ impl<'a> Cursor<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
+        # fn main() {}
+        ```
+
+        ## Nonblocking
+
+        ```
+        use sibyl::{Cursor, Number};
+        use std::cmp::Ordering::Equal;
+
+        # #[cfg(feature="nonblocking")]
+        # fn main() -> sibyl::Result<()> {
         # sibyl::block_on(async {
         # let session = sibyl::test_env::get_session().await?;
-        # let stmt = session.prepare("
-        #     BEGIN
-        #         OPEN :lowest_payed_employee FOR
-        #             SELECT department_name, first_name, last_name, salary
-        #               FROM (
-        #                     SELECT first_name, last_name, salary, department_id
-        #                          , ROW_NUMBER() OVER (ORDER BY salary) ord
-        #                      FROM hr.employees
-        #                    ) e
-        #               JOIN hr.departments d
-        #                 ON d.department_id = e.department_id
-        #              WHERE ord = 1
-        #         ;
-        #         OPEN :median_salary_employees FOR
-        #             SELECT department_name, first_name, last_name, salary
-        #               FROM (
-        #                     SELECT first_name, last_name, salary, department_id
-        #                          , MEDIAN(salary) OVER () median_salary
-        #                      FROM hr.employees
-        #                    ) e
-        #               JOIN hr.departments d
-        #                 ON d.department_id = e.department_id
-        #              WHERE salary = median_salary
-        #           ORDER BY department_name, last_name, first_name
-        #         ;
-        #     END;
-        # ").await?;
-        # let mut lowest_payed_employee   = Cursor::new(&stmt)?;
-        # let mut median_salary_employees = Cursor::new(&stmt)?;
-        # stmt.execute((
-        #     ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
-        #     ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
-        # )).await?;
-        # let expected_lowest_salary = Number::from_int(2100, &session)?;
-        # let expected_median_salary = Number::from_int(6200, &session)?;
-        # let rows = lowest_payed_employee.rows().await?;
-        # let row = rows.next().await?.unwrap();
-        # let department_name : &str = row.get(0)?;
-        # let first_name : &str = row.get(1)?;
-        # let last_name : &str = row.get(2)?;
-        # let salary : Number = row.get(3)?;
-        # assert_eq!(department_name, "Shipping");
-        # assert_eq!(first_name, "TJ");
-        # assert_eq!(last_name, "Olson");
-        # assert_eq!(salary.compare(&expected_lowest_salary)?, Equal);
-        # let row = rows.next().await?;
-        # assert!(row.is_none());
-        # let rows = median_salary_employees.rows().await?;
-        # let row = rows.next().await?.unwrap();
-        # let department_name : &str = row.get(0)?;
-        # let first_name : &str = row.get(1)?;
-        # let last_name : &str = row.get(2)?;
-        # let salary : Number = row.get(3)?;
-        # assert_eq!(department_name, "Sales");
-        # assert_eq!(first_name, "Amit");
-        # assert_eq!(last_name, "Banda");
-        # assert_eq!(salary.compare(&expected_median_salary)?, Equal);
-        # let row = rows.next().await?.unwrap();
-        # let department_name : &str = row.get(0)?;
-        # let first_name : &str = row.get(1)?;
-        # let last_name : &str = row.get(2)?;
-        # let salary : Number = row.get(3)?;
-        # assert_eq!(department_name, "Sales");
-        # assert_eq!(first_name, "Charles");
-        # assert_eq!(last_name, "Johnson");
-        # assert_eq!(salary.compare(&expected_median_salary)?, Equal);
-        # let row = rows.next().await?;
-        # assert!(row.is_none());
+        let stmt = session.prepare("
+            BEGIN
+                OPEN :LOWEST_PAYED_EMPLOYEE FOR
+                    SELECT department_name, first_name, last_name, salary
+                      FROM (
+                            SELECT first_name, last_name, salary, department_id
+                                 , ROW_NUMBER() OVER (ORDER BY salary) ord
+                             FROM hr.employees
+                           ) e
+                      JOIN hr.departments d
+                        ON d.department_id = e.department_id
+                     WHERE ord = 1
+                ;
+                OPEN :MEDIAN_SALARY_EMPLOYEES FOR
+                    SELECT department_name, first_name, last_name, salary
+                      FROM (
+                            SELECT first_name, last_name, salary, department_id
+                                 , MEDIAN(salary) OVER () median_salary
+                             FROM hr.employees
+                           ) e
+                      JOIN hr.departments d
+                        ON d.department_id = e.department_id
+                     WHERE salary = median_salary
+                  ORDER BY department_name, last_name, first_name
+                ;
+            END;
+        ").await?;
+
+        let mut lowest_payed_employee   = Cursor::new(&stmt)?;
+        let mut median_salary_employees = Cursor::new(&stmt)?;
+
+        stmt.execute((
+            ( ":LOWEST_PAYED_EMPLOYEE",   &mut lowest_payed_employee   ),
+            ( ":MEDIAN_SALARY_EMPLOYEES", &mut median_salary_employees ),
+        )).await?;
+
+        let expected_lowest_salary = Number::from_int(2100, &session)?;
+        let expected_median_salary = Number::from_int(6200, &session)?;
+
+        let rows = lowest_payed_employee.rows().await?;
+        let row = rows.next().await?.unwrap();
+
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
+
+        assert_eq!(department_name, "Shipping");
+        assert_eq!(first_name, "TJ");
+        assert_eq!(last_name, "Olson");
+        assert_eq!(salary.compare(&expected_lowest_salary)?, Equal);
+
+        let row = rows.next().await?;
+        assert!(row.is_none());
+
+        let rows = median_salary_employees.rows().await?;
+        let row = rows.next().await?.unwrap();
+
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
+
+        assert_eq!(department_name, "Sales");
+        assert_eq!(first_name, "Amit");
+        assert_eq!(last_name, "Banda");
+        assert_eq!(salary.compare(&expected_median_salary)?, Equal);
+
+        let row = rows.next().await?.unwrap();
+
+        let department_name : &str = row.get(0)?;
+        let first_name : &str = row.get(1)?;
+        let last_name : &str = row.get(2)?;
+        let salary : Number = row.get(3)?;
+
+        assert_eq!(department_name, "Sales");
+        assert_eq!(first_name, "Charles");
+        assert_eq!(last_name, "Johnson");
+        assert_eq!(salary.compare(&expected_median_salary)?, Equal);
+
+        let row = rows.next().await?;
+        assert!(row.is_none());
         # Ok(()) })
         # }
+        # #[cfg(feature="blocking")]
+        # fn main() {}
         ```
         See also [`Statement::next_result`] for another method to return REF CURSORs.
     */
@@ -377,15 +401,13 @@ impl<'a> Cursor<'a> {
 
         # Example
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+        ## Blocking
 
         ```
         use sibyl::Cursor;
 
-        # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
+        # fn main() -> sibyl::Result<()> {
         # let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             BEGIN
@@ -402,23 +424,34 @@ impl<'a> Cursor<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
+        # fn main() {}
+        ```
+
+        ## Nonblocking
+
+        ```
+        use sibyl::Cursor;
+
+        # #[cfg(feature="nonblocking")]
+        # fn main() -> sibyl::Result<()> {
         # sibyl::block_on(async {
         # let session = sibyl::test_env::get_session().await?;
-        # let stmt = session.prepare("
-        #     BEGIN
-        #         OPEN :subordinates FOR
-        #             SELECT employee_id, last_name, first_name
-        #               FROM hr.employees
-        #              WHERE manager_id = :id
-        #         ;
-        #     END;
-        # ").await?;
-        # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
-        # assert_eq!(subordinates.column_count()?, 3);
+        let stmt = session.prepare("
+            BEGIN
+                OPEN :subordinates FOR
+                    SELECT employee_id, last_name, first_name
+                      FROM hr.employees
+                     WHERE manager_id = :id
+                ;
+            END;
+        ").await?;
+        let mut subordinates = Cursor::new(&stmt)?;
+        stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
+        assert_eq!(subordinates.column_count()?, 3);
         # Ok(()) })
         # }
+        # #[cfg(feature="blocking")]
+        # fn main() {}
         ```
     */
     pub fn column_count(&self) -> Result<usize> {
@@ -441,15 +474,13 @@ impl<'a> Cursor<'a> {
 
         # Example
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+        ## Blocking
 
         ```
         use sibyl::{Cursor, ColumnType};
 
-        # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
+        # fn main() -> sibyl::Result<()> {
         # let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             BEGIN
@@ -474,31 +505,42 @@ impl<'a> Cursor<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
+        # fn main() {}
+        ```
+
+        ## Nonblocking
+
+        ```
+        use sibyl::{Cursor, ColumnType};
+
+        # #[cfg(feature="nonblocking")]
+        # fn main() -> sibyl::Result<()> {
         # sibyl::block_on(async {
         # let session = sibyl::test_env::get_session().await?;
-        # let stmt = session.prepare("
-        #     BEGIN
-        #         OPEN :subordinates FOR
-        #             SELECT employee_id, last_name, first_name
-        #               FROM hr.employees
-        #              WHERE manager_id = :id
-        #         ;
-        #     END;
-        # ").await?;
-        # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
-        # let mut _rows = subordinates.rows().await?;
-        # let col = subordinates.column(0).expect("ID column info");
-        # assert_eq!(col.name()?, "EMPLOYEE_ID", "column name");
-        # assert_eq!(col.data_type()?, ColumnType::Number, "column type");
-        # assert_eq!(col.precision()?, 6, "number precision");
-        # assert_eq!(col.scale()?, 0, "number scale");
-        # assert!(!col.is_null()?, "not null");
-        # assert!(col.is_visible()?, "is visible");
-        # assert!(!col.is_identity()?, "not an identity column");
+        let stmt = session.prepare("
+            BEGIN
+                OPEN :subordinates FOR
+                    SELECT employee_id, last_name, first_name
+                      FROM hr.employees
+                     WHERE manager_id = :id
+                ;
+            END;
+        ").await?;
+        let mut subordinates = Cursor::new(&stmt)?;
+        stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
+        let mut _rows = subordinates.rows().await?;
+        let col = subordinates.column(0).expect("ID column info");
+        assert_eq!(col.name()?, "EMPLOYEE_ID", "column name");
+        assert_eq!(col.data_type()?, ColumnType::Number, "column type");
+        assert_eq!(col.precision()?, 6, "number precision");
+        assert_eq!(col.scale()?, 0, "number scale");
+        assert!(!col.is_null()?, "not null");
+        assert!(col.is_visible()?, "is visible");
+        assert!(!col.is_identity()?, "not an identity column");
         # Ok(()) })
         # }
+        # #[cfg(feature="blocking")]
+        # fn main() {}
         ```
     */
     pub fn column(&self, pos: usize) -> Option<ColumnInfo<'_>> {
@@ -522,15 +564,13 @@ impl<'a> Cursor<'a> {
 
         # Example
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+        ## Blocking
 
         ```
         use sibyl::Cursor;
 
-        # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
+        # fn main() -> sibyl::Result<()> {
         # let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             BEGIN
@@ -558,33 +598,44 @@ impl<'a> Cursor<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
+        # fn main() {}
+        ```
+
+        ## Nonblocking
+
+        ```
+        use sibyl::Cursor;
+
+        # #[cfg(feature="nonblocking")]
+        # fn main() -> sibyl::Result<()> {
         # sibyl::block_on(async {
         # let session = sibyl::test_env::get_session().await?;
-        # let stmt = session.prepare("
-        #     BEGIN
-        #         OPEN :subordinates FOR
-        #             SELECT employee_id, last_name, first_name
-        #               FROM hr.employees
-        #              WHERE manager_id = :id
-        #           ORDER BY employee_id
-        #         ;
-        #     END;
-        # ").await?;
-        # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
-        # subordinates.set_prefetch_rows(5)?;
-        # let mut rows = subordinates.rows().await?;
-        # let mut ids = Vec::new();
-        # while let Some( row ) = rows.next().await? {
-        #     let id : usize = row.get(0)?;
-        #     ids.push(id);
-        # }
-        # assert_eq!(subordinates.row_count()?, 4);
-        # assert_eq!(ids.len(), 4);
-        # assert_eq!(ids.as_slice(), &[104 as usize, 105, 106, 107]);
+        let stmt = session.prepare("
+            BEGIN
+                OPEN :subordinates FOR
+                    SELECT employee_id, last_name, first_name
+                      FROM hr.employees
+                     WHERE manager_id = :id
+                  ORDER BY employee_id
+                ;
+            END;
+        ").await?;
+        let mut subordinates = Cursor::new(&stmt)?;
+        stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
+        subordinates.set_prefetch_rows(5)?;
+        let mut rows = subordinates.rows().await?;
+        let mut ids = Vec::new();
+        while let Some( row ) = rows.next().await? {
+            let id : usize = row.get(0)?;
+            ids.push(id);
+        }
+        assert_eq!(subordinates.row_count()?, 4);
+        assert_eq!(ids.len(), 4);
+        assert_eq!(ids.as_slice(), &[104 as usize, 105, 106, 107]);
         # Ok(()) })
         # }
+        # #[cfg(feature="blocking")]
+        # fn main() {}
         ```
     */
     pub fn row_count(&self) -> Result<usize> {
@@ -597,15 +648,13 @@ impl<'a> Cursor<'a> {
 
         # Example
 
-        🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-        to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+        ## Blocking
 
         ```
         use sibyl::Cursor;
 
-        # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
+        # fn main() -> sibyl::Result<()> {
         # let session = sibyl::test_env::get_session()?;
         let stmt = session.prepare("
             BEGIN
@@ -623,24 +672,35 @@ impl<'a> Cursor<'a> {
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
+        # fn main() {}
+        ```
+
+        ## Nonblocking
+
+        ```
+        use sibyl::Cursor;
+
+        # #[cfg(feature="nonblocking")]
+        # fn main() -> sibyl::Result<()> {
         # sibyl::block_on(async {
         # let session = sibyl::test_env::get_session().await?;
-        # let stmt = session.prepare("
-        #     BEGIN
-        #         OPEN :subordinates FOR
-        #             SELECT employee_id, last_name, first_name
-        #               FROM hr.employees
-        #              WHERE manager_id = :id
-        #           ORDER BY employee_id
-        #         ;
-        #     END;
-        # ").await?;
-        # let mut subordinates = Cursor::new(&stmt)?;
-        # stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
-        # subordinates.set_prefetch_rows(10)?;
+        let stmt = session.prepare("
+            BEGIN
+                OPEN :subordinates FOR
+                    SELECT employee_id, last_name, first_name
+                      FROM hr.employees
+                     WHERE manager_id = :id
+                  ORDER BY employee_id
+                ;
+            END;
+        ").await?;
+        let mut subordinates = Cursor::new(&stmt)?;
+        stmt.execute(((":ID", 103), (":SUBORDINATES", &mut subordinates))).await?;
+        subordinates.set_prefetch_rows(10)?;
         # Ok(()) })
         # }
+        # #[cfg(feature="blocking")]
+        # fn main() {}
         ```
     */
     pub fn set_prefetch_rows(&self, num_rows: u32) -> Result<()> {
@@ -654,14 +714,15 @@ impl<'a> Cursor<'a> {
         If the actual value is expected to be larger than that, then the "column size"
         has to be changed before `query` is run.
 
-        # Example (blocking)
+        # Example
+
+        ## Blocking
 
         ```
         use sibyl::Cursor;
 
-        # use sibyl::Result;
         # #[cfg(feature="blocking")]
-        # fn main() -> Result<()> {
+        # fn main() -> sibyl::Result<()> {
         # let session = sibyl::test_env::get_session()?;
         # let stmt = session.prepare("
         #     INSERT INTO long_and_raw_test_data (text) VALUES (:TEXT)  RETURNING id INTO :ID
@@ -684,22 +745,21 @@ impl<'a> Cursor<'a> {
         let rows = long_texts.rows()?;
         let row = rows.next()?.expect("first (and only) row");
         let txt : &str = row.get(0)?;
-        
+
         assert_eq!(txt, text);
         # Ok(())
         # }
         # #[cfg(feature="nonblocking")]
-        # fn main()  {}
+        # fn main() {}
         ```
 
-        # Example (nonblocking)
+        ## Nonblocking
 
         ```
         use sibyl::Cursor;
 
-        # use sibyl::Result;
         # #[cfg(feature="nonblocking")]
-        # fn main() -> Result<()> {
+        # fn main() -> sibyl::Result<()> {
         # sibyl::block_on(async {
         # let session = sibyl::test_env::get_session().await?;
         # let stmt = session.prepare("
@@ -723,12 +783,12 @@ impl<'a> Cursor<'a> {
         let rows = long_texts.rows().await?;
         let row = rows.next().await?.expect("first (and only) row");
         let txt : &str = row.get(0)?;
-        
+
         assert_eq!(txt, text);
         # Ok(()) })
         # }
         # #[cfg(feature="blocking")]
-        # fn main()  {}
+        # fn main() {}
         ```
     */
     pub fn set_max_long_size(&mut self, size: u32) {

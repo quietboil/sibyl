@@ -173,13 +173,11 @@ impl<'a> Row<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT MAX(commission_pct)
@@ -187,25 +185,35 @@ impl<'a> Row<'a> {
          WHERE manager_id = :id
     ")?;
     let row = stmt.query_single(120)?.unwrap();
-
     let commission_exists = !row.is_null(0);
+
     assert!(!commission_exists);
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+    
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     SELECT MAX(commission_pct)
-    #       FROM hr.employees
-    #      WHERE manager_id = :id
-    # ").await?;
-    # let row = stmt.query_single(120).await?.unwrap();
-    # let commission_exists = !row.is_null(0);
-    # assert!(!commission_exists);
+    let stmt = session.prepare("
+        SELECT MAX(commission_pct)
+          FROM hr.employees
+         WHERE manager_id = :id
+    ").await?;
+    let row = stmt.query_single(120).await?.unwrap();
+    let commission_exists = !row.is_null(0);
+
+    assert!(!commission_exists);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
 
     ## Note
@@ -239,13 +247,11 @@ impl<'a> Row<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest)
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT postal_code, country_id
@@ -272,29 +278,39 @@ impl<'a> Row<'a> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+    
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     SELECT postal_code, country_id
-    #       FROM hr.locations
-    #      WHERE location_id = :id
-    # ").await?;
-    # let row = stmt.query_single(2400).await?.unwrap();
-    # let postal_code : Option<&str> = row.get(0)?;
-    # assert!(postal_code.is_none());
-    # let country_id  : Option<&str> = row.get(1)?;
-    # assert!(country_id.is_some());
-    # let country_id = country_id.unwrap();
-    # assert_eq!(country_id, "UK");
-    # let postal_code : Option<&str> = row.get("POSTAL_CODE")?;
-    # assert!(postal_code.is_none());
-    # let country_id  : Option<&str> = row.get("COUNTRY_ID")?;
-    # assert!(country_id.is_some());
-    # let country_id = country_id.unwrap();
-    # assert_eq!(country_id, "UK");
+    let stmt = session.prepare("
+        SELECT postal_code, country_id
+          FROM hr.locations
+         WHERE location_id = :id
+    ").await?;
+    let row = stmt.query_single(2400).await?.unwrap();
+    let postal_code : Option<&str> = row.get(0)?;
+    assert!(postal_code.is_none());
+    let country_id  : Option<&str> = row.get(1)?;
+    assert!(country_id.is_some());
+    let country_id = country_id.unwrap();
+    assert_eq!(country_id, "UK");
+
+    let postal_code : Option<&str> = row.get("POSTAL_CODE")?;
+    assert!(postal_code.is_none());
+    let country_id  : Option<&str> = row.get("COUNTRY_ID")?;
+    assert!(country_id.is_some());
+    let country_id = country_id.unwrap();
+    assert_eq!(country_id, "UK");
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn get<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<T> {
@@ -328,13 +344,11 @@ impl<'a> Row<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest)
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT postal_code, city, state_province, country_id
@@ -369,29 +383,42 @@ impl<'a> Row<'a> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+    
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     SELECT postal_code, city, state_province, country_id
-    #       FROM hr.locations
-    #      WHERE location_id = :id
-    # ").await?;
-    # let row = stmt.query_single(2400).await?.unwrap();
-    # let city : &str = row.get("CITY")?;
-    # assert_eq!(city, "London");
-    # let postal_code    : Option<&str> = row.get("POSTAL_CODE")?;
-    # let state_province : Option<&str> = row.get("STATE_PROVINCE")?;
-    # let country_id     : Option<&str> = row.get("COUNTRY_ID")?;
-    # assert!(postal_code.is_none());
-    # assert!(state_province.is_none());
-    # assert!(country_id.is_some());
-    # let country_id = country_id.unwrap();
-    # assert_eq!(country_id, "UK");
-    # let country_id : &str = row.get("COUNTRY_ID")?;
-    # assert_eq!(country_id, "UK");
+    let stmt = session.prepare("
+        SELECT postal_code, city, state_province, country_id
+          FROM hr.locations
+         WHERE location_id = :id
+    ").await?;
+    let row = stmt.query_single(2400).await?.unwrap();
+    let city : &str = row.get("CITY")?;
+    assert_eq!(city, "London");
+
+    let postal_code    : Option<&str> = row.get("POSTAL_CODE")?;
+    let state_province : Option<&str> = row.get("STATE_PROVINCE")?;
+    let country_id     : Option<&str> = row.get("COUNTRY_ID")?;
+
+    assert!(postal_code.is_none());
+    assert!(state_province.is_none());
+    assert!(country_id.is_some());
+
+    let country_id = country_id.unwrap();
+    assert_eq!(country_id, "UK");
+
+    let country_id : &str = row.get("COUNTRY_ID")?;
+    assert_eq!(country_id, "UK");
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     #[deprecated = "Use [`get`](Row::get) instead."]
@@ -410,13 +437,11 @@ impl<'a> Row<'a> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest)
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         SELECT manager_id
@@ -444,32 +469,44 @@ impl<'a> Row<'a> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+    
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let stmt = session.prepare("
-    #     SELECT manager_id
-    #       FROM hr.employees
-    #      WHERE employee_id = :id
-    #        FOR UPDATE
-    # ").await?;
-    # let row = stmt.query_single(107).await?.unwrap();
-    # let manager_id: u32 = row.get(0)?;
-    # assert_eq!(manager_id, 103);
-    # let rowid = row.rowid()?;
-    # let stmt = session.prepare("
-    #     UPDATE hr.employees
-    #        SET manager_id = :mgr_id
-    #      WHERE rowid = :row_id
-    # ").await?;
-    # let num_updated = stmt.execute((
-    #     (":MGR_ID", 103),
-    #     (":ROW_ID", &rowid),
-    # )).await?;
-    # assert_eq!(num_updated, 1);
+    let stmt = session.prepare("
+        SELECT manager_id
+          FROM hr.employees
+         WHERE employee_id = :id
+           FOR UPDATE
+    ").await?;
+    let row = stmt.query_single(107).await?.unwrap();
+    let manager_id: u32 = row.get(0)?;
+    assert_eq!(manager_id, 103);
+
+    let rowid = row.rowid()?;
+
+    let stmt = session.prepare("
+        UPDATE hr.employees
+           SET manager_id = :mgr_id
+         WHERE rowid = :row_id
+    ").await?;
+    let num_updated = stmt.execute((
+        (":MGR_ID", 103),
+        (":ROW_ID", &rowid),
+    )).await?;
+
+    assert_eq!(num_updated, 1);
     # session.rollback().await?;
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn rowid(&self) -> Result<RowID> {

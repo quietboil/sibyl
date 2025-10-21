@@ -157,7 +157,6 @@ impl<'a> ConnectionPool<'a> {
     # Example
 
     ```
-    # use sibyl::Result;
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -184,7 +183,6 @@ impl<'a> ConnectionPool<'a> {
     # Example
 
     ```
-    # use sibyl::Result;
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -220,7 +218,6 @@ impl<'a> ConnectionPool<'a> {
     # Example
 
     ```
-    # use sibyl::Result;
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -246,7 +243,6 @@ impl<'a> ConnectionPool<'a> {
     # Example
 
     ```
-    # use sibyl::Result;
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -270,7 +266,6 @@ impl<'a> ConnectionPool<'a> {
     # Example
 
     ```
-    # use sibyl::Result;
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -294,7 +289,6 @@ impl<'a> ConnectionPool<'a> {
     # Example
 
     ```
-    # use sibyl::Result;
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");

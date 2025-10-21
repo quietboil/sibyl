@@ -1,5 +1,6 @@
 create user sibyl identified by Or4cl3;
 grant connect, resource, unlimited tablespace, select_catalog_role to sibyl;
+grant read, write on directory MEDIA_DIR to sibyl;
 
 begin
     for r in (
@@ -63,6 +64,8 @@ begin
     end loop;
 end;
 /
+
+-- CONNECT sibyl/Or4cl3
 
 DECLARE
     name_already_used EXCEPTION; PRAGMA EXCEPTION_INIT(name_already_used, -955);

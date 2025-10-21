@@ -127,7 +127,7 @@ impl Environment {
 
     # Parameters
 
-    * `size` - The maximum size for the client-side object cache as a oercentage of the cache optimal size.
+    * `size` - The maximum size for the client-side object cache as a percentage of the cache optimal size.
 
     # Example
 

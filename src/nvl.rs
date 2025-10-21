@@ -10,7 +10,7 @@
 //! ```
 //! # use sibyl::*;
 //! # #[cfg(feature="blocking")]
-//! # fn main() -> Result<()> {
+//! # fn main() -> sibyl::Result<()> {
 //! # let session = sibyl::test_env::get_session()?;
 //! let stmt = session.prepare("
 //! BEGIN

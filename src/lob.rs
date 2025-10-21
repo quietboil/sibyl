@@ -228,9 +228,8 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
             ext_file BFILE
         )
      */
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         INSERT INTO test_lobs (text) VALUES (empty_clob()) RETURNING id INTO :ID
@@ -267,7 +266,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main()  {}
+    # fn main() {}
     ```
 
     # Example (nonblocking)
@@ -282,9 +281,8 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
             ext_file BFILE
         )
      */
-    # use sibyl::Result;
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     let stmt = session.prepare("
@@ -322,7 +320,7 @@ impl<'a,T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> {
     # Ok(()) })
     # }
     # #[cfg(feature="blocking")]
-    # fn main()  {}
+    # fn main() {}
     ```
     */
     pub fn is_equal<U>(&self, other: &LOB<'a,U>) -> Result<bool>
@@ -385,9 +383,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
             ext_file BFILE
         )
      */
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let stmt = session.prepare("
         INSERT INTO test_lobs (text) VALUES (:NEW_LOB) RETURNING id INTO :ID
@@ -407,9 +404,8 @@ impl<'a, T> LOB<'a,T> where T: DescriptorType<OCIType=OCILobLocator> + InternalL
     ```
     use sibyl::{ CLOB };
 
-    # use sibyl::Result;
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     let stmt = session.prepare("
@@ -449,16 +445,14 @@ impl<'a> LOB<'a,OCICLobLocator> {
     Returns `true` if the LOB locator is for an NCLOB.
 
     # Example
-
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    
+    ## Blocking
 
     ```
     use sibyl::{CLOB, Cache, CharSetForm};
 
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let lob = CLOB::temp(&session, CharSetForm::NChar, Cache::No)?;
 
@@ -466,13 +460,25 @@ impl<'a> LOB<'a,OCICLobLocator> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    use sibyl::{CLOB, Cache, CharSetForm};
+
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let lob = CLOB::temp(&session, CharSetForm::NChar, Cache::No).await?;
-    # assert!(lob.is_nclob()?);
+    let lob = CLOB::temp(&session, CharSetForm::NChar, Cache::No).await?;
+
+    assert!(lob.is_nclob()?);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn is_nclob(&self) -> Result<bool> {
@@ -493,15 +499,13 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
     use sibyl::BFile;
 
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -512,16 +516,28 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    use sibyl::BFile;
+
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let file = BFile::new(&session)?;
-    # file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
-    # let (dir_name, file_name) = file.file_name()?;
-    # assert_eq!(dir_name, "MEDIA_DIR");
-    # assert_eq!(file_name, "hello_world.txt");
+    let file = BFile::new(&session)?;
+    file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
+    let (dir_name, file_name) = file.file_name()?;
+    
+    assert_eq!(dir_name, "MEDIA_DIR");
+    assert_eq!(file_name, "hello_world.txt");
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn file_name(&self) -> Result<(String,String)> {
@@ -548,15 +564,13 @@ impl<'a> LOB<'a,OCIBFileLocator> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
     use sibyl::BFile;
 
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let mut file = BFile::new(&session)?;
     file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
@@ -565,14 +579,26 @@ impl<'a> LOB<'a,OCIBFileLocator> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    use sibyl::BFile;
+
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let mut file = BFile::new(&session)?;
-    # file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
-    # assert!(file.file_exists().await?);
+    let mut file = BFile::new(&session)?;
+    file.set_file_name("MEDIA_DIR", "hello_world.txt")?;
+    
+    assert!(file.file_exists().await?);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_file_name(&self, dir: &str, name: &str) -> Result<()> {

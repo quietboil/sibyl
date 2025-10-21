@@ -94,13 +94,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -113,7 +111,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -121,11 +126,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 2, 2, 10).await?;
-    # let num_busy = pool.busy_count()?;
-    # assert_eq!(num_busy, 0);
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 2, 2, 10).await?;
+
+    let num_busy = pool.busy_count()?;
+
+    assert_eq!(num_busy, 0);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn busy_count(&self) -> Result<usize> {
@@ -138,13 +147,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -157,7 +164,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -165,11 +179,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 2, 2, 10).await?;
-    # let num_sessions = pool.open_count()?;
-    # assert_eq!(num_sessions, 2);
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 2, 2, 10).await?;
+
+    let num_sessions = pool.open_count()?;
+
+    assert_eq!(num_sessions, 2);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn open_count(&self) -> Result<usize> {
@@ -183,15 +201,13 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
     use sibyl::SessionPoolGetMode;
 
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -204,7 +220,16 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    use sibyl::SessionPoolGetMode;
+
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -212,11 +237,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # let get_mode = pool.get_mode()?;
-    # assert_eq!(get_mode, SessionPoolGetMode::Wait);
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+
+    let get_mode = pool.get_mode()?;
+
+    assert_eq!(get_mode, SessionPoolGetMode::Wait);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn get_mode(&self) -> Result<SessionPoolGetMode> {
@@ -240,15 +269,13 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
     use sibyl::SessionPoolGetMode;
 
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -261,7 +288,16 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    use sibyl::SessionPoolGetMode;
+
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -269,12 +305,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # pool.set_get_mode(SessionPoolGetMode::ForcedGet)?;
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+
+    pool.set_get_mode(SessionPoolGetMode::ForcedGet)?;
     # let get_mode = pool.get_mode()?;
     # assert_eq!(get_mode, SessionPoolGetMode::ForcedGet);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_get_mode(&self, mode: SessionPoolGetMode) -> Result<()> {
@@ -287,13 +326,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -309,7 +346,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -317,11 +361,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # let get_session_max_wait_time = pool.wait_timeout()?;
-    # assert_eq!(get_session_max_wait_time, 5000);
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+    
+    let get_session_max_wait_time = pool.wait_timeout()?;
+    
+    assert_eq!(get_session_max_wait_time, 5000);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn wait_timeout(&self) -> Result<u32> {
@@ -338,13 +386,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -357,7 +403,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -365,12 +418,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # pool.set_wait_timeout(1000)?;
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+
+    pool.set_wait_timeout(1000)?;
     # let wait_timeout = pool.wait_timeout()?;
     # assert_eq!(wait_timeout, 1000);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_wait_timeout(&self, milliseconds: u32) -> Result<()> {
@@ -382,13 +438,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -401,7 +455,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -409,11 +470,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # let session_max_idle_time = pool.idle_timeout()?;
-    # assert_eq!(session_max_idle_time, 0);
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+
+    let session_max_idle_time = pool.idle_timeout()?;
+
+    assert_eq!(session_max_idle_time, 0);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn idle_timeout(&self) -> Result<u32> {
@@ -434,13 +499,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -453,7 +516,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -461,12 +531,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 10).await?;
-    # pool.set_idle_timeout(600)?;
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 10).await?;
+    
+    pool.set_idle_timeout(600)?;
     # let timeout = pool.idle_timeout()?;
     # assert_eq!(timeout, 600);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_idle_timeout(&self, seconds: u32) -> Result<()> {
@@ -480,13 +553,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -499,7 +570,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -507,11 +585,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # let max_lifetime = pool.session_max_lifetime()?;
-    # assert_eq!(max_lifetime, 0);
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+
+    let max_lifetime = pool.session_max_lifetime()?;
+
+    assert_eq!(max_lifetime, 0);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn session_max_lifetime(&self) -> Result<u32> {
@@ -529,13 +611,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -548,7 +628,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -556,12 +643,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # pool.set_session_max_lifetime(10 * 3600)?;
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+
+    pool.set_session_max_lifetime(10 * 3600)?;
     # let max_lifetime = pool.session_max_lifetime()?;
     # assert_eq!(max_lifetime, 10 * 3600);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_session_max_lifetime(&self, seconds: u32) -> Result<()> {
@@ -575,13 +665,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -594,7 +682,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -602,11 +697,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # let max_use_count = pool.session_max_use_count()?;
-    # assert_eq!(max_use_count, 0);
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+    
+    let max_use_count = pool.session_max_use_count()?;
+    
+    assert_eq!(max_use_count, 0);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn session_max_use_count(&self) -> Result<u32> {
@@ -622,13 +721,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -641,7 +738,13 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -649,12 +752,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # pool.set_session_max_use_count(10_000)?;
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+
+    pool.set_session_max_use_count(10_000)?;
     # let max_use_count = pool.session_max_use_count()?;
     # assert_eq!(max_use_count, 10_000);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_session_max_use_count(&self, count: u32) -> Result<()> {
@@ -668,13 +774,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -687,7 +791,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -695,11 +806,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 10).await?;
-    # let cache_size = pool.statement_cache_size()?;
-    # assert_eq!(cache_size, 20);
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 1, 1, 10).await?;
+
+    let cache_size = pool.statement_cache_size()?;
+
+    assert_eq!(cache_size, 20);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn statement_cache_size(&self) -> Result<u32> {
@@ -717,13 +832,11 @@ impl SessionPool<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let oracle = sibyl::env()?;
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
@@ -736,7 +849,14 @@ impl SessionPool<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # use once_cell::sync::OnceCell;
     # static ORACLE: OnceCell<sibyl::Environment> = OnceCell::new();
@@ -744,12 +864,15 @@ impl SessionPool<'_> {
     # let dbname = std::env::var("DBNAME").expect("database name");
     # let dbuser = std::env::var("DBUSER").expect("user name");
     # let dbpass = std::env::var("DBPASS").expect("password");
-    # let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
-    # pool.set_statement_cache_size(100)?;
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 10).await?;
+
+    pool.set_statement_cache_size(100)?;
     # let cache_size = pool.statement_cache_size()?;
     # assert_eq!(cache_size, 100);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_statement_cache_size(&self, size: u32) -> Result<()> {

@@ -132,9 +132,8 @@ impl Session<'_> {
     # Example
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     session.set_stmt_cache_size(100)?;
     # let size = session.stmt_cache_size()?;
@@ -142,7 +141,7 @@ impl Session<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     # session.set_stmt_cache_size(100)?;
@@ -161,16 +160,15 @@ impl Session<'_> {
     Returns the statement cache size.
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let size = session.stmt_cache_size()?;
     assert_eq!(size, 20);
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     # let size = session.stmt_cache_size()?;
@@ -201,9 +199,8 @@ impl Session<'_> {
     # Example
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     session.set_call_timeout(5000)?;
     # let time = session.call_timeout()?;
@@ -211,7 +208,7 @@ impl Session<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     # session.set_call_timeout(5000)?;
@@ -231,9 +228,8 @@ impl Session<'_> {
     # Example
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     session.set_call_timeout(1000)?;
 
@@ -243,7 +239,7 @@ impl Session<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     # session.set_call_timeout(1000)?;
@@ -269,32 +265,41 @@ impl Session<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     session.start_call_time_measurements()?;
     session.ping()?;
     let dt = session.call_time()?;
     session.stop_call_time_measurements()?;
+
     assert!(dt > 0);
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # session.start_call_time_measurements()?;
-    # session.ping().await?;
-    # let dt = session.call_time()?;
-    # session.stop_call_time_measurements()?;
-    # assert!(dt > 0);
+    session.start_call_time_measurements()?;
+    session.ping().await?;
+    let dt = session.call_time()?;
+    session.stop_call_time_measurements()?;
+
+    assert!(dt > 0);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn call_time(&self) -> Result<u64> {
@@ -317,13 +322,11 @@ impl Session<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     session.set_module("Sibyl DocTest");
 
@@ -334,24 +337,35 @@ impl Session<'_> {
     ")?;
     let row = stmt.query_single(())?.unwrap();
     let module : &str = row.get(0)?;
+
     assert_eq!(module, "Sibyl DocTest");
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # session.set_module("Sibyl DocTest");
-    # let stmt = session.prepare("
-    #     SELECT module
-    #       FROM v$session
-    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    # ").await?;
-    # let row = stmt.query_single(()).await?.unwrap();
-    # let module : &str = row.get(0)?;
-    # assert_eq!(module, "Sibyl DocTest");
+    session.set_module("Sibyl DocTest");
+    let stmt = session.prepare("
+        SELECT module
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ").await?;
+    let row = stmt.query_single(()).await?.unwrap();
+    let module : &str = row.get(0)?;
+
+    assert_eq!(module, "Sibyl DocTest");
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_module(&self, name: &str) -> Result<()> {
@@ -369,13 +383,11 @@ impl Session<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     session.set_action("Action Name Test");
 
@@ -386,24 +398,35 @@ impl Session<'_> {
     ")?;
     let row = stmt.query_single(())?.unwrap();
     let action : &str = row.get(0)?;
+
     assert_eq!(action, "Action Name Test");
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    # Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # session.set_action("Action Name Test");
-    # let stmt = session.prepare("
-    #     SELECT action
-    #       FROM v$session
-    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    # ").await?;
-    # let row = stmt.query_single(()).await?.unwrap();
-    # let action : &str = row.get(0)?;
-    # assert_eq!(action, "Action Name Test");
+    session.set_action("Action Name Test");
+    let stmt = session.prepare("
+        SELECT action
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ").await?;
+    let row = stmt.query_single(()).await?.unwrap();
+    let action : &str = row.get(0)?;
+
+    assert_eq!(action, "Action Name Test");
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_action(&self, action: &str) -> Result<()> {
@@ -420,13 +443,11 @@ impl Session<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     session.set_client_identifier("Test Wielder");
 
@@ -437,24 +458,35 @@ impl Session<'_> {
     ")?;
     let row = stmt.query_single(())?.unwrap();
     let client_identifier : &str = row.get(0)?;
+    
     assert_eq!(client_identifier, "Test Wielder");
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     # session.set_client_identifier("Test Wielder");
-    # let stmt = session.prepare("
-    #     SELECT client_identifier
-    #       FROM v$session
-    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    # ").await?;
-    # let row = stmt.query_single(()).await?.unwrap();
-    # let client_identifier : &str = row.get(0)?;
-    # assert_eq!(client_identifier, "Test Wielder");
+    let stmt = session.prepare("
+        SELECT client_identifier
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ").await?;
+    let row = stmt.query_single(()).await?.unwrap();
+    let client_identifier : &str = row.get(0)?;
+    
+    assert_eq!(client_identifier, "Test Wielder");
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_client_identifier(&self, id: &str) -> Result<()> {
@@ -471,13 +503,11 @@ impl Session<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     session.set_client_info("Nothing to see here, move along folks");
 
@@ -488,24 +518,35 @@ impl Session<'_> {
     ")?;
     let row = stmt.query_single(())?.unwrap();
     let client_info : &str = row.get(0)?;
+    
     assert_eq!(client_info, "Nothing to see here, move along folks");
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     # session.set_client_info("Nothing to see here, move along folks");
-    # let stmt = session.prepare("
-    #     SELECT client_info
-    #       FROM v$session
-    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    # ").await?;
-    # let row = stmt.query_single(()).await?.unwrap();
-    # let client_info : &str = row.get(0)?;
-    # assert_eq!(client_info, "Nothing to see here, move along folks");
+    let stmt = session.prepare("
+        SELECT client_info
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ").await?;
+    let row = stmt.query_single(()).await?.unwrap();
+    let client_info : &str = row.get(0)?;
+    
+    assert_eq!(client_info, "Nothing to see here, move along folks");
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_client_info(&self, info: &str) -> Result<()> {
@@ -517,42 +558,59 @@ impl Session<'_> {
 
     # Example
 
+    ## Blocking
+
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let orig_name = session.current_schema()?;
     // Workaround for an isssue that was introduced by the instant client 19.15 -
-    // `current_schema` returns empty string until set by `set_current_schema`
+    // `current_schema` returns empty string until set by the `set_current_schema`
     // Client 19.13 and earlier return the schema's name upon connect.
     let dbuser = std::env::var("DBUSER").expect("user name");
     let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
+    
     session.set_current_schema("HR")?;
-
     let current_schema = session.current_schema()?;
 
     assert_eq!(current_schema, "HR");
+    
     session.set_current_schema(orig_name)?;
     let current_schema = session.current_schema()?;
+    
     assert_eq!(current_schema, orig_name);
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let orig_name = session.current_schema()?;
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
-    # session.set_current_schema("HR")?;
-    # let current_schema = session.current_schema()?;
-    # assert_eq!(current_schema, "HR");
-    # session.set_current_schema(orig_name)?;
-    # let current_schema = session.current_schema()?;
-    # assert_eq!(current_schema, orig_name);
+    let orig_name = session.current_schema()?;
+    
+    let dbuser = std::env::var("DBUSER").expect("user name");
+    let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
+    
+    session.set_current_schema("HR")?;
+    let current_schema = session.current_schema()?;
+    
+    assert_eq!(current_schema, "HR");
+    
+    session.set_current_schema(orig_name)?;
+    let current_schema = session.current_schema()?;
+    
+    assert_eq!(current_schema, orig_name);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn current_schema(&self) -> Result<&str> {
@@ -572,13 +630,11 @@ impl Session<'_> {
 
     # Example
 
-    🛈 **Note** that this example is written for `blocking` mode execution. Add `await`s, where needed,
-    to convert it to a nonblocking variant (or peek at the source to see the hidden nonblocking doctest).
+    ## Blocking
 
     ```
-    # use sibyl::Result;
     # #[cfg(feature="blocking")]
-    # fn main() -> Result<()> {
+    # fn main() -> sibyl::Result<()> {
     # let session = sibyl::test_env::get_session()?;
     let orig_name = session.current_schema()?;
     // Workaround for an isssue that was introduced by the instant client 19.15 -
@@ -588,8 +644,8 @@ impl Session<'_> {
     let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
 
     session.set_current_schema("HR")?;
-
     assert_eq!(session.current_schema()?, "HR", "current schema is HR now");
+
     let stmt = session.prepare("
         SELECT schemaname
           FROM v$session
@@ -604,26 +660,38 @@ impl Session<'_> {
     # Ok(())
     # }
     # #[cfg(feature="nonblocking")]
-    # fn main() -> Result<()> {
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
-    # let orig_name = session.current_schema()?;
-    # let dbuser = std::env::var("DBUSER").expect("user name");
-    # let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
-    # session.set_current_schema("HR")?;
-    # assert_eq!(session.current_schema()?, "HR");
-    # let stmt = session.prepare("
-    #     SELECT schemaname
-    #       FROM v$session
-    #      WHERE sid = SYS_CONTEXT('USERENV', 'SID')
-    # ").await?;
-    # let row = stmt.query_single(()).await?.unwrap();
-    # let schema_name : &str = row.get(0)?;
-    # assert_eq!(schema_name, "HR");
-    # session.set_current_schema(orig_name)?;
-    # assert_eq!(session.current_schema()?, orig_name);
+    let orig_name = session.current_schema()?;
+    let dbuser = std::env::var("DBUSER").expect("user name");
+    let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
+    
+    session.set_current_schema("HR")?;
+    assert_eq!(session.current_schema()?, "HR");
+    
+    let stmt = session.prepare("
+        SELECT schemaname
+          FROM v$session
+         WHERE sid = SYS_CONTEXT('USERENV', 'SID')
+    ").await?;
+    let row = stmt.query_single(()).await?.unwrap();
+    let schema_name : &str = row.get(0)?;
+    assert_eq!(schema_name, "HR");
+    
+    session.set_current_schema(orig_name)?;
+    assert_eq!(session.current_schema()?, orig_name);
     # Ok(()) })
     # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
     ```
     */
     pub fn set_current_schema(&self, schema_name: &str) -> Result<()> {
