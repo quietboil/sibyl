@@ -70,7 +70,7 @@ impl Environment {
     let row = stmt.query_single(())?.expect("single row");
     let num_ts: u32 = row.get(0)?;
 
-    assert!(num_ts > 0);    
+    assert!(num_ts > 0);
     # Ok::<(),Box<dyn std::error::Error>>(())
     ```
     */
