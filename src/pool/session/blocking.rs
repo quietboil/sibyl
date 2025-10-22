@@ -88,27 +88,28 @@ impl<'a> SessionPool<'a> {
             }
             Ok(())
         }
-        # fn select_latest_hire(session: &Session) -> Result<String> {
-        #     let stmt = session.prepare("
-        #         SELECT first_name, last_name, hire_date
-        #           FROM (
-        #                 SELECT first_name, last_name, hire_date
-        #                      , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
-        #                   FROM hr.employees
-        #                )
-        #          WHERE hire_date_rank = 1
-        #     ")?;
-        #     if let Some( row ) = stmt.query_single(())? {
-        #         let first_name : Option<&str> = row.get(0)?;
-        #         let last_name : &str = row.get(1)?;
-        #         let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
-        #         let hire_date : Date = row.get(2)?;
-        #         let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
-        #         Ok(format!("{} was hired on {}", name, hire_date))
-        #     } else {
-        #         Ok("Not found".to_string())
-        #     }
-        # }
+
+        fn select_latest_hire(session: &Session) -> Result<String> {
+            let stmt = session.prepare("
+                SELECT first_name, last_name, hire_date
+                  FROM (
+                        SELECT first_name, last_name, hire_date
+                             , Row_Number() OVER (ORDER BY hire_date DESC, last_name) AS hire_date_rank
+                          FROM hr.employees
+                       )
+                 WHERE hire_date_rank = 1
+            ")?;
+            if let Some( row ) = stmt.query_single(())? {
+                let first_name : Option<&str> = row.get(0)?;
+                let last_name : &str = row.get(1)?;
+                let name = first_name.map_or(last_name.to_string(), |first_name| format!("{} {}", first_name, last_name));
+                let hire_date : Date = row.get(2)?;
+                let hire_date = hire_date.to_string("FMMonth DD, YYYY")?;
+                Ok(format!("{} was hired on {}", name, hire_date))
+            } else {
+                Ok("Not found".to_string())
+            }
+        }
         ```
     */
     pub fn get_session(&self) -> Result<Session<'_>> {

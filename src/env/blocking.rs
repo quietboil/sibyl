@@ -1,11 +1,11 @@
 //! Blocking mode OCI environment methods.
 
 use super::Environment;
-use crate::{Session, ConnectionPool, Result, SessionPool};
+use crate::{Session, ConnectionPool, Result, SessionPool, oci::{OCI_DEFAULT, OCI_SESSGET_SYSDBA}};
 
 impl Environment {
     /**
-    Creates and begins a session for the given server.
+    Creates and begins a session.
 
     # Parameters
 
@@ -16,6 +16,7 @@ impl Environment {
     # Example
     ```
     let oracle = sibyl::env()?;
+
     let dbname = std::env::var("DBNAME")?;
     let dbuser = std::env::var("DBUSER")?;
     let dbpass = std::env::var("DBPASS")?;
@@ -38,7 +39,43 @@ impl Environment {
     ```
     */
     pub fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Session<'_>> {
-        Session::new(self, dbname, username, password)
+        Session::new(self, dbname, username, password, OCI_DEFAULT)
+    }
+
+    /**
+    Creates and begins a SYSDBA session.
+
+    # Parameters
+
+    * `dbname` - The TNS alias of the database to connect to.
+    * `username` - The userid with which to start the sessions.
+    * `password` - The password for the corresponding `username`.
+
+    ## Note
+
+    The specified user must have SYSDBA role granted.
+
+    # Example
+
+    ```
+    let oracle = sibyl::env()?;
+
+    let dbname = std::env::var("DBNAME").expect("database name");
+    let dbuser = std::env::var("DBAUSER").expect("name of the user with SYSDBA role");
+    let dbpass = std::env::var("DBAPASS").expect("SYSDBA user password");
+
+    let session = oracle.connect_as_sysdba(&dbname, &dbuser, &dbpass)?;
+
+    let stmt = session.prepare("SELECT Count(*) FROM TS$")?;
+    let row = stmt.query_single(())?.expect("single row");
+    let num_ts: u32 = row.get(0)?;
+
+    assert!(num_ts > 0);    
+    # Ok::<(),Box<dyn std::error::Error>>(())
+    ```
+    */
+    pub fn connect_as_sysdba(&self, dbname: &str, username: &str, password: &str) -> Result<Session<'_>> {
+        Session::new(self, dbname, username, password, OCI_SESSGET_SYSDBA)
     }
 
     /**

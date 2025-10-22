@@ -49,8 +49,11 @@ Session pool creates and maintains a group of stateless sessions to the database
 
 These sessions are provided to the application as requested. If no sessions are
 available, a new one may be created. Thus, the number of sessions in the pool
-can increase dynamically. When the application is done (DROPS) with the session,
-it is returned to the pool.
+can increase dynamically. When the application is done with the session, i.e.
+the Session is dropped, it is instead returned to the pool.
+
+Session pool is created as a homogenous pool, i.e. all sessions in the pool are
+authenticated with the user name and password passed to the [`Environment::create_session_pool()`].
 */
 pub struct SessionPool<'a> {
     inner: Arc<SPool>,

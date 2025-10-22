@@ -7,7 +7,7 @@ use crate::{oci::{self, *}, task, Environment, Result, pool::SessionPool, Statem
 use super::{SvcCtx, Session};
 
 impl SvcCtx {
-    async fn new(env: &Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
+    async fn new(env: &Environment, dblink: &str, user: &str, pass: &str, mode: u32) -> Result<Self> {
         let err = Handle::<OCIError>::new(&env)?;
         let inf = Handle::<OCIAuthInfo>::new(&env)?;
         inf.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", &err)?;
@@ -22,7 +22,7 @@ impl SvcCtx {
             oci::session_get(
                 env.as_ref(), err.as_ref(), svc.as_mut_ptr(), inf.as_ref(),
                 dblink.as_ptr(), dblink.len() as _,
-                found.as_mut_ptr(), OCI_SESSGET_STMTCACHE
+                found.as_mut_ptr(), mode | OCI_SESSGET_STMTCACHE
             )?;
             Ok(Self { svc, inf, err, env, spool: None, active_future: AtomicUsize::new(0) })
         }).await?
@@ -79,8 +79,8 @@ impl SvcCtx {
 }
 
 impl<'a> Session<'a> {
-    pub(crate) async fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str) -> Result<Session<'a>> {
-        let ctx = SvcCtx::new(env, dblink, user, pass).await?;
+    pub(crate) async fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str, mode: u32) -> Result<Session<'a>> {
+        let ctx = SvcCtx::new(env, dblink, user, pass, mode).await?;
         ctx.set_nonblocking_mode()?;
         let usr: Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
         let ctx = Arc::new(ctx);

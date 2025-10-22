@@ -1,11 +1,11 @@
 //! Nonblocking mode OCI environment methods.
 
 use super::Environment;
-use crate::{Result, Session, SessionPool};
+use crate::{Result, Session, SessionPool, oci::{OCI_DEFAULT, OCI_SESSGET_SYSDBA}};
 
 impl Environment {
     /**
-    Creates and begins a user session for a given server.
+    Creates and begins a user session.
 
     # Parameters
 
@@ -30,7 +30,44 @@ impl Environment {
     ```
     */
     pub async fn connect(&self, dbname: &str, username: &str, password: &str) -> Result<Session<'_>> {
-        Session::new(self, dbname, username, password).await
+        Session::new(self, dbname, username, password, OCI_DEFAULT).await
+    }
+
+    /**
+    Creates and begins a SYSDBA session.
+
+    # Parameters
+
+    * `dbname` - The TNS alias of the database to connect to.
+    * `username` - The userid with which to start the sessions.
+    * `password` - The password for the corresponding `username`.
+
+    ## Note
+
+    The specified user must have SYSDBA role granted.
+
+    # Example
+
+    ```
+    # sibyl::block_on(async {
+    let oracle = sibyl::env()?;
+
+    let dbname = std::env::var("DBNAME").expect("database name");
+    let dbuser = std::env::var("DBAUSER").expect("name of the user with SYSDBA role");
+    let dbpass = std::env::var("DBAPASS").expect("SYSDBA user password");
+
+    let session = oracle.connect_as_sysdba(&dbname, &dbuser, &dbpass).await?;
+
+    let stmt = session.prepare("SELECT Count(*) FROM TS$").await?;
+    let row = stmt.query_single(()).await?.expect("single row");
+    let num_ts: u32 = row.get(0)?;
+
+    assert!(num_ts > 0);
+    # Ok::<(),sibyl::Error>(()) }).expect("Ok from async");
+    ```
+    */
+    pub async fn connect_as_sysdba(&self, dbname: &str, username: &str, password: &str) -> Result<Session<'_>> {
+        Session::new(self, dbname, username, password, OCI_SESSGET_SYSDBA).await
     }
 
     /**

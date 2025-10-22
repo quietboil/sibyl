@@ -5,7 +5,7 @@ use crate::{Result, Statement, oci::{self, *, attr}, Environment, SessionPool, C
 use std::{marker::PhantomData, sync::Arc};
 
 impl SvcCtx {
-    pub(crate) fn new(env: &Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
+    pub(crate) fn new(env: &Environment, dblink: &str, user: &str, pass: &str, mode: u32) -> Result<Self> {
         let err = Handle::<OCIError>::new(env)?;
         let inf = Handle::<OCIAuthInfo>::new(env)?;
         inf.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", &err)?;
@@ -15,7 +15,7 @@ impl SvcCtx {
         let mut found = oci::Aligned::new(0u8);
         oci::session_get(
             env.as_ref(), &err, svc.as_mut_ptr(), &inf, dblink.as_ptr(), dblink.len() as u32,
-            found.as_mut_ptr(), OCI_SESSGET_STMTCACHE
+            found.as_mut_ptr(), mode | OCI_SESSGET_STMTCACHE
         )?;
         Ok(SvcCtx { env: env.get_env(), err, inf, svc, spool: None })
     }
@@ -42,8 +42,8 @@ impl SvcCtx {
 }
 
 impl<'a> Session<'a> {
-    pub(crate) fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str) -> Result<Self> {
-        let ctx = SvcCtx::new(env, dblink, user, pass)?;
+    pub(crate) fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str, mode: u32) -> Result<Self> {
+        let ctx = SvcCtx::new(env, dblink, user, pass, mode)?;
         let usr : Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
         let ctx = Arc::new(ctx);
         Ok(Self { ctx, usr, phantom_env: PhantomData })

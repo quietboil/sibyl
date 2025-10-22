@@ -366,6 +366,7 @@ pub(crate) const OCI_SESSGET_STMTCACHE      : u32 = 0x0004;
 pub(crate) const OCI_SESSGET_SPOOL_MATCHANY : u32 = 0x0020;
 pub(crate) const OCI_SESSGET_PURITY_NEW     : u32 = 0x0040;
 pub(crate) const OCI_SESSGET_PURITY_SELF    : u32 = 0x0080;
+pub(crate) const OCI_SESSGET_SYSDBA         : u32 = 0x0100;
 pub(crate) const OCI_SESSGET_CPOOL          : u32 = 0x0200;
 
 // Server Handle Attribute Values
