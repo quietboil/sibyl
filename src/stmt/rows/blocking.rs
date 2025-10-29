@@ -58,7 +58,7 @@ impl<'a> Rows<'a> {
         }
     }
 
-    /// Variant of [`Row::next`] for a single row query
+    /// Variant of [`Rows::next()`] for a single row query
     pub(in crate::stmt) fn single(self) -> Result<Option<Row<'a>>> {
         if self.last_result.load(Ordering::Relaxed) == OCI_NO_DATA {
             Ok( None )

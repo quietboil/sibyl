@@ -352,7 +352,7 @@ impl<'a> Cursor<'a> {
         # #[cfg(feature="blocking")]
         # fn main() {}
         ```
-        See also [`Statement::next_result`] for another method to return REF CURSORs.
+        See also [`Statement::next_result()`] for another method to return REF CURSORs.
     */
     pub fn new(stmt: &'a Statement) -> Result<Self> {
         let handle = Handle::<OCIStmt>::new(stmt)?;

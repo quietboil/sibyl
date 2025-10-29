@@ -329,7 +329,9 @@ impl<'a> Row<'a> {
     /**
     Returns value of the specified column in the current row.
 
-    This method used to provides a friendlier alternative to [`get`](Row::get) to fetch data
+    # Deprecated
+
+    This method used to provides a friendlier alternative to [`Row::get()`] to fetch data
     from `NOT NULL` columns at the time when `get` was always returning an `Option`.
 
     # Parameters
@@ -421,7 +423,7 @@ impl<'a> Row<'a> {
     # fn main() {}
     ```
     */
-    #[deprecated = "Use [`get`](Row::get) instead."]
+    #[deprecated = "Use [`Row::get()`] instead."]
     pub fn get_not_null<T: FromSql<'a>, P: Position>(&'a self, pos: P) -> Result<T> {
         self.get(pos)
     }
