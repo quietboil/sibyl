@@ -151,9 +151,6 @@ pub use stmt::{Statement, Cursor, Rows, Row, ToSql, FromSql, ColumnType, Positio
 pub use types::{Date, Raw, Number, Varchar, RowID, DateTime, Interval};
 pub use types::number::Integer;
 pub use oci::{Cache, CharSetForm, client_version};
-#[cfg(feature="nonblocking")]
-#[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
-pub use oci::futures::NUM_ACTIVE_ASYNC_DROPS;
 pub use lob::LOB;
 pub use nvl::Nvl;
 

@@ -20,7 +20,7 @@ mod tokio;
 pub use self::tokio::{spawn, block_on};
 
 #[cfg(feature="tokio")]
-pub(crate) use self::tokio::{execute_blocking, spawn_detached};
+pub(crate) use self::tokio::execute_blocking;
 
 #[cfg(feature="actix")]
 mod actix;
@@ -29,7 +29,7 @@ mod actix;
 pub use self::actix::{spawn, block_on};
 
 #[cfg(feature="actix")]
-pub(crate) use self::actix::{execute_blocking, spawn_detached};
+pub(crate) use self::actix::execute_blocking;
 
 #[cfg(feature="async-std")]
 mod async_std;
@@ -38,7 +38,7 @@ mod async_std;
 pub use self::async_std::{spawn, block_on};
 
 #[cfg(feature="async-std")]
-pub(crate) use self::async_std::{execute_blocking, spawn_detached};
+pub(crate) use self::async_std::execute_blocking;
 
 #[cfg(feature="async-global")]
 mod async_global;
@@ -47,4 +47,4 @@ mod async_global;
 pub use self::async_global::{spawn, block_on};
 
 #[cfg(feature="async-global")]
-pub(crate) use self::async_global::{execute_blocking, spawn_detached};
+pub(crate) use self::async_global::execute_blocking;

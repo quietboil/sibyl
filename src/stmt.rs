@@ -26,8 +26,6 @@ use once_cell::sync::OnceCell;
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{Result, session::SvcCtx, oci::*, Session, types::Ctx};
-#[cfg(feature="nonblocking")]
-use crate::task;
 
 use std::{sync::Arc, fmt::Display};
 
@@ -62,21 +60,14 @@ pub struct Statement<'a> {
 
 #[cfg(not(docsrs))]
 impl Drop for Statement<'_> {
-    #[cfg(feature="blocking")]
     fn drop(&mut self) {
-        let _ = &self.svc;
-        oci_stmt_release(&self.stmt, &self.err);
-    }
+        #[cfg(feature="nonblocking")]
+        let _ = self.svc.set_blocking_mode();
 
-    #[cfg(feature="nonblocking")]
-    fn drop(&mut self) {
-        if !self.stmt.is_null() {
-            let mut stmt = Ptr::<OCIStmt>::null();
-            stmt.swap(&mut self.stmt);
-            let err = Handle::take(&mut self.err);
-            let svc = self.svc.clone();
-            task::spawn_detached(futures::StmtRelease::new(stmt, err, svc));
-        }
+        oci_stmt_release(&self.stmt, &self.err);
+
+        #[cfg(feature="nonblocking")]
+        let _ = self.svc.set_nonblocking_mode();
     }
 }
 

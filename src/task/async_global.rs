@@ -15,14 +15,6 @@ where
     Ok(spawn_blocking(f).await)
 }
 
-pub fn spawn_detached<F>(f: F)
-where
-    F: Future + Send + 'static,
-    F::Output: Send + 'static,
-{
-    spawn(f).detach()
-}
-
 /// Runs a future on async-global-executor.
 /// 
 /// This function is included to run Sibyl's tests and examples.
