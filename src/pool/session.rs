@@ -15,7 +15,7 @@ use crate::{Error, Result, oci::*, Environment};
 /**
 Internal (Arc protected) details of a session pool.
 
-This ensures that the OCI pool is still accessible when nonblocking [`SessionPool::get_svc_ctx()`]
+This ensures that the OCI pool is still accessible when nonblocking task
 is still running while the task that called [`SessionPool::get_session()`] has been already destroyed.
 */
 pub(crate) struct SPool {
@@ -33,8 +33,8 @@ impl Drop for SPool {
     }
 }
 
-#[cfg(feature="nonblocking")]
 impl SPool {
+    #[cfg(feature="nonblocking")]
     pub(crate) fn get_env(&self) -> Arc<Handle<OCIEnv>> {
         self.env.clone()
     }
@@ -43,6 +43,7 @@ impl SPool {
         &self.name
     }
 }
+
 
 /**
 Session pool creates and maintains a group of stateless sessions to the database.

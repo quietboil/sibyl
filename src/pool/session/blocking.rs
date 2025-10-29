@@ -5,12 +5,14 @@ use crate::{Result, oci::{self, *}, Environment, Session};
 use std::{ptr, marker::PhantomData, sync::Arc};
 
 impl SPool {
-    pub(crate) fn new(env: &Environment, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<Self> {
+    pub(crate) fn new(env: &Environment, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize, session_state_fixup_callback: &str) -> Result<Self> {
         let err = Handle::<OCIError>::new(env)?;
+        let pool = Handle::<OCISPool>::new(env)?;
         let info = Handle::<OCIAuthInfo>::new(env)?;
         info.set_attr(OCI_ATTR_DRIVER_NAME, "sibyl", &err)?;
-
-        let pool = Handle::<OCISPool>::new(env)?;
+        if session_state_fixup_callback.len() > 0 {
+            info.set_attr(OCI_ATTR_FIXUP_CALLBACK, session_state_fixup_callback, &err)?;
+        }
         pool.set_attr(OCI_ATTR_SPOOL_AUTH, info.get_ptr(), &err)?;
 
         let mut pool_name_ptr = ptr::null::<u8>();
@@ -31,25 +33,14 @@ impl SPool {
 }
 
 impl<'a> SessionPool<'a> {
-    pub(crate) fn new(env: &'a Environment, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<Self> {
-        let inner = SPool::new(env, dbname, username, password, min, inc, max)?;
+    pub(crate) fn new(env: &'a Environment, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize, session_state_fixup_callback: &str) -> Result<Self> {
+        let inner = SPool::new(env, dbname, username, password, min, inc, max, session_state_fixup_callback)?;
         let inner = Arc::new(inner);
         Ok(Self { inner, phantom_env: PhantomData })
     }
 
-    pub(crate) fn get_svc_ctx(&self, auth_info: &OCIAuthInfo) -> Result<Ptr<OCISvcCtx>> {
-        let mut svc = Ptr::<OCISvcCtx>::null();
-        let mut found = oci::Aligned::new(0u8);
-        oci::session_get(
-            &self.inner.env, &self.inner.err, svc.as_mut_ptr(), &auth_info,
-            self.inner.name.as_ptr(), self.inner.name.len() as u32, found.as_mut_ptr(),
-            OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
-        )?;
-        Ok(svc)
-    }
-
     /**
-        Returns a new session with a new underlyng connection from this pool.
+        Returns a default (untagged) session from this session pool.
 
         # Example
 
@@ -113,6 +104,68 @@ impl<'a> SessionPool<'a> {
         ```
     */
     pub fn get_session(&self) -> Result<Session<'_>> {
-        Session::from_session_pool(self)
+        let (session, _found) = Session::from_session_pool(self, "")?;
+        Ok(session)
+    }
+
+    /**
+    Returns a tagged session, i.e. a session with the specified type/tag.
+
+    The tags provide a way to customize sessions in the pool. A client can get a default or untagged
+    session from a pool, set certain attributes on the session (such as globalization settings) and
+    label it with an appropriate tag.
+
+    This session or a session with the same attributes can then be requested by providing the same
+    tag that was used during session customization.
+
+    If a user asks for a session with tag 'A', and a matching session is not available, an appropriately
+    authenticated untagged session is returned, if such a session is free.
+
+    # Parameters
+
+    - `taginfo` - Either a single or a [Multi-Property Tag](https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/session-and-connection-pooling.html#GUID-DFA21225-E83C-4177-A79A-B8BA29DC662C).
+
+    # Returns
+
+    A tuple with the returned session and the boolean flag. The flag indicates whether the type of the returned
+    session is the same as requested.
+
+    # Example
+
+    ```
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    let pool = oracle.create_session_pool(&dbname, &dbuser, &dbpass, 0, 1, 5)?;
+
+    {
+        let (session,found) = pool.get_tagged_session("CUSTOM")?;
+        assert!(!found, "a default (not yet tagged) session was returned");
+        if !found {
+    #        let stmt = session.prepare("SELECT value FROM nls_session_parameters WHERE parameter=:PARAM_NAME")?;
+    #        let row = stmt.query_single("NLS_DATE_FORMAT")?.expect("one row");
+    #        let fmt: &str = row.get(0)?;
+    #        assert_ne!(fmt, "YYYY-MM-DD", "Default NLS_DATE_FORMAT differs from what we want to set");
+            let stmt = session.prepare("ALTER SESSION SET NLS_DATE_FORMAT='YYYY-MM-DD'")?;
+            stmt.execute(())?;
+            session.set_tag("CUSTOM")?;
+        }
+    } // session is released back to the pool here
+
+    {
+        let (session,found) = pool.get_tagged_session("CUSTOM")?;
+        assert!(found, "the customized session was returned");
+
+        let stmt = session.prepare("SELECT value FROM nls_session_parameters WHERE parameter=:PARAM_NAME")?;
+        let row = stmt.query_single("NLS_DATE_FORMAT")?.expect("one row");
+        let fmt: &str = row.get(0)?;
+        assert_eq!(fmt, "YYYY-MM-DD", "Session uses custom NLS_DATE_FORMAT");
+    }
+    # Ok::<(),Box<dyn std::error::Error>>(())
+    ```
+    */
+    pub fn get_tagged_session(&self, taginfo: &str) -> Result<(Session<'_>,bool)> {
+        Session::from_session_pool(self, taginfo)
     }
 }

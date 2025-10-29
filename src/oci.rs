@@ -71,6 +71,7 @@ pub(crate) const OCI_ATTR_ROWS_FETCHED      : u32 = 197;
 pub(crate) const OCI_ATTR_STMT_IS_RETURNING : u32 = 218;
 pub(crate) const OCI_ATTR_UB8_ROW_COUNT     : u32 = 457;
 pub(crate) const OCI_ATTR_INVISIBLE_COL     : u32 = 461;
+pub(crate) const OCI_ATTR_FIXUP_CALLBACK    : u32 = 501;
 pub(crate) const OCI_ATTR_CALL_TIMEOUT      : u32 = 531;
 
 // Handle Types
@@ -361,13 +362,18 @@ pub(crate) const OCI_SPOOL_ATTRVAL_FORCEGET : u8 = 2; // get session even if max
 pub(crate) const OCI_SPOOL_ATTRVAL_TIMEDWAIT: u8 = 3; // wait for specified timeout if pool is maxed out
 
 // OCISessionGet Modes
-pub(crate) const OCI_SESSGET_SPOOL          : u32 = 0x0001;
-pub(crate) const OCI_SESSGET_STMTCACHE      : u32 = 0x0004;
-pub(crate) const OCI_SESSGET_SPOOL_MATCHANY : u32 = 0x0020;
-pub(crate) const OCI_SESSGET_PURITY_NEW     : u32 = 0x0040;
-pub(crate) const OCI_SESSGET_PURITY_SELF    : u32 = 0x0080;
-pub(crate) const OCI_SESSGET_SYSDBA         : u32 = 0x0100;
-pub(crate) const OCI_SESSGET_CPOOL          : u32 = 0x0200;
+pub(crate) const OCI_SESSGET_SPOOL              : u32 = 0x0001;
+pub(crate) const OCI_SESSGET_STMTCACHE          : u32 = 0x0004;
+pub(crate) const OCI_SESSGET_SPOOL_MATCHANY     : u32 = 0x0020;
+pub(crate) const OCI_SESSGET_PURITY_NEW         : u32 = 0x0040;
+pub(crate) const OCI_SESSGET_PURITY_SELF        : u32 = 0x0080;
+pub(crate) const OCI_SESSGET_SYSDBA             : u32 = 0x0100;
+pub(crate) const OCI_SESSGET_CPOOL              : u32 = 0x0200;
+pub(crate) const OCI_SESSGET_MULTIPROPERTY_TAG  : u32 = 0x0400;
+
+// OCISessionReleases Modes
+pub(crate) const OCI_SESSRLS_RETAG              : u32 = 0x0002;
+pub(crate) const OCI_SESSRLS_MULTIPROPERTY_TAG  : u32 = 0x0004;
 
 // Server Handle Attribute Values
 // const OCI_SERVER_NOT_CONNECTED  : u32 = 0;
@@ -697,13 +703,13 @@ extern "C" {
         taginfo:    *const u8,
         taginfolen: u32,
         rettags:    *mut *const u8,
-        rettagslen: *const u32,
+        rettagslen: *mut u32,
         found:      *const u8,
         mode:       u32
     ) -> i32;
 
     // https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/connect-authorize-and-initialize-functions.html#GUID-DAAECC99-A432-48B5-AC33-0868C2FE762D
-    fn OCISessionRelease(
+    pub(crate) fn OCISessionRelease(
         svchp:      *const OCISvcCtx,
         errhp:      *const OCIError,
         tag:        *const u8,
@@ -2081,10 +2087,6 @@ pub fn client_version() -> (i32, i32, i32, i32, i32) {
     ) }
 }
 
-pub(crate) fn oci_session_release(svc: &OCISvcCtx, err: &OCIError) -> i32 {
-    unsafe { OCISessionRelease(svc, err, std::ptr::null(), 0, OCI_DEFAULT) }
-}
-
 pub(crate) fn oci_connection_pool_destroy(pool: &OCICPool, err: &OCIError) -> i32 {
     unsafe { OCIConnectionPoolDestroy(pool, err, OCI_DEFAULT) }
 }
@@ -2201,11 +2203,29 @@ pub(crate) fn session_get(
     authinfop:  &OCIAuthInfo,
     dbname:     *const u8,
     dbname_len: u32,
+    mode:       u32
+) -> Result<()> {
+    ok_or_oci_err!(|errhp|
+        OCISessionGet(envhp, errhp, svchp, authinfop, dbname, dbname_len, std::ptr::null(), 0, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), mode)
+    )
+}
+
+pub(crate) fn session_get_tagged(
+    envhp:      &OCIEnv,
+    errhp:      &OCIError,
+    svchp:      *mut *mut OCISvcCtx,
+    authinfop:  &OCIAuthInfo,
+    dbname:     *const u8,
+    dbname_len: u32,
+    tag:        *const u8,
+    taglen:     u32,
+    rettag:     *mut *const u8,
+    rettaglen:  *mut u32,
     found:      *mut u8,
     mode:       u32
 ) -> Result<()> {
     ok_or_oci_err!(|errhp|
-        OCISessionGet(envhp, errhp, svchp, authinfop, dbname, dbname_len, std::ptr::null(), 0, std::ptr::null_mut(), std::ptr::null_mut(), found, mode)
+        OCISessionGet(envhp, errhp, svchp, authinfop, dbname, dbname_len, tag, taglen, rettag, rettaglen, found, mode)
     )
 }
 

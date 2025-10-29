@@ -8,9 +8,17 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-use std::{sync::Arc, marker::PhantomData};
+use std::{sync::Arc, marker::PhantomData, str, slice};
+use parking_lot::RwLock;
+
 use crate::{Result, Environment, oci::*, types::Ctx};
 use crate::pool::session::SPool;
+
+pub(crate) struct SessionTagInfo {
+    tag_ptr: Ptr<u8>,
+    tag_len: usize,
+    new_tag: String,
+}
 
 /// Representation of the service context.
 /// It will be behinfd `Arc` as it needs to survive the `Session`
@@ -20,6 +28,7 @@ pub(crate) struct SvcCtx {
     inf: Handle<OCIAuthInfo>,
     err: Handle<OCIError>,
     spool: Option<Arc<SPool>>,
+    tag: Option<RwLock<SessionTagInfo>>,
     env: Arc<Handle<OCIEnv>>,
     #[cfg(feature="nonblocking")]
     active_future: std::sync::atomic::AtomicUsize,
@@ -36,8 +45,26 @@ impl Drop for SvcCtx {
 
         let svc : &OCISvcCtx = self.as_ref();
         let err : &OCIError  = self.as_ref();
+
         oci_trans_rollback(svc, err);
-        oci_session_release(svc, err);
+
+        let tag_info = self.tag.as_ref()
+            .map(|tag| tag.read())
+            .map(|tag| (
+                tag.tag_ptr.get(),
+                tag.tag_len,
+                tag.new_tag.len() > 0,
+                if tag.new_tag.find('=').is_some() { OCI_SESSRLS_MULTIPROPERTY_TAG } else { OCI_DEFAULT }
+            ));
+
+        match tag_info {
+            Some((tag_ptr, tag_len, new_tag, tag_mode)) if new_tag => {
+                unsafe { OCISessionRelease(svc, err, tag_ptr, tag_len as _, tag_mode | OCI_SESSRLS_RETAG); }
+            },
+            _ => {
+                unsafe { OCISessionRelease(svc, err, std::ptr::null(), 0, OCI_DEFAULT); }
+            }
+        }
     }
 }
 
@@ -103,7 +130,62 @@ impl Session<'_> {
         self.ctx.clone()
     }
 
+    /**
+    Returns session's tag.
 
+    For sessions that are not from a session pool `None` is returned.
+    */
+    pub fn get_tag(&self) -> Option<&str> {
+        self.ctx.tag.as_ref()
+            .map(|tags| tags.read())
+            .map(|tags|
+                if tags.tag_ptr.get().is_null() || tags.tag_len == 0 {
+                    ""
+                } else {
+                    unsafe {
+                        str::from_utf8_unchecked(
+                            slice::from_raw_parts(tags.tag_ptr.get(), tags.tag_len as _)
+                        )
+                    }
+                }
+            )
+    }
+
+    /**
+    Tags/labels this session.
+
+    Tags provide a way for users to customize sessions in the pool. A client can get a default or untagged
+    session from a pool, set certain attributes on the session (such as NLS settings), and label it with an
+    appropriate tag.
+
+    The original user, or some other user, can request a session with the same tags to have a session with
+    the same attributes, and can do so by providing the same tag in the [`SessionPool::get_tagged_session()`]
+    call.
+
+    Beginning with 12c Release 2 (12.2), a tag can have multiple properties. This is referred to as a
+    [Multi-Property Tag](https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/session-and-connection-pooling.html#GUID-DFA21225-E83C-4177-A79A-B8BA29DC662C).
+    
+    A multi-property tag is comprised of one or more `property-name=property-value` pairs separated by
+    a semi-colon, where `property-name` and `property-value` are both strings.
+
+    During a [`SessionPool::get_tagged_session()`] call, in the `taginfo`` parameter, the property name
+    appearing first is given the highest property for finding a match and the property name appearing last
+    is given the lowest priority. Therefore the ordering of the properties in the string is significant in
+    determining a matching session in the pool.
+    */
+    pub fn set_tag(&self, new_tags: &str) -> Result<()> {
+        if let Some(tags) = self.ctx.tag.as_ref() {
+            let mut tags = tags.write();
+            tags.new_tag.clear();
+            tags.new_tag.push_str(new_tags);
+            let mut new_tags_ptr = Ptr::new(tags.new_tag.as_ptr());
+            tags.tag_ptr.swap(&mut new_tags_ptr);
+            tags.tag_len = tags.new_tag.len();
+            Ok(())
+        } else  {
+            Err(crate::Error::Interface("This session is not from a Session Pool".into()))
+        }
+    }
 
     /// Reports whether self is connected to the server
     pub fn is_connected(&self) -> Result<bool> {
@@ -458,7 +540,7 @@ impl Session<'_> {
     ")?;
     let row = stmt.query_single(())?.unwrap();
     let client_identifier : &str = row.get(0)?;
-    
+
     assert_eq!(client_identifier, "Test Wielder");
     # Ok(())
     # }
@@ -481,7 +563,7 @@ impl Session<'_> {
     ").await?;
     let row = stmt.query_single(()).await?.unwrap();
     let client_identifier : &str = row.get(0)?;
-    
+
     assert_eq!(client_identifier, "Test Wielder");
     # Ok(()) })
     # }
@@ -518,7 +600,7 @@ impl Session<'_> {
     ")?;
     let row = stmt.query_single(())?.unwrap();
     let client_info : &str = row.get(0)?;
-    
+
     assert_eq!(client_info, "Nothing to see here, move along folks");
     # Ok(())
     # }
@@ -541,7 +623,7 @@ impl Session<'_> {
     ").await?;
     let row = stmt.query_single(()).await?.unwrap();
     let client_info : &str = row.get(0)?;
-    
+
     assert_eq!(client_info, "Nothing to see here, move along folks");
     # Ok(()) })
     # }
@@ -570,15 +652,15 @@ impl Session<'_> {
     // Client 19.13 and earlier return the schema's name upon connect.
     let dbuser = std::env::var("DBUSER").expect("user name");
     let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
-    
+
     session.set_current_schema("HR")?;
     let current_schema = session.current_schema()?;
 
     assert_eq!(current_schema, "HR");
-    
+
     session.set_current_schema(orig_name)?;
     let current_schema = session.current_schema()?;
-    
+
     assert_eq!(current_schema, orig_name);
     # Ok(())
     # }
@@ -594,18 +676,18 @@ impl Session<'_> {
     # sibyl::block_on(async {
     # let session = sibyl::test_env::get_session().await?;
     let orig_name = session.current_schema()?;
-    
+
     let dbuser = std::env::var("DBUSER").expect("user name");
     let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
-    
+
     session.set_current_schema("HR")?;
     let current_schema = session.current_schema()?;
-    
+
     assert_eq!(current_schema, "HR");
-    
+
     session.set_current_schema(orig_name)?;
     let current_schema = session.current_schema()?;
-    
+
     assert_eq!(current_schema, orig_name);
     # Ok(()) })
     # }
@@ -673,10 +755,10 @@ impl Session<'_> {
     let orig_name = session.current_schema()?;
     let dbuser = std::env::var("DBUSER").expect("user name");
     let orig_name = if orig_name.len() > 0 { orig_name } else { dbuser.as_str() };
-    
+
     session.set_current_schema("HR")?;
     assert_eq!(session.current_schema()?, "HR");
-    
+
     let stmt = session.prepare("
         SELECT schemaname
           FROM v$session
@@ -685,7 +767,7 @@ impl Session<'_> {
     let row = stmt.query_single(()).await?.unwrap();
     let schema_name : &str = row.get(0)?;
     assert_eq!(schema_name, "HR");
-    
+
     session.set_current_schema(orig_name)?;
     assert_eq!(session.current_schema()?, orig_name);
     # Ok(()) })

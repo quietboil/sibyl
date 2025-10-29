@@ -55,10 +55,9 @@ impl<'a> ConnectionPool<'a> {
 
     pub(crate) fn get_svc_ctx(&self, auth_info: &OCIAuthInfo) -> Result<Ptr<OCISvcCtx>> {
         let mut svc = Ptr::<OCISvcCtx>::null();
-        let mut found = oci::Aligned::new(0u8);
         oci::session_get(
             self.env.as_ref(), &self.err, svc.as_mut_ptr(), &auth_info,
-            self.name.as_ptr(), self.name.len() as u32, found.as_mut_ptr(),
+            self.name.as_ptr(), self.name.len() as u32,
             OCI_SESSGET_CPOOL | OCI_SESSGET_STMTCACHE
         )?;
         Ok(svc)

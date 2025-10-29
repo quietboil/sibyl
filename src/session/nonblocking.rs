@@ -2,7 +2,9 @@
 
 use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, marker::PhantomData};
 
-use crate::{oci::{self, *}, task, Environment, Result, pool::SessionPool, Statement};
+use parking_lot::RwLock;
+
+use crate::{oci::{self, *}, pool::SessionPool, session::SessionTagInfo, task, Environment, Result, Statement};
 
 use super::{SvcCtx, Session};
 
@@ -18,13 +20,12 @@ impl SvcCtx {
         let dblink = String::from(dblink);
         task::execute_blocking(move || -> Result<Self> {
             let mut svc = Ptr::<OCISvcCtx>::null();
-            let mut found = oci::Aligned::new(0u8);
             oci::session_get(
                 env.as_ref(), err.as_ref(), svc.as_mut_ptr(), inf.as_ref(),
                 dblink.as_ptr(), dblink.len() as _,
-                found.as_mut_ptr(), mode | OCI_SESSGET_STMTCACHE
+                mode | OCI_SESSGET_STMTCACHE
             )?;
-            Ok(Self { svc, inf, err, env, spool: None, active_future: AtomicUsize::new(0) })
+            Ok(Self { svc, inf, err, env, spool: None, tag: None, active_future: AtomicUsize::new(0) })
         }).await?
     }
 
@@ -46,22 +47,38 @@ impl SvcCtx {
         self.set_oci_nonblocking_mode(0)
     }
 
-    async fn from_session_pool(pool: &SessionPool<'_>) -> Result<Self> {
+    async fn from_session_pool<'a>(pool: &'a SessionPool<'a>, tag: &str) -> Result<(Self,bool)> {
         let spool = pool.get_spool();
         let env = spool.get_env();
         let err = Handle::<OCIError>::new(env.as_ref())?;
         let inf = Handle::<OCIAuthInfo>::new(env.as_ref())?;
+        let tag_len = tag.len() as u32;
+        let tag_ptr = Ptr::new(tag.as_ptr());
+        let tag_mode = if tag_len > 0 && tag.find('=').is_some() { OCI_SESSGET_MULTIPROPERTY_TAG } else { OCI_DEFAULT };
 
-        task::execute_blocking(move || -> Result<Self> {
+        task::execute_blocking(move || -> Result<(Self,bool)> {
             let name = spool.get_name();
             let mut svc = Ptr::<OCISvcCtx>::null();
             let mut found = oci::Aligned::new(0u8);
-            oci::session_get(
+            let mut ret_tag: *const u8 = std::ptr::null();
+            let mut ret_tag_len: u32 = 0;
+            oci::session_get_tagged(
                 env.as_ref(), err.as_ref(), svc.as_mut_ptr(), inf.as_ref(),
-                name.as_ptr(), name.len() as _, found.as_mut_ptr(),
-                OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
+                name.as_ptr(), name.len() as _,
+                tag_ptr.get(), tag_len, &mut ret_tag, &mut ret_tag_len,
+                found.as_mut_ptr(), tag_mode | OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
             )?;
-            Ok(Self { svc, inf, err, env, spool: Some(spool), active_future: AtomicUsize::new(0) })
+            let found = <u8>::from(found) != 0;
+            let svc_ctx = Self {svc, inf, err, env,
+                spool: Some(spool),
+                tag: Some(RwLock::new(SessionTagInfo {
+                    tag_ptr: Ptr::new(ret_tag),
+                    tag_len: ret_tag_len as _,
+                    new_tag: String::new(),
+                })),
+                active_future: AtomicUsize::new(0)
+            };
+            Ok((svc_ctx, found))
         }).await?
     }
 
@@ -79,7 +96,7 @@ impl SvcCtx {
 }
 
 impl<'a> Session<'a> {
-    pub(crate) async fn new(env: &'a Environment, dblink: &str, user: &str, pass: &str, mode: u32) -> Result<Session<'a>> {
+    pub(crate) async fn new(env: &Environment, dblink: &str, user: &str, pass: &str, mode: u32) -> Result<Self> {
         let ctx = SvcCtx::new(env, dblink, user, pass, mode).await?;
         ctx.set_nonblocking_mode()?;
         let usr: Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
@@ -87,12 +104,12 @@ impl<'a> Session<'a> {
         Ok(Self { ctx, usr, phantom_env: PhantomData })
     }
 
-    pub(crate) async fn from_session_pool(pool: &'a SessionPool<'_>) -> Result<Session<'a>> {
-        let ctx = SvcCtx::from_session_pool(pool).await?;
+    pub(crate) async fn from_session_pool(pool: &SessionPool<'_>, tag: &str) -> Result<(Self,bool)> {
+        let (ctx, found) = SvcCtx::from_session_pool(pool, tag).await?;
         ctx.set_nonblocking_mode()?;
         let usr: Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
         let ctx = Arc::new(ctx);
-        Ok(Self { ctx, usr, phantom_env: PhantomData })
+        Ok((Self {ctx, usr, phantom_env: PhantomData}, found))
     }
 
     pub(crate) fn set_nonblocking_mode(&self) -> Result<()> {

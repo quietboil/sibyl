@@ -1,7 +1,9 @@
 //! Blocking mode database session methods.
 
+use parking_lot::RwLock;
+
 use super::{SvcCtx, Session};
-use crate::{Result, Statement, oci::{self, *, attr}, Environment, SessionPool, ConnectionPool};
+use crate::{ConnectionPool, Environment, Result, SessionPool, Statement, oci::{self, attr, *}, session::SessionTagInfo};
 use std::{marker::PhantomData, sync::Arc};
 
 impl SvcCtx {
@@ -12,20 +14,42 @@ impl SvcCtx {
         inf.set_attr(OCI_ATTR_USERNAME, user, &err)?;
         inf.set_attr(OCI_ATTR_PASSWORD, pass, &err)?;
         let mut svc = Ptr::<OCISvcCtx>::null();
-        let mut found = oci::Aligned::new(0u8);
         oci::session_get(
             env.as_ref(), &err, svc.as_mut_ptr(), &inf, dblink.as_ptr(), dblink.len() as u32,
-            found.as_mut_ptr(), mode | OCI_SESSGET_STMTCACHE
+            mode | OCI_SESSGET_STMTCACHE
         )?;
-        Ok(SvcCtx { env: env.get_env(), err, inf, svc, spool: None })
+        Ok(SvcCtx { env: env.get_env(), err, inf, svc, spool: None, tag: None  })
     }
 
-    pub(crate) fn from_session_pool(pool: &SessionPool) -> Result<Self> {
+    pub(crate) fn from_session_pool(pool: &SessionPool, tag: &str) -> Result<(Self,bool)> {
         let env = pool.get_env();
         let err = Handle::<OCIError>::new(env.as_ref())?;
         let inf = Handle::<OCIAuthInfo>::new(env.as_ref())?;
-        let svc = pool.get_svc_ctx(&inf)?;
-        Ok(Self { svc, inf, err, env, spool: Some(pool.get_spool()) })
+        let spool = pool.get_spool();
+        let pool_name = spool.get_name();
+
+        let mut svc = Ptr::<OCISvcCtx>::null();
+        let tag_mode = if tag.len() > 0 && tag.find('=').is_some() { OCI_SESSGET_MULTIPROPERTY_TAG } else { OCI_DEFAULT };
+        let mut ret_tag: *const u8 = std::ptr::null();
+        let mut ret_tag_len: u32 = 0;
+
+        let mut found = oci::Aligned::new(0u8);
+        oci::session_get_tagged(
+            &env, &err, svc.as_mut_ptr(), &inf,
+            pool_name.as_ptr(), pool_name.len() as _,
+            tag.as_ptr(), tag.len() as _, &mut ret_tag, &mut ret_tag_len,
+            found.as_mut_ptr(), tag_mode | OCI_SESSGET_SPOOL | OCI_SESSGET_PURITY_SELF
+        )?;
+        let found = <u8>::from(found) != 0;
+        let svc_ctx = Self { svc, inf, err, env,
+            spool: Some(spool),
+            tag: Some(RwLock::new(SessionTagInfo {
+                tag_ptr: Ptr::new(ret_tag),
+                tag_len: ret_tag_len as _,
+                new_tag: String::new(),
+            }))
+        };
+        Ok((svc_ctx, found))
     }
 
     pub(crate) fn from_connection_pool(pool: &ConnectionPool, username: &str, password: &str) -> Result<Self> {
@@ -37,7 +61,7 @@ impl SvcCtx {
         inf.set_attr(OCI_ATTR_PASSWORD, password, &err)?;
 
         let svc = pool.get_svc_ctx(&inf)?;
-        Ok(SvcCtx { env, err, inf, svc, spool: None })
+        Ok(SvcCtx { env, err, inf, svc, spool: None, tag: None })
     }
 }
 
@@ -49,11 +73,11 @@ impl<'a> Session<'a> {
         Ok(Self { ctx, usr, phantom_env: PhantomData })
     }
 
-    pub(crate) fn from_session_pool(pool: &'a SessionPool) -> Result<Self> {
-        let ctx = SvcCtx::from_session_pool(pool)?;
+    pub(crate) fn from_session_pool(pool: &'a SessionPool, tag: &str) -> Result<(Self,bool)> {
+        let (ctx, found) = SvcCtx::from_session_pool(pool, tag)?;
         let usr: Ptr<OCISession> = attr::get(OCI_ATTR_SESSION, OCI_HTYPE_SVCCTX, ctx.svc.as_ref(), ctx.as_ref())?;
         let ctx = Arc::new(ctx);
-        Ok(Self { ctx, usr, phantom_env: PhantomData })
+        Ok((Self { ctx, usr, phantom_env: PhantomData }, found))
     }
 
     pub(crate) fn from_connection_pool(pool: &'a ConnectionPool, user: &str, pass: &str) -> Result<Self> {

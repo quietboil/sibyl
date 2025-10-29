@@ -1,5 +1,5 @@
 //! Blocking mode OCI environment methods.
-
+ 
 use super::Environment;
 use crate::{Session, ConnectionPool, Result, SessionPool, oci::{OCI_DEFAULT, OCI_SESSGET_SYSDBA}};
 
@@ -122,7 +122,118 @@ impl Environment {
     ```
     */
     pub fn create_session_pool(&self, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize) -> Result<SessionPool<'_>> {
-        SessionPool::new(self, dbname, username, password, min, inc, max)
+        SessionPool::new(self, dbname, username, password, min, inc, max, "")
+    }
+
+    /**
+    Creates new session pool that uses a PL/SQL callback to fix the returned session state on the server
+    before it is returned, thus avoiding, potentially multiple, roundtrips to the database for the fix-up
+    logic that would be normally used when [`SessionPool::get_tagged_session()`] returns a default session.
+
+    # Parameters
+
+    * `dbname`   - The TNS alias of the database to connect to.
+    * `username` - The username with which to start the sessions.
+    * `password` - The password for the corresponding `username`.
+    * `min`      - The minimum number of sessions in the session pool. This number of sessions will be started
+                   during pool creation. After `min` sessions are started, sessions are opened only when necessary.
+    * `inc`      - The next increment for sessions to be started if the current number of sessions is less
+                   than `max`. The valid values are 0 and higher.
+    * `max`      - The maximum number of sessions that can be opened in the session pool. After this value is
+                   reached, no more sessions are opened. The valid values are 1 and higher.
+    * `session_state_fixup_callback` - [PL/SQL Callback for Session State Fix Up](https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/session-and-connection-pooling.html#GUID-B853A020-752F-494A-8D88-D0396EF57177)
+                   provided in the format `schema.package.callback_function`.
+
+    # Example
+
+    ```
+    # let oracle = sibyl::env()?;
+    # let dbname = std::env::var("DBNAME").expect("database name");
+    # let dbuser = std::env::var("DBUSER").expect("user name");
+    # let dbpass = std::env::var("DBPASS").expect("password");
+    let pool = oracle.create_session_pool_with_session_state_fixup(
+        &dbname, &dbuser, &dbpass, 0, 1, 10,
+        "sibyl.SessionCustomizer.FixSessionState" // see package definition below
+    )?;
+
+    let (session, found) = pool.get_tagged_session("TIME_ZONE=UTC;NLS_DATE_FORMAT=YYYY-MM-DD")?;
+    // Session will always be found
+    assert!(found,"pool fixed up the returned session to match the requested tag");
+
+    let stmt = session.prepare("SELECT SessionTimeZone FROM dual")?;
+    let row = stmt.query_single(())?.expect("one row");
+    let stz: &str = row.get(0)?;
+    assert_eq!(stz, "UTC", "Session is in UTC");
+
+    let stmt = session.prepare("SELECT value FROM nls_session_parameters WHERE parameter=:PARAM_NAME")?;
+    let row = stmt.query_single("NLS_DATE_FORMAT")?.expect("one row");
+    let fmt: &str = row.get(0)?;
+    assert_eq!(fmt, "YYYY-MM-DD", "Session uses custom NLS_DATE_FORMAT");
+    # Ok::<(),Box<dyn std::error::Error>>(())
+    ```
+
+    Create the following package in the `sibyl` schema (for the example above) before running the test:
+
+    ```text
+    --
+    -- This package expects tag properties to be restricted to names and values
+    -- that can be directly used in the ALTER SESSION statement, such as
+    -- TIME_ZONE=UTC;NLS_DATE_FORMAT=YYYY-MM-DD
+    --
+    CREATE OR REPLACE PACKAGE SessionCustomizer AS
+      TYPE prop_t IS TABLE OF VARCHAR2(256) INDEX BY VARCHAR2(120);
+      PROCEDURE ParseTag (tag VARCHAR2, properties OUT prop_t);
+      PROCEDURE FixSessionState (requested_tag VARCHAR2, actual_tag VARCHAR2);
+    END;
+    /
+
+    CREATE OR REPLACE PACKAGE BODY SessionCustomizer AS
+      PROCEDURE ParseTag (tag VARCHAR2, properties OUT prop_t) IS
+        semi_pos  INT := 0;
+        name_pos  INT;
+        equal_pos INT;
+        name      VARCHAR2(120);
+        value     VARCHAR2(256);
+      BEGIN
+        WHILE semi_pos <= Length(tag) LOOP
+          name_pos := semi_pos + 1;
+          semi_pos := InStr(tag, ';', semi_pos + 1);
+          IF semi_pos = 0 THEN
+            semi_pos := Length(tag) + 1;
+          END IF;
+          equal_pos := InStr(tag, '=', name_pos + 1);
+          IF equal_pos != 0 AND equal_pos + 1 < semi_pos THEN
+            name  := SubStr(tag, name_pos, equal_pos - name_pos);
+            value := SubStr(tag, equal_pos + 1, semi_pos - equal_pos - 1);
+            properties(name) := value;
+          END IF;
+        END LOOP;
+      END;
+
+      PROCEDURE FixSessionState (requested_tag VARCHAR2, actual_tag VARCHAR2) IS
+        req_props prop_t;
+        act_props prop_t;
+        prop_name VARCHAR2(120);
+      BEGIN
+        ParseTag(requested_tag, req_props);
+        ParseTag(actual_tag, act_props);
+
+        prop_name := req_props.FIRST;
+        WHILE prop_name IS NOT NULL LOOP
+          IF NOT act_props.EXISTS(prop_name) OR act_props(prop_name) != req_props(prop_name) THEN
+            EXECUTE IMMEDIATE 'ALTER SESSION SET ' || prop_name || '=''' || req_props(prop_name) || '''';
+          END IF;
+          prop_name := req_props.NEXT(prop_name);
+        END LOOP;
+
+        -- Maybe also reset to default act_props that are not in req_props
+      END;
+    END;
+    /
+    ```
+    */
+    pub fn create_session_pool_with_session_state_fixup(&self, dbname: &str, username: &str, password: &str, min: usize, inc: usize, max: usize, session_state_fixup_callback: &str) -> Result<SessionPool<'_>> {
+        SessionPool::new(self, dbname, username, password, min, inc, max, session_state_fixup_callback)
     }
 
     /**

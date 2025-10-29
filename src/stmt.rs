@@ -61,6 +61,8 @@ pub struct Statement<'a> {
 #[cfg(not(docsrs))]
 impl Drop for Statement<'_> {
     fn drop(&mut self) {
+        let _ = self.svc;
+        
         #[cfg(feature="nonblocking")]
         let _ = self.svc.set_blocking_mode();
 
