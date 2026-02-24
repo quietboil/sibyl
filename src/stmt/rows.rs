@@ -8,7 +8,7 @@ mod blocking;
 #[cfg_attr(docsrs, doc(cfg(feature="nonblocking")))]
 mod nonblocking;
 
-use std::sync::atomic::AtomicI32;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 use super::{cols::Columns, data::FromSql, Position};
 use crate::{Cursor, Error, Result, RowID, Statement, oci::{*, attr}, types::Ctx, Session};
@@ -85,6 +85,80 @@ impl<'a> Rows<'a> {
 
     fn src(self) -> DataSource<'a> {
         self.rset
+    }
+
+    /**
+    Returns `true` if the result set has been completely consumed and the next call to
+    [`Rows::next()`] will return [`None`].
+
+    # Example
+
+    ## Blocking
+    ```
+    # #[cfg(feature="blocking")]
+    # fn main() -> sibyl::Result<()> {
+    # let session = sibyl::test_env::get_session()?;
+    let stmt = session.prepare("
+        SELECT employee_id, first_name, last_name, commission_pct
+          FROM hr.employees
+         WHERE manager_id = :id
+           AND commission_pct IS NOT NULL
+         ORDER BY commission_pct
+    ")?;
+    let rows = stmt.query(100)?;
+
+    assert!(!rows.is_done(), "There are 5 rows in this result set");
+
+    if let Some(row) = rows.next()? {
+        let emp_id: u32 = row.get(0)?;
+        assert_eq!(emp_id, 149);
+    }
+    assert!(!rows.is_done(), "There are still 4 remaining rows");
+
+    while let Some(_row) = rows.next()? {
+    }
+    assert!(rows.is_done());
+    # Ok(())
+    # }
+    # #[cfg(feature="nonblocking")]
+    # fn main() {}
+    ```
+
+    ## Nonblocking
+
+    ```
+    # #[cfg(feature="nonblocking")]
+    # fn main() -> sibyl::Result<()> {
+    # sibyl::block_on(async {
+    # let session = sibyl::test_env::get_session().await?;
+    let stmt = session.prepare("
+        SELECT employee_id, first_name, last_name, commission_pct
+          FROM hr.employees
+         WHERE manager_id = :id
+           AND commission_pct IS NOT NULL
+         ORDER BY commission_pct
+    ").await?;
+    let rows = stmt.query(100).await?;
+
+    assert!(!rows.is_done(), "There are 5 rows in this result set");
+
+    if let Some(row) = rows.next().await? {
+        let emp_id: u32 = row.get(0)?;
+        assert_eq!(emp_id, 149);
+    }
+    assert!(!rows.is_done(), "There are still 4 remaining rows");
+
+    while let Some(_row) = rows.next().await? {
+    }
+    assert!(rows.is_done());
+    # Ok(()) })
+    # }
+    # #[cfg(feature="blocking")]
+    # fn main() {}
+    ```
+    */
+    pub fn is_done(&self) -> bool {
+        self.last_result.load(Ordering::Relaxed) == OCI_NO_DATA
     }
 }
 
@@ -193,7 +267,7 @@ impl<'a> Row<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() {}
     ```
-    
+
     ## Nonblocking
 
     ```
@@ -280,7 +354,7 @@ impl<'a> Row<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() {}
     ```
-    
+
     ## Nonblocking
 
     ```
@@ -387,7 +461,7 @@ impl<'a> Row<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() {}
     ```
-    
+
     ## Nonblocking
 
     ```
@@ -473,7 +547,7 @@ impl<'a> Row<'a> {
     # #[cfg(feature="nonblocking")]
     # fn main() {}
     ```
-    
+
     ## Nonblocking
 
     ```

@@ -49,22 +49,7 @@ impl<'a> Rows<'a> {
         } else {
             let stmt: &OCIStmt  = self.rset.as_ref();
             let err:  &OCIError = self.rset.as_ref();
-
-            let res = if self.rset.read_columns().has_lob_col() {
-                self.rset.session().set_blocking_mode()?;
-                let stmt= Ptr::from(stmt);
-                let err = Ptr::from(err);
-                let res = execute_blocking(move || -> i32 {
-                    unsafe {
-                        OCIStmtFetch2(stmt.get(), err.get(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
-                    }
-                }).await;
-                self.rset.session().set_nonblocking_mode()?;
-                res?
-            } else {
-                futures::StmtFetch::new(self.rset.session().get_svc(), stmt, err).await?
-            };
-
+            let res = self.fetch_next(stmt, err).await?;
             self.last_result.store(res, Ordering::Release);
             match res {
                 OCI_NO_DATA => Ok( None ),
@@ -81,27 +66,30 @@ impl<'a> Rows<'a> {
         } else {
             let stmt: &OCIStmt  = self.rset.as_ref();
             let err:  &OCIError = self.rset.as_ref();
-
-            let res = if self.rset.read_columns().has_lob_col() {
-                self.rset.session().set_blocking_mode()?;
-                let stmt= Ptr::from(stmt);
-                let err = Ptr::from(err);
-                let res = execute_blocking(move || -> i32 {
-                    unsafe {
-                        OCIStmtFetch2(stmt.get(), err.get(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
-                    }
-                }).await;
-                self.rset.session().set_nonblocking_mode()?;
-                res?
-            } else {
-                futures::StmtFetch::new(self.rset.session().get_svc(), stmt, err).await?
-            };
-            
+            let res = self.fetch_next(stmt, err).await?;
+            self.last_result.store(res, Ordering::Release);
             match res {
                 OCI_NO_DATA => Ok( None ),
                 OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::single(self)) ),
                 _ => Err( Error::oci(self.rset.as_ref(), res) )
             }
+        }
+    }
+
+    async fn fetch_next(&self, stmt: &OCIStmt, err: &OCIError) -> Result<i32> {
+        if self.rset.read_columns().has_lob_col() {
+            self.rset.session().set_blocking_mode()?;
+            let stmt= Ptr::from(stmt);
+            let err = Ptr::from(err);
+            let res = execute_blocking(move || -> i32 {
+                unsafe {
+                    OCIStmtFetch2(stmt.get(), err.get(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
+                }
+            }).await;
+            self.rset.session().set_nonblocking_mode()?;
+            res
+        } else {
+            futures::StmtFetch::new(self.rset.session().get_svc(), stmt, err).await
         }
     }
 }

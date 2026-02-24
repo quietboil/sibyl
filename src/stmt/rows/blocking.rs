@@ -66,6 +66,7 @@ impl<'a> Rows<'a> {
             let res = unsafe {
                 OCIStmtFetch2(self.rset.as_ref(), self.rset.as_ref(), 1, OCI_FETCH_NEXT, 0, OCI_DEFAULT)
             };
+            self.last_result.store(res, Ordering::Release);
             match res {
                 OCI_NO_DATA => Ok( None ),
                 OCI_SUCCESS | OCI_SUCCESS_WITH_INFO => Ok( Some(Row::single(self)) ),
