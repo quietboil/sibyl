@@ -364,6 +364,7 @@ impl Columns {
                 SQLT_LNG | SQLT_LBI => max_long_fetch_size,
                 _ => col_info.get_attr::<u16>(OCI_ATTR_DATA_SIZE, err.as_ref())? as u32 * utf8_factor,
             };
+            let nchar_form = col_info.get_attr::<u8>(OCI_ATTR_CHARSET_FORM, err.as_ref())? == SQLCS_NCHAR;
 
             #[cfg(feature="nonblocking")]
             if !lob_col_present {
@@ -387,6 +388,10 @@ impl Columns {
                 ptr::null_mut::<u16>(),
                 OCI_DEFAULT
             )?;
+
+            if nchar_form {
+                attr::set(OCI_ATTR_CHARSET_FORM, SQLCS_NCHAR, OCI_HTYPE_DEFINE, cols[i].def.as_ref(), err.as_ref())?;
+            }
 
             let name : &str = cols[i].inf.get_attr(OCI_ATTR_NAME, err.as_ref())?;
             names.insert(name, i);
@@ -423,7 +428,7 @@ impl Columns {
     }
 
     /// Returns `true` if the one or more columns in the projection is a LOB column.
-    /// 
+    ///
     /// This function is used only in the nonblocking mode, but it is easier to maintain
     /// it unconditionally than to put it and data it references behind `cfg`.
     #[cfg(feature="nonblocking")]
