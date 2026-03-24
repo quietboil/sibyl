@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Getting Started - Sibyl User Manual</title>
+        <title>Using National Character Set - Sibyl User Manual</title>
 
 
         <!-- Custom HTML head -->
@@ -177,50 +177,29 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h1>
-<p>Sibyl needs an installed Oracle client in order to link either <code>OCI.DLL</code> on Windows or <code>libclntsh.so</code> on Linux. The minimal supported client is 12.2 as Sibyl uses some API functions that are not available in earlier clients.</p>
-<blockquote>
-<p><em>Note</em> that while supporting 12.1 and older clients is definitely feasible, it was not a priority.</p>
-</blockquote>
-<h1 id="using-sibyl-in-a-project"><a class="header" href="#using-sibyl-in-a-project">Using Sibyl In A Project</a></h1>
-<p>Sibyl has 2 features - <code>blocking</code> and <code>nonblocking</code>. They are <strong>exclusive</strong> and <strong>one</strong> must be explicitly selected as neither is the default. Thus, when Sibyl is used as a dependency, it might be included as:</p>
-<pre><code class="language-toml">[dependencies]
-sibyl = { version = "0.6", features = ["blocking"] }
-</code></pre>
-<p>A <code>nonblocking</code> mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controlled by a set of exclusive features. For now, Sibyl supports <code>tokio</code>, <code>actix</code>, <code>async-std</code>, and <code>async-global</code>. One of these must be specified with the <code>nonblocking</code> feature. For example:</p>
-<pre><code class="language-toml">[dependencies]
-sibyl = { version = "0.6", features = ["nonblocking", "tokio"] }
-</code></pre>
-<h1 id="building"><a class="header" href="#building">Building</a></h1>
-<p>The cargo build needs to know where the OCI client library is. You can provide that information via environment variable <code>OCI_LIB_DIR</code> on Windows or <code>LIBRARY_PATH</code> on Linux. On Linux, depending on which Oracle client is installed and how it was installed, the <code>LD_LIBRARY_PATH</code> might also be needed. <code>LIBRARY_PATH</code> (and <code>LD_LIBRARY_PATH</code>) would include the path to the directory with <code>libclntsh.so</code>. For example, you might build Sibyl’s examples as:</p>
-<pre><code class="language-shell">export LIBRARY_PATH=/opt/instantclient_19_24
-export LD_LIBRARY_PATH=/opt/instantclient_19_24
-cargo build --examples --features=blocking
-</code></pre>
-<p>On Windows the process is similar if the target environment is <code>gnu</code>. The <code>OCI_LIB_DIR</code> would point to the directory with <code>oci.dll</code>:</p>
-<pre><code class="language-plaintext">set OCI_LIB_DIR=%ORACLE_HOME%\bin
-cargo build --examples --features=blocking
-</code></pre>
-<blockquote>
-<p><em>Note</em> that for <code>gnu</code> targets the build script will try to locate <code>OCI.DLL</code> by searching it in the current <code>PATH</code> if the <code>OCI_LIB_DIR</code> is not specified.</p>
-</blockquote>
-<p>However, for <code>msvc</code> environment the <code>OCI_LIB_DIR</code> must exist and point to the directory with <code>oci.lib</code>.  The build will fail if <code>OCI_LIB_DIR</code> is not set. For example, you might build those examples as:</p>
-<pre><code class="language-plaintext">set OCI_LIB_DIR=%ORACLE_HOME%\oci\lib\msvc
-cargo build --examples --features=blocking
-</code></pre>
-<p>Because of the above requirement, that the <code>OCI_LIB_DIR</code> must be set for <code>msvc</code> targets, it also must be specified for the <code>rust-analyzer</code>. For example, in VS Code this can be done in <code>.vscode\settings.json</code>:</p>
-<pre><code class="language-json">"rust-analyzer.server.extraEnv": { "OCI_LIB_DIR": "C:\\Path\\To\\Oracle\\instantclient\\sdk\\lib\\msvc" }
-</code></pre>
+                        <h1 id="using-national-character-set"><a class="header" href="#using-national-character-set">Using National Character Set</a></h1>
+<p>By default when character arguments are passed to a prepared statement they are encoded using database character set. Which is a non-issue, even if they need to be converted later to/from the national character set, if the database character set is <a href="https://docs.oracle.com/en/database/oracle/oracle-database/26/nlspg/supporting-multilingual-databases-with-unicode.html#GUID-CD422E4F-C5C6-4E22-B95F-CA9CABBCB543">Unicode</a>. However, when the database character is is not Unicode, then character data conversion to the database character set might <a href="https://docs.oracle.com/en/database/oracle/oracle-database/19/nlspg/programming-with-unicode.html#GUID-337FC5E5-9A3F-4E49-B6C5-A94D82607BB9">lose data</a>. For these environments Sibyl provides an <code>NChar</code> type indicates during parameter binding that the value should be encoded using the national character set.</p>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<pre><code class="language-rust noplayground">    let stmt = session.prepare("
+        INSERT INTO nchar_test_data (txt) VALUES (:TXT)
+        RETURNING id INTO :ID
+    ")?;
+    
+    let old_pond = "古池や 蛙飛び込む 水の音";
+    stmt.execute((
+        ("TXT", NChar(old_pond)),
+        ("ID", &amp;mut ids[0])
+    ))?;</code></pre>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="intro.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="args.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="opt_features.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="slices.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -230,11 +209,11 @@ cargo build --examples --features=blocking
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="intro.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="args.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="opt_features.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="slices.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>
