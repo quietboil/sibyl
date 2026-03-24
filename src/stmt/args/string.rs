@@ -1,5 +1,6 @@
 use super::{Params, ToSql};
 use crate::{oci::*, Result};
+use std::cmp::min;
 
 impl ToSql for String {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
@@ -8,7 +9,7 @@ impl ToSql for String {
     }
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
-        let new_len = params.get_data_len(pos);
+        let new_len = min(params.get_data_len(pos), self.capacity());
         unsafe {
             self.as_mut_vec().set_len(new_len);
         }
@@ -30,7 +31,7 @@ impl ToSql for &mut String {
     }
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
-        let new_len = params.get_data_len(pos);
+        let new_len = min(params.get_data_len(pos), self.capacity());
         unsafe {
             self.as_mut_vec().set_len(new_len);
         }
@@ -46,6 +47,21 @@ impl ToSql for Option<String> {
             params.bind(pos, SQLT_CHR, val.as_ptr() as _, val.len(), val.capacity(), stmt, err)?;
         } else {
             params.bind_null(pos, SQLT_CHR, stmt, err)?;
+        }
+        Ok(pos + 1)
+    }
+
+    fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
+        if params.is_null(pos).unwrap_or(true) {
+            self.take();
+        } else if let Some(val) = self {
+            let new_len = min(params.get_data_len(pos), val.capacity());
+            unsafe {
+                val.as_mut_vec().set_len(new_len);
+            }
+        } else if let Some(val) = params.get_data_as_bytes(pos) {
+            let new_str = String::from_utf8_lossy(val).into_owned();
+            self.replace(new_str);
         }
         Ok(pos + 1)
     }
@@ -73,8 +89,10 @@ impl ToSql for Option<&mut String> {
     }
 
     fn update_from_bind(&mut self, pos: usize, params: &Params) -> Result<usize> {
-        if let Some(val) = self {
-            let new_len = params.get_data_len(pos);
+        if params.is_null(pos).unwrap_or(true) {
+            self.take();
+        } else if let Some(val) = self {
+            let new_len = min(params.get_data_len(pos), val.capacity());
             unsafe {
                 val.as_mut_vec().set_len(new_len);
             }
@@ -130,7 +148,7 @@ impl ToSql for &mut Option<String> {
         if params.is_null(pos).unwrap_or(true) {
             self.take();
         } else if let Some(val) = self {
-            let new_len = params.get_data_len(pos);
+            let new_len = min(params.get_data_len(pos), val.capacity());
             unsafe {
                 val.as_mut_vec().set_len(new_len);
             }
@@ -168,7 +186,7 @@ impl ToSql for &mut Option<&mut String> {
         if params.is_null(pos).unwrap_or(true) {
             self.take();
         } else if let Some(val) = self {
-            let new_len = params.get_data_len(pos);
+            let new_len = min(params.get_data_len(pos), val.capacity());
             unsafe {
                 val.as_mut_vec().set_len(new_len);
             }
@@ -216,7 +234,7 @@ impl ToSql for &mut [String] {
 
     fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
         for txt in self.iter_mut() {
-            let new_len = params.get_data_len(pos);
+            let new_len = min(params.get_data_len(pos), txt.capacity());
             unsafe {
                 (*txt).as_mut_vec().set_len(new_len)
             }
@@ -237,7 +255,7 @@ impl ToSql for &mut [&mut String] {
 
     fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
         for txt in self.iter_mut() {
-            let new_len = params.get_data_len(pos);
+            let new_len = min(params.get_data_len(pos), txt.capacity());
             unsafe {
                 (*txt).as_mut_vec().set_len(new_len)
             }
