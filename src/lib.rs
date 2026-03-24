@@ -148,6 +148,7 @@ pub use env::Environment;
 pub use session::Session;
 pub use pool::{SessionPool, SessionPoolGetMode};
 pub use stmt::{Statement, Cursor, Rows, Row, ToSql, FromSql, ColumnType, Position};
+pub use stmt::args::nchar::NChar;
 pub use types::{Date, Raw, Number, Varchar, RowID, DateTime, Interval};
 pub use types::number::Integer;
 pub use oci::{Cache, CharSetForm, client_version};

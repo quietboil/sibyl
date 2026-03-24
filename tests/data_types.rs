@@ -19,7 +19,7 @@ mod blocking {
                 (":TEXT",     "Two roads diverged in a yellow wood,"),
                 (":ID",       &mut id),
                 (":TEXT_OUT", &mut text_out),
-                (":NTXT_OUT", &mut ntxt_out)
+                (":NTXT_OUT", NChar(&mut ntxt_out))
             )
         )?;
         assert_eq!(count, 1);
@@ -34,7 +34,7 @@ mod blocking {
                 (":TEXT",     text.as_str()),
                 (":ID",       &mut id),
                 (":TEXT_OUT", &mut text_out),
-                (":NTXT_OUT", &mut ntxt_out)
+                (":NTXT_OUT", NChar(&mut ntxt_out))
             )
         )?;
         assert_eq!(count, 1);
@@ -53,7 +53,7 @@ mod blocking {
                 (":TEXT",     text.as_str()),
                 (":ID",       &mut id),
                 (":TEXT_OUT", &mut text_out),
-                (":NTXT_OUT", &mut ntxt_out)
+                (":NTXT_OUT", NChar(&mut ntxt_out))
             )
         )?;
         assert_eq!(count, 1);
@@ -62,27 +62,71 @@ mod blocking {
         assert!(id > 0);
         ids.push(id);
 
+        // arguments for the last test
+        let mut args = Vec::with_capacity(3);
+
         let stmt = session.prepare("SELECT text, ntext FROM test_character_data WHERE id = :ID")?;
+        {
+            let row = stmt.query_single(ids[0])?.unwrap();
 
-        let row = stmt.query_single(ids[0])?.unwrap();
-        let text : &str = row.get("TEXT")?;
-        assert_eq!(text, "Two roads diverged in a yellow wood,");
-        let text : &str = row.get("NTEXT")?;
-        assert_eq!(text, "> Two roads diverged in a yellow wood,");
+            let text : &str = row.get("TEXT")?;
+            assert_eq!(text, "Two roads diverged in a yellow wood,");
+            let text : &str = row.get("NTEXT")?;
+            assert_eq!(text, "> Two roads diverged in a yellow wood,");
 
-        if let Some(row) = stmt.query_single(ids[1])? {
+            args.push(String::from(text));
+        } {
+            let row = stmt.query_single(ids[1])?.unwrap();
+
             let text : String = row.get(0)?;
             assert_eq!(text.as_str(), "And sorry I could not travel both");
             let text : String = row.get(1)?;
             assert_eq!(text.as_str(), "> And sorry I could not travel both");
-        }
 
-        if let Some(row) = stmt.query_single(ids[2])? {
+            args.push(text);
+        } {
+            let row = stmt.query_single(ids[2])?.unwrap();
+
             let text : Varchar = row.get("TEXT")?;
             assert_eq!(text.as_str(), "And be one traveler, long I stood");
             let text : Varchar = row.get("NTEXT")?;
             assert_eq!(text.as_str(), "> And be one traveler, long I stood");
+
+            args.push(String::from(text.as_str()));
         }
+
+        let stmt = session.prepare("SELECT text FROM test_character_data WHERE ntext IN (:L1, :L2, :L3) ORDER BY id")?;
+        let rows = stmt.query(NChar(args.as_slice()))?;
+        {
+            let row  = rows.next()?.unwrap();
+            let text : &str = row.get(0)?;
+            assert_eq!(text, "Two roads diverged in a yellow wood,");
+        } {
+            let row  = rows.next()?.unwrap();
+            let text : &str = row.get(0)?;
+            assert_eq!(text, "And sorry I could not travel both");
+        } {
+            let row  = rows.next()?.unwrap();
+            let text : &str = row.get(0)?;
+            assert_eq!(text, "And be one traveler, long I stood");
+        }
+
+        let args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        let rows = stmt.query(NChar(args.as_slice()))?;
+        {
+            let row  = rows.next()?.unwrap();
+            let text : &str = row.get(0)?;
+            assert_eq!(text, "Two roads diverged in a yellow wood,");
+        } {
+            let row  = rows.next()?.unwrap();
+            let text : &str = row.get(0)?;
+            assert_eq!(text, "And sorry I could not travel both");
+        } {
+            let row  = rows.next()?.unwrap();
+            let text : &str = row.get(0)?;
+            assert_eq!(text, "And be one traveler, long I stood");
+        }
+
 
         Ok(())
     }
@@ -654,7 +698,7 @@ mod nonblocking {
             let session = sibyl::test_env::get_session().await?;
 
             let stmt = session.prepare("
-                INSERT INTO test_character_data (text, ntext) VALUES (:TEXT, '> ' || :TEXT)
+                INSERT INTO test_character_data (text, ntext) VALUES (:TEXT, N'> ' || :TEXT)
                 RETURNING id, text, ntext INTO :ID, :TEXT_OUT, :NTXT_OUT
             ").await?;
 
@@ -668,7 +712,7 @@ mod nonblocking {
                     (":TEXT", "Two roads diverged in a yellow wood,"),
                     (":ID", &mut id),
                     (":TEXT_OUT", &mut text_out),
-                    (":NTXT_OUT", &mut ntxt_out)
+                    (":NTXT_OUT", NChar(&mut ntxt_out))
                 )
             ).await?;
             assert_eq!(count, 1);
@@ -683,7 +727,7 @@ mod nonblocking {
                     (":TEXT", text.as_str()),
                     (":ID", &mut id),
                     (":TEXT_OUT", &mut text_out),
-                    (":NTXT_OUT", &mut ntxt_out)
+                    (":NTXT_OUT", NChar(&mut ntxt_out))
                 )
             ).await?;
             assert_eq!(count, 1);
@@ -700,7 +744,7 @@ mod nonblocking {
                     (":TEXT", text.as_str()),
                     (":ID", &mut id),
                     (":TEXT_OUT", &mut text_out),
-                    (":NTXT_OUT", &mut ntxt_out)
+                    (":NTXT_OUT", NChar(&mut ntxt_out))
                 )
             ).await?;
             assert_eq!(count, 1);
@@ -708,31 +752,76 @@ mod nonblocking {
             assert_eq!(ntxt_out.as_str(), "> And be one traveler, long I stood");
             ids.push(id);
 
+            // arguments for the last test
+            let mut args = Vec::with_capacity(3);
+
             let stmt = session.prepare("SELECT text, ntext FROM test_character_data WHERE id = :ID").await?;
+            {
+                let rows = stmt.query(ids[0]).await?;
 
-            let rows = stmt.query(ids[0]).await?;
-            let row  = rows.next().await?.unwrap();
-            let text : &str = row.get("TEXT")?;
-            assert_eq!(text, "Two roads diverged in a yellow wood,");
-            let text : &str = row.get("NTEXT")?;
-            assert_eq!(text, "> Two roads diverged in a yellow wood,");
-            assert!(rows.next().await?.is_none());
+                let row  = rows.next().await?.unwrap();
+                let text : &str = row.get("TEXT")?;
+                assert_eq!(text, "Two roads diverged in a yellow wood,");
+                let text : &str = row.get("NTEXT")?;
+                assert_eq!(text, "> Two roads diverged in a yellow wood,");
+                assert!(rows.next().await?.is_none());
 
-            let rows = stmt.query(ids[1]).await?;
-            let row  = rows.next().await?.unwrap();
-            let text : String = row.get(0)?;
-            assert_eq!(text.as_str(), "And sorry I could not travel both");
-            let text : String = row.get(1)?;
-            assert_eq!(text.as_str(), "> And sorry I could not travel both");
-            assert!(rows.next().await?.is_none());
+                args.push(String::from(text));
+            } {
+                let rows = stmt.query(ids[1]).await?;
 
-            let rows = stmt.query(ids[2]).await?;
-            let row  = rows.next().await?.unwrap();
-            let text : Varchar = row.get("TEXT")?;
-            assert_eq!(text.as_str(), "And be one traveler, long I stood");
-            let text : Varchar = row.get("NTEXT")?;
-            assert_eq!(text.as_str(), "> And be one traveler, long I stood");
-            assert!(rows.next().await?.is_none());
+                let row  = rows.next().await?.unwrap();
+                let text : String = row.get(0)?;
+                assert_eq!(text.as_str(), "And sorry I could not travel both");
+                let text : String = row.get(1)?;
+                assert_eq!(text.as_str(), "> And sorry I could not travel both");
+                assert!(rows.next().await?.is_none());
+
+                args.push(text);
+            } {
+                let rows = stmt.query(ids[2]).await?;
+
+                let row  = rows.next().await?.unwrap();
+                let text : Varchar = row.get("TEXT")?;
+                assert_eq!(text.as_str(), "And be one traveler, long I stood");
+                let text : Varchar = row.get("NTEXT")?;
+                assert_eq!(text.as_str(), "> And be one traveler, long I stood");
+                assert!(rows.next().await?.is_none());
+
+                args.push(String::from(text.as_str()));
+            }
+
+            let stmt = session.prepare("SELECT text FROM test_character_data WHERE ntext IN (:L1, :L2, :L3) ORDER BY id").await?;
+            let rows = stmt.query(NChar(args.as_slice())).await?;
+            {
+                let row  = rows.next().await?.unwrap();
+                let text : &str = row.get(0)?;
+                assert_eq!(text, "Two roads diverged in a yellow wood,");
+            } {
+                let row  = rows.next().await?.unwrap();
+                let text : &str = row.get(0)?;
+                assert_eq!(text, "And sorry I could not travel both");
+            } {
+                let row  = rows.next().await?.unwrap();
+                let text : &str = row.get(0)?;
+                assert_eq!(text, "And be one traveler, long I stood");
+            }
+
+            let args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            let rows = stmt.query(NChar(args.as_slice())).await?;
+            {
+                let row  = rows.next().await?.unwrap();
+                let text : &str = row.get(0)?;
+                assert_eq!(text, "Two roads diverged in a yellow wood,");
+            } {
+                let row  = rows.next().await?.unwrap();
+                let text : &str = row.get(0)?;
+                assert_eq!(text, "And sorry I could not travel both");
+            } {
+                let row  = rows.next().await?.unwrap();
+                let text : &str = row.get(0)?;
+                assert_eq!(text, "And be one traveler, long I stood");
+            }
 
             Ok(())
         })

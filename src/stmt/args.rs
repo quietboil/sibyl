@@ -6,6 +6,7 @@ mod string;
 mod bin;
 mod binvec;
 mod bool;
+pub(crate) mod nchar;
 
 use super::bind::Params;
 use crate::types::OracleDataType;
@@ -35,7 +36,7 @@ pub trait ToSql : Send + Sync {
     fn bind_to(&mut self, pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize>;
 
     /**
-    A callback that is called to update OUT (or INOUT) argumetns. For example, to set the length
+    A callback that is called to update OUT (or INOUT) argument. For example, to set the length
     of the received data.
     */
     fn update_from_bind(&mut self, pos: usize, _params: &Params) -> Result<usize> {
@@ -155,6 +156,51 @@ impl ToSql for &mut Vec<&mut dyn ToSql> {
     fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
         for item in self.iter_mut() {
             pos = item.update_from_bind(pos, params)?;
+        }
+        Ok(pos)
+    }
+}
+
+impl<T: ToSql, const N: usize> ToSql for [T; N] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.bind_to(pos, params, stmt, err)?;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.update_from_bind(pos, params)?;
+        }
+        Ok(pos)
+    }
+}
+
+impl<T: ToSql, const N: usize> ToSql for &mut [T; N] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.bind_to(pos, params, stmt, err)?;
+        }
+        Ok(pos)
+    }
+
+    fn update_from_bind(&mut self, mut pos: usize, params: &Params) -> Result<usize> {
+        for item in self.iter_mut() {
+            pos = item.update_from_bind(pos, params)?;
+        }
+        Ok(pos)
+    }
+}
+
+impl<T: ToSql, const N: usize> ToSql for &[T; N] {
+    fn bind_to(&mut self, mut pos: usize, params: &mut Params, stmt: &OCIStmt, err: &OCIError) -> Result<usize> {
+        for item in self.iter() {
+            // Coerse item into ref mut to satisfy `bind_to`
+            let val = item as *const T as *mut T as *const UnsafeCell<T>;
+            let val: &UnsafeCell<T> = unsafe { &*val };
+            let val = unsafe { &mut *val.get() };
+            pos = val.bind_to(pos, params, stmt, err)?;
         }
         Ok(pos)
     }

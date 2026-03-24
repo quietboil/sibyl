@@ -15,6 +15,7 @@
   - [Connection Pool](conn_pool.md)
 - [SQL Statement Execution](exec.md)
   - [Statement Arguments](args.md)
+  - [Using National Character Set](nchar.md)
   - [Slices as Arguments](slices.md)
   - [NULLs](nulls.md)
   - [Dynamic SQL](dyn_sql.md)

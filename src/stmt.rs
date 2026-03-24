@@ -1,6 +1,6 @@
 //! SQL or PL/SQL statement
 
-mod args;
+pub(crate) mod args;
 mod bind;
 mod cols;
 mod cursor;

@@ -162,6 +162,10 @@ impl Params {
         self.nulls[idx] = OCI_IND_NULL;
     }
 
+    pub(crate) fn mark_as_nchar(&mut self, idx: usize, err: &OCIError) -> Result<()> {
+        attr::set(OCI_ATTR_CHARSET_FORM, SQLCS_NCHAR, OCI_HTYPE_BIND, self.binds[idx].as_ref(), err)
+    }
+
     /// Checks whether previously bound placeholders are rebound.
     /// Returns `true` if they are.
     fn prior_binds_are_rebound(&self, mut prior_binds: Vec<u16>) -> bool {
@@ -240,7 +244,7 @@ impl Params {
             .map(|buf| buf.as_ptr())
             .zip(self.data_lens.get(pos))
             .map(|(data, &len)| unsafe {
-                std::slice::from_raw_parts(data, len as _) 
+                std::slice::from_raw_parts(data, len as _)
             })
     }
 

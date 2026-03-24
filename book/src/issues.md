@@ -34,5 +34,3 @@ let stmt = session.prepare("
 > Note that 12.2 through 19.18 clients (as far as Sibyl's tests showed) do not exhibit this issue.
 
 21c clients (at least when connected to the 19.3 database) cannot read **LOBs** piece-wize - something bad happens while it reads the very last byte of the last piece and the execution is aborted with SIGSEGV. Notably, they have no problem reading the second to last piece even if it has all the bytes but the very last one. Subsequently, an attempt to read the last one-byte piece gets aborted with memory violation.
-
-All tested clients behave erratically in `nonblocking` mode when they execute piece-wize LOB operations. Therefore, in `nonblocking` mode Sibyl does not support LOBs piece-wise reading and writing.
