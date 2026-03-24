@@ -1,8 +1,6 @@
-//! This example shows how to pass a collection of same type values as an argument.
-//! This capability is intended to make passing arguments for IN parameters simple.
-//! However, it can be "abused" :-) to pass multiple consecutive arguments of the
-//! same type when convenient.
-//!
+/**
+    This example shows how to pass a collection of values of same type values as an argument.
+*/
 #[cfg(feature="blocking")]
 fn main() -> sibyl::Result<()> {
     use sibyl as oracle;
@@ -32,9 +30,9 @@ fn main() -> sibyl::Result<()> {
     let date_thru = Date::from_string("December 31, 2006", "MONTH DD, YYYY", &session)?;
 
     let rows = stmt.query((
-        (":DEPARTMENTS",   ["Marketing", "Purchasing", "Human Resources", "Shipping", "IT"].as_slice()),
+        (":DEPARTMENTS",   ["Marketing", "Purchasing", "Human Resources", "Shipping", "IT"]),
         (":MIN_EMPLOYEES", 5),
-        (":HIRE_RANGE",    [date_from, date_thru].as_slice()),
+        (":HIRE_RANGE",    [date_from, date_thru]),
     ))?;
     while let Some(row) = rows.next()? {
         let first_name: &str = row.get(0)?;
