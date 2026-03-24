@@ -2,10 +2,9 @@
 title = "Sibyl User Manual"
 authors = ["Alex Demenchuk"]
 language = "en"
-multilingual = false
 
 [rust]
-edition = "2018"
+edition = "2021"
 
 [build]
 build-dir = "pages"
