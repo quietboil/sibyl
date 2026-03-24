@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-94e949d9.js";
+            window.path_to_searchindex_js = "searchindex-e281be9e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-298883ce.js"></script>
@@ -260,11 +260,11 @@ United Kingdom           :  8800
 <h1 id="using-sibyl-in-a-project"><a class="header" href="#using-sibyl-in-a-project">Using Sibyl In A Project</a></h1>
 <p>Sibyl has 2 features - <code>blocking</code> and <code>nonblocking</code>. They are <strong>exclusive</strong> and <strong>one</strong> must be explicitly selected as neither is the default. Thus, when Sibyl is used as a dependency, it might be included as:</p>
 <pre><code class="language-toml">[dependencies]
-sibyl = { version = "0.6", features = ["blocking"] }
+sibyl = { version = "0.7", features = ["blocking"] }
 </code></pre>
 <p>A <code>nonblocking</code> mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controlled by a set of exclusive features. For now, Sibyl supports <code>tokio</code>, <code>actix</code>, <code>async-std</code>, and <code>async-global</code>. One of these must be specified with the <code>nonblocking</code> feature. For example:</p>
 <pre><code class="language-toml">[dependencies]
-sibyl = { version = "0.6", features = ["nonblocking", "tokio"] }
+sibyl = { version = "0.7", features = ["nonblocking", "tokio"] }
 </code></pre>
 <h1 id="building"><a class="header" href="#building">Building</a></h1>
 <p>The cargo build needs to know where the OCI client library is. You can provide that information via environment variable <code>OCI_LIB_DIR</code> on Windows or <code>LIBRARY_PATH</code> on Linux. On Linux, depending on which Oracle client is installed and how it was installed, the <code>LD_LIBRARY_PATH</code> might also be needed. <code>LIBRARY_PATH</code> (and <code>LD_LIBRARY_PATH</code>) would include the path to the directory with <code>libclntsh.so</code>. For example, you might build Sibyl’s examples as:</p>
@@ -333,7 +333,7 @@ cargo build --examples --features=blocking
 </code></pre>
 <p>Then edit <code>Cargo.toml</code> and include Sibyl as a dependency:</p>
 <pre><code class="language-toml">[dependencies]
-sibyl = { version="0.6", features=["blocking"] }
+sibyl = { version="7", features=["blocking"] }
 </code></pre>
 <p>We will be writing a single threaded program, thus we will use Sibyl’s <code>blocking</code> API.</p>
 <h2 id="implement-the-solution"><a class="header" href="#implement-the-solution">Implement the Solution</a></h2>
