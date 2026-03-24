@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e281be9e.js";
+            window.path_to_searchindex_js = "searchindex-6106713e.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-298883ce.js"></script>
@@ -726,8 +726,9 @@ let num_inserted = stmt.execute(
     ))?;</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="using-slices-as-statement-arguments"><a class="header" href="#using-slices-as-statement-arguments">Using Slices as Statement Arguments</a></h1>
-<p>Sibyl accepts a collection of values (as a slice) as a single positional or a named argument. The primary target of this feature is to make passing arguments for IN-list parameters easier. However, as Sibyl simply unrolls a slice into consecutive arguments, this feature can also be “abused” :-) to pass multiple consecutive arguments of the same type when it is convenient.</p>
+<p>Sibyl accepts a collection of values (as a slice or an array) as a single positional or a named argument. The primary target of this feature is to make passing arguments for IN-list parameters easier. However, as Sibyl simply unrolls a slice into consecutive arguments, this feature can also be “abused” 😉 to pass multiple consecutive arguments of the same type when it is convenient.</p>
 <h2 id="example-3"><a class="header" href="#example-3">Example</a></h2>
+<h3 id="using-slice"><a class="header" href="#using-slice">Using Slice</a></h3>
 <pre><code class="language-rust noplayground">    let stmt = session.prepare("
         SELECT first_name, last_name, department_name, hire_date
           FROM hr.employees e
@@ -745,13 +746,17 @@ let num_inserted = stmt.execute(
     let date_from = Date::from_string("July      1, 2006", "MONTH DD, YYYY", &amp;session)?;
     let date_thru = Date::from_string("December 31, 2006", "MONTH DD, YYYY", &amp;session)?;
 
-    let rows = stmt.query(
-        (
-            (":DEPARTMENTS",   ["Marketing", "Purchasing", "Human Resources", "Shipping", "IT"].as_slice()),
-            (":MIN_EMPLOYEES", 5),
-            (":HIRE_RANGE",    [date_from, date_thru].as_slice()),
-        )
-    )?;</code></pre>
+    let rows = stmt.query((
+        (":DEPARTMENTS",   ["Marketing", "Purchasing", "Human Resources", "Shipping", "IT"].as_slice()),
+        (":MIN_EMPLOYEES", 5),
+        (":HIRE_RANGE",    [date_from, date_thru].as_slice()),
+    ))?;</code></pre>
+<h3 id="using-array"><a class="header" href="#using-array">Using Array</a></h3>
+<pre><code class="language-rust noplayground">    let rows = stmt.query((
+        (":DEPARTMENTS",   ["Marketing", "Purchasing", "Human Resources", "Shipping", "IT"]),
+        (":MIN_EMPLOYEES", 5),
+        (":HIRE_RANGE",    [date_from, date_thru]),
+    ))?;</code></pre>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="nulls-as-statement-arguments"><a class="header" href="#nulls-as-statement-arguments">NULLs as Statement Arguments</a></h1>
 <p>There are several, sometimes complementary, ways to pass nulls into and receive them from statements.</p>
