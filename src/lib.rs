@@ -98,14 +98,14 @@ Thus, for example, when Sibyl is used as a dependency, it might be included as:
 
 ```toml
 [dependencies]
-sibyl = { version = "0.6", features = ["blocking"] }
+sibyl = { version = "0.7", features = ["blocking"] }
 ```
 
 Or, when Sibyl is used in nonblocking mode as:
 
 ```toml
 [dependencies]
-sibyl = { version = "0.6", features = ["nonblocking", "tokio"] }
+sibyl = { version = "0.7", features = ["nonblocking", "tokio"] }
 ```
 
 [1]: https://docs.oracle.com/en/database/oracle/oracle-database/19/lnoci/index.html

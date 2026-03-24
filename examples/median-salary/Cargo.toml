@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sibyl = { version="0.6", features=["blocking"] }
+sibyl = { version="7", features=["blocking"] }

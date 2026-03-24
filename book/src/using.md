@@ -10,14 +10,14 @@ Sibyl has 2 features - `blocking` and `nonblocking`. They are **exclusive** and 
 
 ```toml
 [dependencies]
-sibyl = { version = "0.6", features = ["blocking"] }
+sibyl = { version = "0.7", features = ["blocking"] }
 ```
 
 A `nonblocking` mode also needs to know which async runtime/executor it is allowed to use to spawn async tasks. The async runtime selection is also controlled by a set of exclusive features. For now, Sibyl supports `tokio`, `actix`, `async-std`, and `async-global`. One of these must be specified with the `nonblocking` feature. For example:
 
 ```toml
 [dependencies]
-sibyl = { version = "0.6", features = ["nonblocking", "tokio"] }
+sibyl = { version = "0.7", features = ["nonblocking", "tokio"] }
 ```
 
 # Building
