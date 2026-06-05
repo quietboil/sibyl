@@ -463,7 +463,7 @@ mod nonblocking {
                 stmt.execute(("MEDIA_DIR", "mousepad_comp_ad.pdf", &mut rowid)).await?;
 
                 let stmt = session.prepare("
-                    SELECT fbin FROM test_large_object_data WWHERE ROWID = :ROW_ID
+                    SELECT fbin FROM test_large_object_data WHERE ROWID = :ROW_ID
                 ").await?;
                 let rows = stmt.query(&rowid).await?;
                 let row = rows.next().await?.expect("first row");
