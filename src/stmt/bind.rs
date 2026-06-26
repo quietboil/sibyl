@@ -17,7 +17,7 @@ pub struct Params {
     data_lens: Vec<u32>,
     /// Map of arguments indexes (positions) to parameter placeholder indexes
     bind_order: Vec<u16>,
-    /// Buffers used to keep and bind IN arguments or OUR arguments that were passed as None
+    /// Buffers used to keep and bind IN arguments or OUT arguments that were passed as None
     buffers: Vec<Vec<u8>>
 }
 
