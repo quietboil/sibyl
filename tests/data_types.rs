@@ -132,6 +132,24 @@ mod blocking {
     }
 
     #[test]
+    fn nchar_projection_decodes_supplementary_characters() -> Result<()> {
+        let session = sibyl::test_env::get_session()?;
+        let expected = "💕";
+
+        let stmt = session.prepare("SELECT :TEXT, TO_NCHAR(:TEXT) FROM dual")?;
+        let row = stmt.query_single(expected)?.expect("selected row");
+        let text: &str = row.get(0)?;
+        let ntext: &str = row.get(1)?;
+
+        assert_eq!(text, expected);
+        assert_eq!(text.as_bytes(), expected.as_bytes());
+        assert_eq!(ntext, expected);
+        assert_eq!(ntext.as_bytes(), expected.as_bytes());
+
+        Ok(())
+    }
+
+    #[test]
     fn datetime_datatypes() -> Result<()> {
         use std::cmp::Ordering::Equal;
 
@@ -822,6 +840,26 @@ mod nonblocking {
                 let text : &str = row.get(0)?;
                 assert_eq!(text, "And be one traveler, long I stood");
             }
+
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn nchar_projection_decodes_supplementary_characters() -> Result<()> {
+        block_on(async {
+            let session = sibyl::test_env::get_session().await?;
+            let expected = "💕";
+
+            let stmt = session.prepare("SELECT :TEXT, TO_NCHAR(:TEXT) FROM dual").await?;
+            let row = stmt.query_single(expected).await?.expect("selected row");
+            let text: &str = row.get(0)?;
+            let ntext: &str = row.get(1)?;
+
+            assert_eq!(text, expected);
+            assert_eq!(text.as_bytes(), expected.as_bytes());
+            assert_eq!(ntext, expected);
+            assert_eq!(ntext.as_bytes(), expected.as_bytes());
 
             Ok(())
         })

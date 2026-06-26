@@ -57,7 +57,7 @@ impl Environment {
             OCIEnvNlsCreate(
                 env.as_mut_ptr(), OCI_OBJECT | OCI_THREADED,
                 ptr::null(), ptr::null(), ptr::null(), ptr::null(), 0, ptr::null(),
-                AL32UTF8, UTF8
+                AL32UTF8, AL32UTF8
             )
         };
         if res != OCI_SUCCESS {
